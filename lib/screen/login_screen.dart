@@ -7,7 +7,6 @@ import 'package:truerealtycrm/constant/screen_utils.dart';
 import 'package:truerealtycrm/provider/auth_provider.dart';
 import 'package:truerealtycrm/router/app_router.dart';
 import 'package:truerealtycrm/screen/forgot_password_screen.dart';
-import 'package:truerealtycrm/screen/otp_verification_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -17,8 +16,17 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
   bool _rememberMe = true;
   bool _hidePassword = true;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -34,7 +42,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Stack(
                   children: [
                     const _HeaderArt(),
-                    SizedBox(height: 40.h,),
+                    SizedBox(height: 40.h),
                     Padding(
                       padding: EdgeInsets.fromLTRB(2.w, 0.h, 0.w, 0.h),
                       child: Column(
@@ -45,6 +53,8 @@ class _LoginScreenState extends State<LoginScreen> {
                           SizedBox(height: 24.h),
                           SizedBox(height: 196.h),
                           _LoginCard(
+                            emailController: _emailController,
+                            passwordController: _passwordController,
                             rememberMe: _rememberMe,
                             hidePassword: _hidePassword,
                             onRememberChanged: (value) {
@@ -73,24 +83,22 @@ class _HeaderArt extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        Image.asset("assets/login.png"),
-      ],
-    );
+    return Stack(children: [Image.asset("assets/login.png")]);
   }
 }
 
-
-
 class _LoginCard extends StatelessWidget {
   const _LoginCard({
+    required this.emailController,
+    required this.passwordController,
     required this.rememberMe,
     required this.hidePassword,
     required this.onRememberChanged,
     required this.onPasswordVisibilityChanged,
   });
 
+  final TextEditingController emailController;
+  final TextEditingController passwordController;
   final bool rememberMe;
   final bool hidePassword;
   final ValueChanged<bool?> onRememberChanged;
@@ -98,10 +106,37 @@ class _LoginCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    void openOtpScreen() {
-      Navigator.of(
-        context,
-      ).pushNamed(AppRouter.otpVerification);
+    final authProvider = context.watch<AuthProvider>();
+
+    Future<void> loginWithEmailAndPassword() async {
+      final email = emailController.text.trim();
+      final password = passwordController.text;
+
+      if (email.isEmpty || password.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter email and password.')),
+        );
+        return;
+      }
+
+      final response = await context.read<AuthProvider>().login(
+        email: email,
+        password: password,
+      );
+
+      if (!context.mounted) {
+        return;
+      }
+
+      if (response != null) {
+        Navigator.of(context).pushReplacementNamed(AppRouter.dashboard);
+        return;
+      }
+
+      final error = context.read<AuthProvider>().error;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error ?? 'Login failed. Please try again.')),
+      );
     }
 
     return Container(
@@ -146,20 +181,33 @@ class _LoginCard extends StatelessWidget {
           SizedBox(height: 26.h),
           CommonWidgets.fieldLabel('Email Address'),
           SizedBox(height: 10.h),
-          CommonWidgets.inputField(
+          _LoginInputField(
             icon: Icons.email_outlined,
             hint: 'Enter your registered email',
+            controller: emailController,
             keyboardType: TextInputType.emailAddress,
+            textInputAction: TextInputAction.next,
+            enabled: !authProvider.isLoading,
           ),
           SizedBox(height: 20.h),
           CommonWidgets.fieldLabel('Password'),
           SizedBox(height: 10.h),
-          CommonWidgets.inputField(
+          _LoginInputField(
             icon: Icons.lock_outline,
             hint: 'Enter your password',
+            controller: passwordController,
             obscureText: hidePassword,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) {
+              if (!authProvider.isLoading) {
+                loginWithEmailAndPassword();
+              }
+            },
+            enabled: !authProvider.isLoading,
             suffix: IconButton(
-              onPressed: onPasswordVisibilityChanged,
+              onPressed: authProvider.isLoading
+                  ? null
+                  : onPasswordVisibilityChanged,
               icon: Icon(
                 hidePassword
                     ? Icons.visibility_off_outlined
@@ -173,7 +221,7 @@ class _LoginCard extends StatelessWidget {
           CommonWidgets.fieldLabel('Select Role (For Demo)'),
           SizedBox(height: 10.h),
           DropdownButtonFormField<UserRole>(
-            value: context.watch<AuthProvider>().role,
+            initialValue: context.watch<AuthProvider>().role,
             decoration: InputDecoration(
               filled: true,
               fillColor: AppColors.white,
@@ -239,7 +287,7 @@ class _LoginCard extends StatelessWidget {
                 height: 24.h,
                 child: Checkbox(
                   value: rememberMe,
-                  onChanged: onRememberChanged,
+                  onChanged: authProvider.isLoading ? null : onRememberChanged,
                   activeColor: AppColors.navy,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(4.r),
@@ -288,7 +336,9 @@ class _LoginCard extends StatelessWidget {
             height: 58.h,
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: openOtpScreen,
+              onPressed: authProvider.isLoading
+                  ? null
+                  : loginWithEmailAndPassword,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.orange,
                 foregroundColor: AppColors.white,
@@ -297,50 +347,33 @@ class _LoginCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(10.r),
                 ),
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    'Login',
-                    style: TextStyle(
-                      fontSize: 18.sp,
-                      fontWeight: FontWeight.w800,
+              child: authProvider.isLoading
+                  ? SizedBox(
+                      width: 22.w,
+                      height: 22.w,
+                      child: const CircularProgressIndicator(
+                        strokeWidth: 2.4,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          AppColors.white,
+                        ),
+                      ),
+                    )
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          'Login',
+                          style: TextStyle(
+                            fontSize: 18.sp,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        SizedBox(width: 16.w),
+                        Icon(Icons.arrow_forward, size: 24.sp),
+                      ],
                     ),
-                  ),
-                  SizedBox(width: 16.w),
-                  Icon(Icons.arrow_forward, size: 24.sp),
-                ],
-              ),
             ),
           ),
-          SizedBox(height: 26.h),
-          const _DividerLabel('or continue with'),
-          SizedBox(height: 16.h),
-          SizedBox(
-            height: 56.h,
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: openOtpScreen,
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: AppColors.border),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10.r),
-                ),
-              ),
-              icon: Icon(Icons.phone, color: AppColors.navy, size: 20.sp),
-              label: Text(
-                'Login via Email',
-                style: const TextStyle(
-                  fontFamily: 'Inter',
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  height: 1.5,
-                  color: Color(0xFF002149),
-                ),
-              )
-              ),
-            ),
-
           SizedBox(height: 24.h),
           const _HelpPanel(),
         ],
@@ -349,31 +382,65 @@ class _LoginCard extends StatelessWidget {
   }
 }
 
-class _DividerLabel extends StatelessWidget {
-  const _DividerLabel(this.text);
+class _LoginInputField extends StatelessWidget {
+  const _LoginInputField({
+    required this.icon,
+    required this.hint,
+    required this.controller,
+    this.keyboardType,
+    this.textInputAction,
+    this.obscureText = false,
+    this.suffix,
+    this.onSubmitted,
+    this.enabled = true,
+  });
 
-  final String text;
+  final IconData icon;
+  final String hint;
+  final TextEditingController controller;
+  final TextInputType? keyboardType;
+  final TextInputAction? textInputAction;
+  final bool obscureText;
+  final Widget? suffix;
+  final ValueChanged<String>? onSubmitted;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        const Expanded(child: Divider(color: AppColors.border)),
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: 12.w),
-          child: Text(
-            text,
-            style: const TextStyle(
-              fontFamily: 'Inter',
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              height: 1.33,
-              color: Color(0xFF747781),
-            ),
+    return TextField(
+      controller: controller,
+      keyboardType: keyboardType,
+      textInputAction: textInputAction,
+      obscureText: obscureText,
+      onSubmitted: onSubmitted,
+      enabled: enabled,
+      style: AppStyles.inputText,
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: AppStyles.inputHint,
+        prefixIcon: Container(
+          width: 54.w,
+          height: 54.h,
+          margin: EdgeInsets.all(8.r),
+          decoration: BoxDecoration(
+            color: AppColors.inputIconBg,
+            borderRadius: BorderRadius.circular(8.r),
           ),
+          child: Icon(icon, color: AppColors.navy, size: 24.sp),
         ),
-        const Expanded(child: Divider(color: AppColors.border)),
-      ],
+        suffixIcon: suffix,
+        filled: true,
+        fillColor: AppColors.white,
+        contentPadding: EdgeInsets.symmetric(horizontal: 18.w, vertical: 20.h),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10.r),
+          borderSide: const BorderSide(color: AppColors.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10.r),
+          borderSide: const BorderSide(color: AppColors.navy, width: 1.4),
+        ),
+      ),
     );
   }
 }
@@ -415,7 +482,7 @@ class _HelpPanel extends StatelessWidget {
                     letterSpacing: 0.6,
                     color: AppColors.navy,
                   ),
-            ),
+                ),
                 SizedBox(height: 6.h),
                 Text(
                   'Contact our support team',
