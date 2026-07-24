@@ -15,6 +15,7 @@ class NotificationRepository {
     return _apiClient.get(
       '/notifications',
       queryParameters: {'page': page, 'limit': limit, 'unreadOnly': unreadOnly},
+      headers: const {'Cache-Control': 'no-cache', 'Pragma': 'no-cache'},
     );
   }
 

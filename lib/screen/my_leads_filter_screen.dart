@@ -2,373 +2,199 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:truerealtycrm/constant/colors_screen.dart';
-import 'package:truerealtycrm/constant/screen_utils.dart';
+
+class MyLeadsFilterResult {
+  const MyLeadsFilterResult({
+    this.project,
+    this.source,
+    this.status,
+    this.leadType,
+  });
+
+  final String? project;
+  final String? source;
+  final String? status;
+  final String? leadType;
+
+  bool get isEmpty =>
+      project == null && source == null && status == null && leadType == null;
+}
 
 class MyLeadsFilterScreen extends StatefulWidget {
-  const MyLeadsFilterScreen({super.key});
+  const MyLeadsFilterScreen({
+    super.key,
+    this.initial = const MyLeadsFilterResult(),
+    this.projects = const [],
+    this.sources = const [],
+    this.statuses = const [],
+  });
+
+  final MyLeadsFilterResult initial;
+  final List<String> projects;
+  final List<String> sources;
+  final List<String> statuses;
 
   @override
   State<MyLeadsFilterScreen> createState() => _MyLeadsFilterScreenState();
 }
 
 class _MyLeadsFilterScreenState extends State<MyLeadsFilterScreen> {
-  static const double _fieldLabelFontSize = 19;
-  static const double _bodyFontSize = 18;
-  static const double _sectionFontSize = 20;
-  static const double _headerFontSize = 18;
+  String? _project;
+  String? _source;
+  String? _status;
+  String? _leadType;
 
-  String _status = 'All';
-  String _temperature = 'All';
-  bool _slaBreachedOnly = false;
-
-  static const List<String> _statusOptions = [
-    'All',
-    'New',
-    'Contacted',
-    'Qualified',
-  ];
-
-  static const List<String> _temperatureOptions = [
-    'All',
-    'Hot',
-    'Warm',
-    'Cold',
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _project = widget.initial.project;
+    _source = widget.initial.source;
+    _status = widget.initial.status;
+    _leadType = widget.initial.leadType;
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFD),
+      backgroundColor: const Color(0xFFF4F6FB),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(
+          onPressed: () => Navigator.pop(context),
+          icon: const Icon(Icons.close_rounded),
+        ),
+        title: Text(
+          'Filter leads',
+          style: GoogleFonts.inter(
+            fontSize: 18.sp,
+            fontWeight: FontWeight.w800,
+            color: AppColors.navy,
+          ),
+        ),
+      ),
       body: SafeArea(
         child: Column(
           children: [
-            _buildHeader(context),
             Expanded(
               child: SingleChildScrollView(
-                padding: EdgeInsets.fromLTRB(14.w, 12.h, 14.w, 18.h),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _sectionLabel('LEAD DETAILS'),
-                    SizedBox(height: 12.h),
-                    _dropdownField('Project', 'All Projects'),
-                    SizedBox(height: 12.h),
-                    _dropdownField('Source', 'All Sources'),
-                    SizedBox(height: 16.h),
-                    Divider(color: const Color(0xFFE7EBF2), height: 1.h),
-                    SizedBox(height: 16.h),
-                    _sectionLabel('STATUS & ENGAGEMENT'),
-                    SizedBox(height: 12.h),
-                    CommonWidgets.fieldLabelScaled(
-                      'Status',
-                      fontSize: _fieldLabelFontSize,
-                    ),
-                    SizedBox(height: 8.h),
-                    Wrap(
-                      spacing: 8.w,
-                      runSpacing: 8.h,
-                      children: _statusOptions
-                          .map((item) => _choiceChip(
-                                label: item,
-                                selected: _status == item,
-                                onTap: () => setState(() => _status = item),
-                              ))
-                          .toList(),
-                    ),
-                    SizedBox(height: 14.h),
-                    CommonWidgets.fieldLabelScaled(
-                      'Temperature',
-                      fontSize: _fieldLabelFontSize,
-                    ),
-                    SizedBox(height: 8.h),
-                    Wrap(
-                      spacing: 8.w,
-                      runSpacing: 8.h,
-                      children: _temperatureOptions
-                          .map(
-                            (item) => _choiceChip(
-                              label: item,
-                              selected: _temperature == item,
-                              onTap: () => setState(() => _temperature = item),
-                              showDot: item == 'Hot',
-                              dotColor: const Color(0xFFFF7A1A),
-                            ),
-                          )
-                          .toList(),
-                    ),
-                    SizedBox(height: 16.h),
-                    Divider(color: const Color(0xFFE7EBF2), height: 1.h),
-                    SizedBox(height: 16.h),
-                    _sectionLabel('ASSIGNMENT'),
-                    SizedBox(height: 12.h),
-                    CommonWidgets.fieldLabelScaled(
-                      'Lead Owner',
-                      fontSize: _fieldLabelFontSize,
-                    ),
-                    SizedBox(height: 8.h),
-                    _searchField(),
-                    SizedBox(height: 12.h),
-                    _dropdownField('Manager', 'All Managers'),
-                    SizedBox(height: 16.h),
-                    Divider(color: const Color(0xFFE7EBF2), height: 1.h),
-                    SizedBox(height: 16.h),
-                    _sectionLabel('PERFORMANCE'),
-                    SizedBox(height: 12.h),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            'SLA Breached Only',
-                            style: GoogleFonts.inter(
-                              fontSize: _bodyFontSize.sp,
-                              fontWeight: FontWeight.w500,
-                              color: const Color(0xFF232A36),
-                            ),
+                padding: EdgeInsets.all(18.r),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 620),
+                    child: Container(
+                      padding: EdgeInsets.all(18.r),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12.r),
+                        border: Border.all(color: const Color(0xFFD9E3EF)),
+                      ),
+                      child: Column(
+                        children: [
+                          _dropdown(
+                            label: 'Project',
+                            value: _project,
+                            values: widget.projects,
+                            onChanged: (value) =>
+                                setState(() => _project = value),
                           ),
-                        ),
-                        Switch(
-                          value: _slaBreachedOnly,
-                          onChanged: (value) {
-                            setState(() => _slaBreachedOnly = value);
-                          },
-                          activeColor: Colors.white,
-                          activeTrackColor: const Color(0xFF123464),
-                          inactiveThumbColor: Colors.white,
-                          inactiveTrackColor: const Color(0xFFD7DDEA),
-                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: 6.h),
-                    _dropdownField('Date Range', 'All Time'),
-                    SizedBox(height: 18.h),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () {
-                              setState(() {
-                                _status = 'All';
-                                _temperature = 'All';
-                                _slaBreachedOnly = false;
-                              });
-                            },
-                            style: OutlinedButton.styleFrom(
-                              minimumSize: Size.fromHeight(38.h),
-                              side: const BorderSide(color: Color(0xFFD6DCE8)),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8.r),
-                              ),
-                            ),
-                            child: Text(
-                              'Reset',
-                              style: GoogleFonts.inter(
-                                fontSize: _bodyFontSize.sp,
-                                fontWeight: FontWeight.w500,
-                                color: const Color(0xFF2F3745),
-                              ),
-                            ),
+                          SizedBox(height: 16.h),
+                          _dropdown(
+                            label: 'Source',
+                            value: _source,
+                            values: widget.sources,
+                            onChanged: (value) =>
+                                setState(() => _source = value),
                           ),
-                        ),
-                        SizedBox(width: 14.w),
-                        Expanded(
-                          flex: 2,
-                          child: ElevatedButton(
-                            onPressed: () => Navigator.pop(context),
-                            style: ElevatedButton.styleFrom(
-                              minimumSize: Size.fromHeight(38.h),
-                              backgroundColor: const Color(0xFFFF7A1A),
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8.r),
-                              ),
-                            ),
-                            child: Text(
-                              'Apply filter',
-                              style: GoogleFonts.inter(
-                                fontSize: _bodyFontSize.sp,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white,
-                              ),
-                            ),
+                          SizedBox(height: 16.h),
+                          _dropdown(
+                            label: 'Status',
+                            value: _status,
+                            values: widget.statuses,
+                            onChanged: (value) =>
+                                setState(() => _status = value),
                           ),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: 12.h),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: () {},
-                        style: ElevatedButton.styleFrom(
-                          minimumSize: Size.fromHeight(38.h),
-                          backgroundColor: const Color(0xFFFF7A1A),
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8.r),
+                          SizedBox(height: 16.h),
+                          _dropdown(
+                            label: 'Temperature',
+                            value: _leadType,
+                            values: const ['Hot', 'Warm', 'Cold'],
+                            onChanged: (value) =>
+                                setState(() => _leadType = value),
                           ),
-                        ),
-                        child: Text(
-                          'Export leads',
-                          style: GoogleFonts.inter(
-                            fontSize: _bodyFontSize.sp,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
-                          ),
-                        ),
+                        ],
                       ),
                     ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHeader(BuildContext context) {
-    return Container(
-      height: 40.h,
-      padding: EdgeInsets.symmetric(horizontal: 10.w),
-      decoration: const BoxDecoration(
-        color: Color(0xFFF8FAFD),
-        border: Border(bottom: BorderSide(color: Color(0xFFE7EBF2))),
-      ),
-      child: Row(
-        children: [
-          InkWell(
-            onTap: () => Navigator.pop(context),
-            child: Icon(Icons.close, size: 16.sp, color: const Color(0xFF1F2937)),
-          ),
-          SizedBox(width: 12.w),
-          Text(
-            'Filters',
-            style: GoogleFonts.inter(
-              fontSize: _headerFontSize.sp,
-              fontWeight: FontWeight.w500,
-              color: const Color(0xFF111827),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _sectionLabel(String text) {
-    return Text(
-      text,
-      style: GoogleFonts.inter(
-        fontSize: _sectionFontSize.sp,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 0.7,
-        color: const Color(0xFF7A8393),
-      ),
-    );
-  }
-
-  Widget _dropdownField(String label, String value) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        CommonWidgets.fieldLabelScaled(label, fontSize: _fieldLabelFontSize),
-        SizedBox(height: 7.h),
-        Container(
-          width: double.infinity,
-          padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 11.h),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(8.r),
-            border: Border.all(color: const Color(0xFFD7DEE9)),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  value,
-                  style: GoogleFonts.inter(
-                    fontSize: _bodyFontSize.sp,
-                    fontWeight: FontWeight.w500,
-                    color: const Color(0xFF5A6472),
                   ),
                 ),
               ),
-              Icon(
-                Icons.keyboard_arrow_down,
-                size: 16.sp,
-                color: const Color(0xFF71798A),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _searchField() {
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 11.h),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8.r),
-        border: Border.all(color: const Color(0xFFD7DEE9)),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.search, size: 15.sp, color: const Color(0xFF98A2B3)),
-          SizedBox(width: 8.w),
-          Text(
-            'Search owners...',
-            style: GoogleFonts.inter(
-              fontSize: _bodyFontSize.sp,
-              fontWeight: FontWeight.w500,
-              color: const Color(0xFF98A2B3),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _choiceChip({
-    required String label,
-    required bool selected,
-    required VoidCallback onTap,
-    bool showDot = false,
-    Color dotColor = Colors.transparent,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(999.r),
-      child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 7.h),
-        decoration: BoxDecoration(
-          color: selected ? AppColors.navy : Colors.white,
-          borderRadius: BorderRadius.circular(999.r),
-          border: Border.all(
-            color: selected ? AppColors.navy : const Color(0xFFD7DEE9),
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (showDot) ...[
-              Icon(Icons.local_fire_department_outlined, size: 10.sp, color: dotColor),
-              SizedBox(width: 4.w),
-            ],
-            Text(
-              label,
-              style: GoogleFonts.inter(
-                fontSize: _bodyFontSize.sp,
-                fontWeight: FontWeight.w500,
-                color: selected ? Colors.white : const Color(0xFF374151),
+            Container(
+              padding: EdgeInsets.all(16.r),
+              color: Colors.white,
+              child: Row(
+                children: [
+                  OutlinedButton(
+                    onPressed: () {
+                      setState(() {
+                        _project = null;
+                        _source = null;
+                        _status = null;
+                        _leadType = null;
+                      });
+                    },
+                    child: const Text('Reset'),
+                  ),
+                  const Spacer(),
+                  ElevatedButton(
+                    onPressed: () => Navigator.pop(
+                      context,
+                      MyLeadsFilterResult(
+                        project: _project,
+                        source: _source,
+                        status: _status,
+                        leadType: _leadType,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.orangeStrong,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: const Text('Apply filters'),
+                  ),
+                ],
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _dropdown({
+    required String label,
+    required String? value,
+    required List<String> values,
+    required ValueChanged<String?> onChanged,
+  }) {
+    final options =
+        values.toSet().where((item) => item.trim().isNotEmpty).toList()..sort();
+    return DropdownButtonFormField<String>(
+      key: ValueKey('$label-${value ?? 'all'}'),
+      initialValue: options.contains(value) ? value : null,
+      isExpanded: true,
+      decoration: InputDecoration(
+        labelText: label,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(9.r)),
+      ),
+      hint: Text('All $label'),
+      items: [
+        DropdownMenuItem<String>(value: null, child: Text('All $label')),
+        ...options.map(
+          (item) => DropdownMenuItem<String>(value: item, child: Text(item)),
+        ),
+      ],
+      onChanged: onChanged,
     );
   }
 }

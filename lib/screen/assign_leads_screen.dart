@@ -1,13 +1,135 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:provider/provider.dart';
 import 'package:truerealtycrm/constant/colors_screen.dart';
 import 'package:truerealtycrm/constant/screen_utils.dart';
+import 'package:truerealtycrm/provider/employee_provider.dart';
+import 'package:truerealtycrm/provider/leads_provider.dart';
 
-class AssignLeadsScreen extends StatelessWidget {
+class AssignLeadsScreen extends StatefulWidget {
   const AssignLeadsScreen({super.key});
 
   @override
+  State<AssignLeadsScreen> createState() => _AssignLeadsScreenState();
+}
+
+class _AssignLeadsScreenState extends State<AssignLeadsScreen> {
+  final Set<String> _selectedLeadIds = {};
+  List<_AssignEmployee> _employees = const [];
+  String? _selectedEmployeeId;
+  String _leadSearch = '';
+  String _employeeSearch = '';
+  bool _loading = true;
+  bool _assigning = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  Future<void> _load() async {
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
+    final results = await Future.wait([
+      context.read<LeadProvider>().fetchLeads(page: 1, limit: 100),
+      context.read<EmployeeProvider>().fetchEmployees(
+        role: 'all',
+        status: 'Active',
+        limit: 100,
+      ),
+    ]);
+    if (!mounted) return;
+    final employees = _extractAssignList(results[1]?.data)
+        .map(_AssignEmployee.fromJson)
+        .where((employee) => employee.id.isNotEmpty)
+        .toList();
+    setState(() {
+      _employees = employees;
+      _selectedLeadIds.removeWhere(
+        (id) =>
+            !context.read<LeadProvider>().leads.any((lead) => lead.id == id),
+      );
+      _loading = false;
+      if (results[0] == null || results[1] == null) {
+        _error = 'Some assignment data could not be loaded.';
+      }
+    });
+  }
+
+  Future<void> _assign() async {
+    if (_selectedLeadIds.isEmpty || _selectedEmployeeId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select leads and an assignee first.')),
+      );
+      return;
+    }
+    setState(() {
+      _assigning = true;
+      _error = null;
+    });
+    final provider = context.read<LeadProvider>();
+    final response = _selectedLeadIds.length == 1
+        ? await provider.assignLead(
+            leadId: _selectedLeadIds.first,
+            body: {'assignedToId': _selectedEmployeeId},
+          )
+        : await provider.bulkAssignLeads({
+            'leadIds': _selectedLeadIds.toList(),
+            'assignedToId': _selectedEmployeeId,
+          });
+    if (!mounted) return;
+    if (response == null) {
+      setState(() {
+        _assigning = false;
+        _error = provider.error ?? 'Unable to assign leads.';
+      });
+      return;
+    }
+    setState(() {
+      _selectedLeadIds.clear();
+      _selectedEmployeeId = null;
+      _assigning = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Leads assigned successfully.')),
+    );
+    await _load();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final leadProvider = context.watch<LeadProvider>();
+    final unassignedLeads = leadProvider.leads
+        .where(_isLeadUnassigned)
+        .toList();
+    final leads = unassignedLeads.where((lead) {
+      final query = _leadSearch.trim().toLowerCase();
+      if (query.isEmpty) return true;
+      return '${lead.name} ${lead.displayId ?? ''} ${lead.phone} ${lead.source ?? ''}'
+          .toLowerCase()
+          .contains(query);
+    }).toList();
+    final employees = _employees.where((employee) {
+      final query = _employeeSearch.trim().toLowerCase();
+      return query.isEmpty ||
+          '${employee.name} ${employee.email} ${employee.role}'
+              .toLowerCase()
+              .contains(query);
+    }).toList();
+    final unassignedCount = unassignedLeads.length;
+    final telecallerCount = _employees
+        .where((employee) => employee.isTelecaller)
+        .length;
+    final executiveCount = _employees
+        .where((employee) => employee.isExecutive)
+        .length;
+
     return Scaffold(
       backgroundColor: AppColors.white,
       body: SafeArea(
@@ -40,19 +162,57 @@ class AssignLeadsScreen extends StatelessWidget {
                     children: [
                       const _AssignHeader(),
                       SizedBox(height: 18.h),
-                      const _MetricStrip(),
-                      SizedBox(height: 18.h),
-                      const _AssignmentTabs(),
+                      _MetricStrip(
+                        unassigned: unassignedCount,
+                        telecallers: telecallerCount,
+                        executives: executiveCount,
+                        selected: _selectedLeadIds.length,
+                      ),
                       SizedBox(height: 16.h),
-                      const _SelectLeadsCard(),
-                      SizedBox(height: 16.h),
-                      const _AssignToCard(),
-                      SizedBox(height: 16.h),
-                      const _AssignmentOptionsCard(),
-                      SizedBox(height: 16.h),
-                      const _AiRecommendationCard(),
-                      SizedBox(height: 18.h),
-                      const _BottomActions(),
+                      if (_loading)
+                        const Center(child: CircularProgressIndicator())
+                      else if (_error != null && leadProvider.leads.isEmpty)
+                        _AssignError(message: _error!, onRetry: _load)
+                      else ...[
+                        _SelectLeadsCard(
+                          leads: leads,
+                          selectedIds: _selectedLeadIds,
+                          unassignedCount: unassignedCount,
+                          onSearch: (value) =>
+                              setState(() => _leadSearch = value),
+                          onSelected: (leadId, selected) {
+                            setState(() {
+                              selected
+                                  ? _selectedLeadIds.add(leadId)
+                                  : _selectedLeadIds.remove(leadId);
+                            });
+                          },
+                        ),
+                        SizedBox(height: 16.h),
+                        _AssignToCard(
+                          employees: employees,
+                          selectedId: _selectedEmployeeId,
+                          onSearch: (value) =>
+                              setState(() => _employeeSearch = value),
+                          onSelected: (value) =>
+                              setState(() => _selectedEmployeeId = value),
+                        ),
+                        SizedBox(height: 16.h),
+                        if (_error != null) ...[
+                          Text(
+                            _error!,
+                            style: const TextStyle(color: Colors.red),
+                          ),
+                          SizedBox(height: 12.h),
+                        ],
+                        _BottomActions(
+                          assigning: _assigning,
+                          enabled:
+                              _selectedLeadIds.isNotEmpty &&
+                              _selectedEmployeeId != null,
+                          onAssign: _assign,
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -126,18 +286,28 @@ class _AssignHeader extends StatelessWidget {
 }
 
 class _MetricStrip extends StatelessWidget {
-  const _MetricStrip();
+  const _MetricStrip({
+    required this.unassigned,
+    required this.telecallers,
+    required this.executives,
+    required this.selected,
+  });
+
+  final int unassigned;
+  final int telecallers;
+  final int executives;
+  final int selected;
 
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
-        children: const [
+        children: [
           _MetricTile(
             icon: Icons.assignment_outlined,
             label: 'Unassigned',
-            value: '156',
+            value: '$unassigned',
             detail: 'Requires assignment',
             color: AppColors.vividBlue,
             bg: AppColors.windowBlue,
@@ -145,24 +315,24 @@ class _MetricStrip extends StatelessWidget {
           _MetricTile(
             icon: Icons.support_agent,
             label: 'Telecallers',
-            value: '24',
-            detail: 'Available now',
+            value: '$telecallers',
+            detail: 'Active users',
             color: AppColors.green,
             bg: AppColors.greenBg,
           ),
           _MetricTile(
             icon: Icons.badge_outlined,
             label: 'Executives',
-            value: '18',
+            value: '$executives',
             detail: 'Active users',
             color: AppColors.purple,
             bg: AppColors.purpleBg,
           ),
           _MetricTile(
             icon: Icons.assignment_turned_in_outlined,
-            label: 'Today',
-            value: '84',
-            detail: 'Assigned leads',
+            label: 'Selected',
+            value: '$selected',
+            detail: 'Ready to assign',
             color: AppColors.orange,
             bg: AppColors.orangeBg,
           ),
@@ -208,11 +378,21 @@ class _MetricTile extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: _detailStyle()),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: _detailStyle(),
+                ),
                 const SizedBox(height: 4),
                 Text(value, style: _valueStyle()),
                 const SizedBox(height: 2),
-                Text(detail, maxLines: 1, overflow: TextOverflow.ellipsis, style: _smallStyle()),
+                Text(
+                  detail,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: _smallStyle(),
+                ),
               ],
             ),
           ),
@@ -222,6 +402,8 @@ class _MetricTile extends StatelessWidget {
   }
 }
 
+// Retained for compatibility with the previous assignment layout.
+// ignore: unused_element
 class _AssignmentTabs extends StatelessWidget {
   const _AssignmentTabs();
 
@@ -246,7 +428,7 @@ class _AssignmentTabs extends StatelessWidget {
 }
 
 class _TabButton extends StatelessWidget {
-  const _TabButton({super.key, required this.label, this.active = false});
+  const _TabButton({required this.label, this.active = false});
 
   final String label;
   final bool active;
@@ -276,22 +458,42 @@ class _TabButton extends StatelessWidget {
 }
 
 class _SelectLeadsCard extends StatelessWidget {
-  const _SelectLeadsCard();
+  const _SelectLeadsCard({
+    required this.leads,
+    required this.selectedIds,
+    required this.unassignedCount,
+    required this.onSearch,
+    required this.onSelected,
+  });
+
+  final List<LeadModel> leads;
+  final Set<String> selectedIds;
+  final int unassignedCount;
+  final ValueChanged<String> onSearch;
+  final void Function(String leadId, bool selected) onSelected;
 
   @override
   Widget build(BuildContext context) {
     return _SectionCard(
       number: '1',
       title: 'Select Leads',
-      action: '156 Unassigned',
+      action: '$unassignedCount Unassigned',
       child: Column(
-        children: const [
-          _CompactSearch(hint: 'Search leads...'),
-          SizedBox(height: 12),
-          _LeadAssignRow(name: 'Rahul Sharma', source: 'MagicBricks', score: '92', selected: true),
-          _LeadAssignRow(name: 'Neha Kapoor', source: '99Acres', score: '89', selected: true),
-          _LeadAssignRow(name: 'Vikram Singh', source: 'Google Ads', score: '86'),
-          _LeadAssignRow(name: 'Anjali Mehta', source: 'Referral', score: '83'),
+        children: [
+          _CompactSearch(hint: 'Search leads...', onChanged: onSearch),
+          const SizedBox(height: 12),
+          if (leads.isEmpty)
+            const _EmptyAssignmentRow(label: 'No leads found')
+          else
+            ...leads.map(
+              (lead) => _LeadAssignRow(
+                lead: lead,
+                selected: selectedIds.contains(lead.id),
+                onChanged: lead.id == null
+                    ? null
+                    : (selected) => onSelected(lead.id!, selected),
+              ),
+            ),
         ],
       ),
     );
@@ -299,22 +501,38 @@ class _SelectLeadsCard extends StatelessWidget {
 }
 
 class _AssignToCard extends StatelessWidget {
-  const _AssignToCard();
+  const _AssignToCard({
+    required this.employees,
+    required this.selectedId,
+    required this.onSearch,
+    required this.onSelected,
+  });
+
+  final List<_AssignEmployee> employees;
+  final String? selectedId;
+  final ValueChanged<String> onSearch;
+  final ValueChanged<String?> onSelected;
 
   @override
   Widget build(BuildContext context) {
     return _SectionCard(
       number: '2',
       title: 'Assign To',
-      action: 'Telecaller',
+      action: '${employees.length} Active',
       child: Column(
-        children: const [
-          _CompactSearch(hint: 'Search telecallers...'),
-          SizedBox(height: 12),
-          _AssigneeRow(name: 'Aditya Patil', load: '22 / 30', performance: '88%', selected: true),
-          _AssigneeRow(name: 'Sneha Iyer', load: '18 / 30', performance: '92%'),
-          _AssigneeRow(name: 'Pooja Sharma', load: '25 / 30', performance: '85%'),
-          _AssigneeRow(name: 'Neha Joshi', load: '15 / 30', performance: '90%'),
+        children: [
+          _CompactSearch(hint: 'Search assignees...', onChanged: onSearch),
+          const SizedBox(height: 12),
+          if (employees.isEmpty)
+            const _EmptyAssignmentRow(label: 'No active employees found')
+          else
+            ...employees.map(
+              (employee) => _AssigneeRow(
+                employee: employee,
+                selected: selectedId == employee.id,
+                onChanged: (_) => onSelected(employee.id),
+              ),
+            ),
         ],
       ),
     );
@@ -370,13 +588,15 @@ class _SectionCard extends StatelessWidget {
 }
 
 class _CompactSearch extends StatelessWidget {
-  const _CompactSearch({required this.hint});
+  const _CompactSearch({required this.hint, required this.onChanged});
 
   final String hint;
+  final ValueChanged<String> onChanged;
 
   @override
   Widget build(BuildContext context) {
     return TextField(
+      onChanged: onChanged,
       decoration: InputDecoration(
         hintText: hint,
         hintStyle: _detailStyle(),
@@ -399,58 +619,59 @@ class _CompactSearch extends StatelessWidget {
 
 class _LeadAssignRow extends StatelessWidget {
   const _LeadAssignRow({
-    required this.name,
-    required this.source,
-    required this.score,
-    this.selected = false,
+    required this.lead,
+    required this.selected,
+    required this.onChanged,
   });
 
-  final String name;
-  final String source;
-  final String score;
+  final LeadModel lead;
   final bool selected;
+  final ValueChanged<bool>? onChanged;
 
   @override
   Widget build(BuildContext context) {
     return _ListRow(
       leading: Checkbox(
         value: selected,
-        onChanged: (_) {},
+        onChanged: (value) => onChanged?.call(value ?? false),
         activeColor: AppColors.navy,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
       ),
-      title: name,
-      subtitle: source,
-      trailing: _ScorePill(score),
+      title: lead.titleWithId,
+      subtitle: [
+        lead.source,
+        lead.status,
+      ].whereType<String>().where((value) => value.isNotEmpty).join(' • '),
+      trailing: _SoftBadge(label: lead.status),
     );
   }
 }
 
 class _AssigneeRow extends StatelessWidget {
   const _AssigneeRow({
-    required this.name,
-    required this.load,
-    required this.performance,
-    this.selected = false,
+    required this.employee,
+    required this.selected,
+    required this.onChanged,
   });
 
-  final String name;
-  final String load;
-  final String performance;
+  final _AssignEmployee employee;
   final bool selected;
+  final ValueChanged<String?> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    return _ListRow(
-      leading: Radio<bool>(
-        value: true,
-        groupValue: selected,
-        onChanged: (_) {},
-        activeColor: AppColors.navy,
+    return InkWell(
+      onTap: () => onChanged(employee.id),
+      borderRadius: BorderRadius.circular(10),
+      child: _ListRow(
+        leading: Icon(
+          selected ? Icons.radio_button_checked : Icons.radio_button_off,
+          color: selected ? AppColors.navy : AppColors.mutedNavy,
+        ),
+        title: employee.name,
+        subtitle: employee.email,
+        trailing: _SoftBadge(label: employee.displayRole),
       ),
-      title: name,
-      subtitle: 'Current load $load',
-      trailing: _SoftBadge(label: performance),
     );
   }
 }
@@ -484,9 +705,19 @@ class _ListRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: _rowTitleStyle()),
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: _rowTitleStyle(),
+                ),
                 const SizedBox(height: 4),
-                Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: _smallStyle()),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: _smallStyle(),
+                ),
               ],
             ),
           ),
@@ -498,6 +729,8 @@ class _ListRow extends StatelessWidget {
   }
 }
 
+// Retained for compatibility with the previous assignment layout.
+// ignore: unused_element
 class _AssignmentOptionsCard extends StatelessWidget {
   const _AssignmentOptionsCard();
 
@@ -510,11 +743,29 @@ class _AssignmentOptionsCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: const [
-          Text('Assignment Options', style: TextStyle(color: AppColors.navy, fontSize: 17, fontWeight: FontWeight.w900)),
+          Text(
+            'Assignment Options',
+            style: TextStyle(
+              color: AppColors.navy,
+              fontSize: 17,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
           SizedBox(height: 12),
-          _OptionRow(label: 'Round Robin', detail: 'Distribute selected leads equally', selected: true),
-          _OptionRow(label: 'Based on Capacity', detail: 'Assign based on workload'),
-          _OptionRow(label: 'AI Based Assignment', detail: 'Use score, capacity and expert match', recommended: true),
+          _OptionRow(
+            label: 'Round Robin',
+            detail: 'Distribute selected leads equally',
+            selected: true,
+          ),
+          _OptionRow(
+            label: 'Based on Capacity',
+            detail: 'Assign based on workload',
+          ),
+          _OptionRow(
+            label: 'AI Based Assignment',
+            detail: 'Use score, capacity and expert match',
+            recommended: true,
+          ),
         ],
       ),
     );
@@ -540,11 +791,9 @@ class _OptionRow extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
         children: [
-          Radio<bool>(
-            value: true,
-            groupValue: selected,
-            onChanged: (_) {},
-            activeColor: AppColors.navy,
+          Icon(
+            selected ? Icons.radio_button_checked : Icons.radio_button_off,
+            color: selected ? AppColors.navy : AppColors.mutedNavy,
           ),
           Expanded(
             child: Column(
@@ -552,7 +801,14 @@ class _OptionRow extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: _rowTitleStyle())),
+                    Flexible(
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: _rowTitleStyle(),
+                      ),
+                    ),
                     if (recommended) ...[
                       const SizedBox(width: 8),
                       const _SoftBadge(label: 'Recommended'),
@@ -560,7 +816,12 @@ class _OptionRow extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 4),
-                Text(detail, maxLines: 1, overflow: TextOverflow.ellipsis, style: _smallStyle()),
+                Text(
+                  detail,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: _smallStyle(),
+                ),
               ],
             ),
           ),
@@ -570,6 +831,7 @@ class _OptionRow extends StatelessWidget {
   }
 }
 
+// ignore: unused_element
 class _AiRecommendationCard extends StatelessWidget {
   const _AiRecommendationCard();
 
@@ -598,9 +860,22 @@ class _AiRecommendationCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('AI Recommendation', style: TextStyle(color: AppColors.navy, fontSize: 17, fontWeight: FontWeight.w900)),
+                    Text(
+                      'AI Recommendation',
+                      style: TextStyle(
+                        color: AppColors.navy,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
                     SizedBox(height: 4),
-                    Text('Aditya Patil is the best match', style: TextStyle(color: AppColors.mutedNavy, fontWeight: FontWeight.w700)),
+                    Text(
+                      'Aditya Patil is the best match',
+                      style: TextStyle(
+                        color: AppColors.mutedNavy,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -638,7 +913,15 @@ class _AiPoint extends StatelessWidget {
 }
 
 class _BottomActions extends StatelessWidget {
-  const _BottomActions();
+  const _BottomActions({
+    required this.assigning,
+    required this.enabled,
+    required this.onAssign,
+  });
+
+  final bool assigning;
+  final bool enabled;
+  final Future<void> Function() onAssign;
 
   @override
   Widget build(BuildContext context) {
@@ -650,24 +933,45 @@ class _BottomActions extends StatelessWidget {
             style: OutlinedButton.styleFrom(
               minimumSize: const Size.fromHeight(54),
               side: const BorderSide(color: AppColors.border),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
-            child: const Text('Cancel', style: TextStyle(color: AppColors.navy, fontWeight: FontWeight.w900)),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(
+                color: AppColors.navy,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
           ),
         ),
         const SizedBox(width: 12),
         Expanded(
           child: ElevatedButton.icon(
-            onPressed: () {},
+            onPressed: enabled && !assigning ? onAssign : null,
             style: ElevatedButton.styleFrom(
               minimumSize: const Size.fromHeight(54),
               backgroundColor: AppColors.orange,
               foregroundColor: AppColors.white,
               elevation: 0,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
-            icon: const Icon(Icons.send_outlined, size: 18),
-            label: const Text('Assign Leads', style: TextStyle(fontWeight: FontWeight.w900)),
+            icon: assigning
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppColors.white,
+                    ),
+                  )
+                : const Icon(Icons.send_outlined, size: 18),
+            label: Text(
+              assigning ? 'Assigning...' : 'Assign Leads',
+              style: const TextStyle(fontWeight: FontWeight.w900),
+            ),
           ),
         ),
       ],
@@ -676,7 +980,7 @@ class _BottomActions extends StatelessWidget {
 }
 
 class _SoftBadge extends StatelessWidget {
-  const _SoftBadge({super.key, required this.label});
+  const _SoftBadge({required this.label});
 
   final String label;
 
@@ -702,33 +1006,158 @@ class _SoftBadge extends StatelessWidget {
   }
 }
 
-class _ScorePill extends StatelessWidget {
-  const _ScorePill(this.score, {super.key});
+class _EmptyAssignmentRow extends StatelessWidget {
+  const _EmptyAssignmentRow({required this.label});
 
-  final String score;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 24),
+      child: Center(
+        child: Text(label, style: _detailStyle(), textAlign: TextAlign.center),
+      ),
+    );
+  }
+}
+
+class _AssignError extends StatelessWidget {
+  const _AssignError({required this.message, required this.onRetry});
+
+  final String message;
+  final Future<void> Function() onRetry;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 34,
-      height: 34,
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.greenBg,
-        shape: BoxShape.circle,
-        border: Border.all(color: AppColors.green),
+        color: const Color(0xFFFFF3F2),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFFECACA)),
       ),
-      child: Center(
-        child: Text(
-          score,
-          style: const TextStyle(
-            color: AppColors.green,
-            fontSize: 12,
-            fontWeight: FontWeight.w900,
+      child: Column(
+        children: [
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Color(0xFFB42318)),
           ),
-        ),
+          TextButton(onPressed: onRetry, child: const Text('Try again')),
+        ],
       ),
     );
   }
+}
+
+class _AssignEmployee {
+  const _AssignEmployee({
+    required this.id,
+    required this.name,
+    required this.email,
+    required this.role,
+  });
+
+  final String id;
+  final String name;
+  final String email;
+  final String role;
+
+  factory _AssignEmployee.fromJson(Object? source) {
+    if (source is! Map) {
+      return const _AssignEmployee(id: '', name: '', email: '', role: '');
+    }
+    final map = Map<String, dynamic>.from(source);
+    var name = _assignText(map, const ['name', 'fullName', 'displayName']);
+    if (name.isEmpty) {
+      name = [
+        _assignText(map, const ['firstName']),
+        _assignText(map, const ['lastName']),
+      ].where((part) => part.isNotEmpty).join(' ');
+    }
+    return _AssignEmployee(
+      id: _assignText(map, const ['id', '_id', 'employeeId', 'userId']),
+      name: name.isEmpty ? 'Unknown employee' : name,
+      email: _assignText(map, const ['email', 'phone', 'mobile']),
+      role: _assignText(map, const [
+        'role',
+        'roleName',
+        'designation',
+        'userRole',
+      ]),
+    );
+  }
+
+  bool get isTelecaller {
+    final value = role.toLowerCase().replaceAll(RegExp(r'[_ -]'), '');
+    return value.contains('telecaller') || value.contains('caller');
+  }
+
+  bool get isExecutive {
+    final value = role.toLowerCase().replaceAll(RegExp(r'[_ -]'), '');
+    return value.contains('salesagent') ||
+        value.contains('fieldexecutive') ||
+        value.contains('executive');
+  }
+
+  String get displayRole {
+    if (role.isEmpty) return 'Active';
+    return role
+        .replaceAll('_', ' ')
+        .split(' ')
+        .where((word) => word.isNotEmpty)
+        .map(
+          (word) =>
+              '${word[0].toUpperCase()}${word.substring(1).toLowerCase()}',
+        )
+        .join(' ');
+  }
+}
+
+List<dynamic> _extractAssignList(Object? source) {
+  if (source is List) return source;
+  if (source is Map) {
+    for (final key in const [
+      'data',
+      'items',
+      'results',
+      'rows',
+      'records',
+      'employees',
+      'users',
+    ]) {
+      final nested = _extractAssignList(source[key]);
+      if (nested.isNotEmpty) return nested;
+    }
+  }
+  return const [];
+}
+
+String _assignText(Map<String, dynamic> map, List<String> keys) {
+  for (final key in keys) {
+    final value = map[key];
+    if (value != null && value.toString().trim().isNotEmpty) {
+      return value.toString().trim();
+    }
+  }
+  return '';
+}
+
+bool _isLeadUnassigned(LeadModel lead) {
+  final raw = lead.raw ?? const <String, dynamic>{};
+  for (final key in const [
+    'assignedToId',
+    'assigneeId',
+    'assignedEmployeeId',
+  ]) {
+    if (raw.containsKey(key)) {
+      final value = raw[key]?.toString().trim() ?? '';
+      return value.isEmpty || value.toLowerCase() == 'null';
+    }
+  }
+  return (lead.assignedTo ?? '').trim().isEmpty;
 }
 
 BoxDecoration _cardDecoration() {

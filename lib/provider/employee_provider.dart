@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:truerealtycrm/data/models/api_response.dart';
 import 'package:truerealtycrm/data/repositories/employee_repository.dart';
 import 'package:truerealtycrm/provider/api_provider_base.dart';
@@ -7,6 +8,9 @@ class EmployeeProvider extends ApiProviderBase {
     : _repository = repository ?? EmployeeRepository();
 
   final EmployeeRepository _repository;
+  Map<String, dynamic>? _currentEmployee;
+
+  Map<String, dynamic>? get currentEmployee => _currentEmployee;
 
   Future<ApiResponse<dynamic>?> fetchEmployees({
     String search = '',
@@ -28,8 +32,18 @@ class EmployeeProvider extends ApiProviderBase {
     );
   }
 
-  Future<ApiResponse<dynamic>?> fetchCurrentEmployee() {
-    return runApiRequest(_repository.currentEmployee);
+  Future<ApiResponse<dynamic>?> fetchCurrentEmployee() async {
+    debugPrint('[EmployeeProvider] Loading current employee profile');
+    final response = await runApiRequest(_repository.currentEmployee);
+    if (response?.data is Map) {
+      _currentEmployee = Map<String, dynamic>.from(response!.data as Map);
+      debugPrint(
+        '[EmployeeProvider] Current employee loaded: '
+        'id=${_currentEmployee?['id'] ?? '-'}',
+      );
+      notifyListeners();
+    }
+    return response;
   }
 
   Future<ApiResponse<dynamic>?> fetchEmployee(String employeeId) {
@@ -43,10 +57,20 @@ class EmployeeProvider extends ApiProviderBase {
   Future<ApiResponse<dynamic>?> updateEmployee({
     required String employeeId,
     required Map<String, dynamic> body,
-  }) {
-    return runApiRequest(
+  }) async {
+    debugPrint(
+      '[EmployeeProvider] Updating employee $employeeId '
+      'fields=${body.keys.join(',')}',
+    );
+    final response = await runApiRequest(
       () => _repository.updateEmployee(employeeId: employeeId, body: body),
     );
+    if (response?.data is Map) {
+      _currentEmployee = Map<String, dynamic>.from(response!.data as Map);
+      debugPrint('[EmployeeProvider] Employee update completed successfully');
+      notifyListeners();
+    }
+    return response;
   }
 
   Future<ApiResponse<dynamic>?> fetchTeams() {

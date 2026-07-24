@@ -19,7 +19,7 @@ abstract class ApiProviderBase extends ChangeNotifier {
     Future<ApiResponse<T>> Function() request,
   ) async {
     final providerName = runtimeType.toString();
-    debugPrint('[$providerName] API request started');
+    debugPrint('🔵 [$providerName] API request started');
     _isLoading = true;
     _error = null;
     notifyListeners();
@@ -28,28 +28,28 @@ abstract class ApiProviderBase extends ChangeNotifier {
       final response = await request();
       _lastResponse = response;
       debugPrint(
-        '[$providerName] API request success: '
+        '🟢 🐛 [$providerName] API response success: '
         'status=${response.statusCode}, message=${response.message ?? '-'}',
       );
       return response;
     } on ApiException catch (exception) {
       _error = exception.message;
       debugPrint(
-        '[$providerName] API request failed: '
+        '🔴 🐛 [$providerName] API request failed: '
         'type=${exception.type.name}, status=${exception.statusCode ?? '-'}, '
         'message=${exception.message}',
       );
       if (exception.body != null) {
-        debugPrint('[$providerName] API error body: ${exception.body}');
+        debugPrint('🔴 📦 [$providerName] API error body: ${exception.body}');
       }
       return null;
     } catch (error) {
       _error = 'Unexpected error: $error';
-      debugPrint('[$providerName] API request unexpected error: $error');
+      debugPrint('🔴 💥 [$providerName] API request unexpected error: $error');
       return null;
     } finally {
       _isLoading = false;
-      debugPrint('[$providerName] API request finished');
+      debugPrint('⚪ [$providerName] API request finished');
       notifyListeners();
     }
   }

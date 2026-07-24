@@ -22,6 +22,8 @@ import 'package:truerealtycrm/provider/system_provider.dart';
 import 'package:truerealtycrm/provider/upload_provider.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:truerealtycrm/router/app_router.dart';
+import 'package:truerealtycrm/screen/dashboard_screen.dart';
+import 'package:truerealtycrm/screen/login_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -80,10 +82,44 @@ class MyApp extends StatelessWidget {
               useMaterial3: true,
             ),
             onGenerateRoute: AppRouter.generateRoute,
-            initialRoute: AppRouter.login,
+            home: const _SessionGate(),
           );
         },
       ),
+    );
+  }
+}
+
+class _SessionGate extends StatefulWidget {
+  const _SessionGate();
+
+  @override
+  State<_SessionGate> createState() => _SessionGateState();
+}
+
+class _SessionGateState extends State<_SessionGate> {
+  Future<void>? _loadSession;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _loadSession ??= context.read<AuthProvider>().loadSavedSession();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<void>(
+      future: _loadSession,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        return context.watch<AuthProvider>().isAuthenticated
+            ? const DashboardScreen()
+            : const LoginScreen();
+      },
     );
   }
 }

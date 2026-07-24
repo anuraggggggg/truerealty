@@ -165,8 +165,7 @@ class _LeadListWidgetState extends State<LeadListWidget> {
         color: AppColors.transparentWhite,
         child: InkWell(
           borderRadius: BorderRadius.circular(12.r),
-          onTap: () =>
-              Navigator.pushNamed(context, AppRouter.leadProfileManagement),
+          onTap: () => Navigator.pushNamed(context, AppRouter.addLead),
           child: Padding(
             padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 11.h),
             child: Row(
@@ -1263,8 +1262,7 @@ class _LeadListWidgetState extends State<LeadListWidget> {
         Align(
           alignment: Alignment.centerRight,
           child: InkWell(
-            onTap: () =>
-                Navigator.pushNamed(context, AppRouter.leadProfileManagement),
+            onTap: () => Navigator.pushNamed(context, AppRouter.addLead),
             borderRadius: BorderRadius.circular(24.r),
             child: Container(
               width: 48.w,

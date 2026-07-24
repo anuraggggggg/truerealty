@@ -239,17 +239,7 @@ class _LoginCard extends StatelessWidget {
               ),
             ),
             items: [
-              DropdownMenuItem(
-                value: UserRole.owner,
-                child: Text(
-                  'Owner App',
-                  style: TextStyle(
-                    color: AppColors.navy,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 16.sp,
-                  ),
-                ),
-              ),
+              // Owner app login is temporarily hidden for the current rollout.
               DropdownMenuItem(
                 value: UserRole.telecaller,
                 child: Text(

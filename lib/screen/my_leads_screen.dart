@@ -1,11 +1,20 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:truerealtycrm/constant/colors_screen.dart';
-import 'package:truerealtycrm/router/app_router.dart';
+import 'package:truerealtycrm/provider/leads_provider.dart';
+import 'package:truerealtycrm/screen/my_leads_filter_screen.dart';
 
-class MyLeadsScreen extends StatelessWidget {
+class MyLeadsScreen extends StatefulWidget {
   const MyLeadsScreen({super.key});
+
+  @override
+  State<MyLeadsScreen> createState() => _MyLeadsScreenState();
 
   static const double panelIconSize = 18;
   static const double cardIconSize = 12;
@@ -25,8 +34,8 @@ class MyLeadsScreen extends StatelessWidget {
 
   static const TextStyle cardTitleStyle = TextStyle(
     fontFamily: 'Inter',
-    fontSize: 18,
-    fontWeight: FontWeight.w500,
+    fontSize: 14,
+    fontWeight: FontWeight.w600,
     fontStyle: FontStyle.normal,
     height: 1.33,
     letterSpacing: 0,
@@ -35,7 +44,7 @@ class MyLeadsScreen extends StatelessWidget {
 
   static const TextStyle cardSubtitleStyle = TextStyle(
     fontFamily: 'Inter',
-    fontSize: 16,
+    fontSize: 11,
     fontWeight: FontWeight.normal,
     fontStyle: FontStyle.normal,
     height: 1.4,
@@ -45,7 +54,7 @@ class MyLeadsScreen extends StatelessWidget {
 
   static const TextStyle newLeadsTitleStyle = TextStyle(
     fontFamily: 'Manrope',
-    fontSize: 26,
+    fontSize: 24,
     fontWeight: FontWeight.w600,
     fontStyle: FontStyle.normal,
     height: 1.4,
@@ -65,7 +74,7 @@ class MyLeadsScreen extends StatelessWidget {
 
   static const TextStyle leadNameStyle = TextStyle(
     fontFamily: 'Manrope',
-    fontSize: 22,
+    fontSize: 17,
     fontWeight: FontWeight.bold,
     fontStyle: FontStyle.normal,
     height: 1.5,
@@ -75,7 +84,7 @@ class MyLeadsScreen extends StatelessWidget {
 
   static const TextStyle leadInfoLabelStyle = TextStyle(
     fontFamily: 'Manrope',
-    fontSize: 18,
+    fontSize: 12,
     fontWeight: FontWeight.normal,
     fontStyle: FontStyle.normal,
     height: 1.5,
@@ -95,7 +104,7 @@ class MyLeadsScreen extends StatelessWidget {
 
   static const TextStyle leadInfoValueStyle = TextStyle(
     fontFamily: 'Manrope',
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: FontWeight.normal,
     fontStyle: FontStyle.normal,
     height: 1.5,
@@ -103,6 +112,10 @@ class MyLeadsScreen extends StatelessWidget {
     color: Color(0xFF181C23),
   );
 
+  /*
+   * Historical design mock data intentionally kept out of the compiled app.
+   * My Leads is populated exclusively by LeadProvider.fetchLeads().
+   *
   static const List<_LeadSummaryData> _cards = [
     _LeadSummaryData(
       title: 'My Leads',
@@ -181,7 +194,8 @@ class MyLeadsScreen extends StatelessWidget {
       temperature: 'Cool',
       engagement: '62%',
       slaState: 'BREACHED',
-      slaSummary: 'Escalation required because this lead has an active SLA breach.',
+      slaSummary:
+          'Escalation required because this lead has an active SLA breach.',
       breachDate: '30 Jun 2026',
       responseTime: '18m 20s',
       ownerName: 'Telecaller Test',
@@ -206,7 +220,8 @@ class MyLeadsScreen extends StatelessWidget {
       timelineTitle: 'Negotiation round scheduled',
       timelineDate: '28 Jun 2026',
       timelineTime: '04:10 pm',
-      timelineNote: 'Customer requested final pricing with modular kitchen add-on.',
+      timelineNote:
+          'Customer requested final pricing with modular kitchen add-on.',
       followUpState: 'TODAY',
       followUpDate: '02 Jul 2026',
       followUpTime: '03:00 pm',
@@ -279,7 +294,8 @@ class MyLeadsScreen extends StatelessWidget {
       temperature: 'Warm',
       engagement: '100%',
       slaState: 'BREACHED',
-      slaSummary: 'Escalation required because this lead has an active SLA breach.',
+      slaSummary:
+          'Escalation required because this lead has an active SLA breach.',
       breachDate: '30 Jun 2026',
       responseTime: '12m 00s',
       ownerName: 'Telecaller Test',
@@ -287,6 +303,245 @@ class MyLeadsScreen extends StatelessWidget {
       slaActivity: 'Planned luxury virtual visit',
     ),
   ];
+   */
+}
+
+class _MyLeadsScreenState extends State<MyLeadsScreen> {
+  List<_NewLeadData> _leads = const [];
+  int _totalCount = 0;
+  int _upcomingFollowUpCount = 0;
+  int _overdueFollowUpCount = 0;
+  int _priorityLeadCount = 0;
+  bool _isLoading = true;
+  bool _isExporting = false;
+  String? _error;
+  MyLeadsFilterResult _filters = const MyLeadsFilterResult();
+  final Set<String> _selectedLeadIds = {};
+
+  bool get _isUnauthorized =>
+      _error?.toLowerCase().contains('unauthorized') ?? false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadLeads());
+  }
+
+  Future<void> _loadLeads() async {
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+    }
+    final provider = context.read<LeadProvider>();
+    final response = await provider.fetchLeads(
+      page: 1,
+      limit: 100,
+      source: _filters.source,
+      status: _filters.status,
+      leadType: _filters.leadType,
+      project: _filters.project,
+    );
+    final leadError = provider.error;
+    final followUpsResponse = await provider.fetchFollowUps(limit: 500);
+    if (!mounted) return;
+    final mappedLeads = provider.leads.map(_NewLeadData.fromLead).toList();
+    final followUpCounts = _countFollowUps(followUpsResponse?.data);
+    setState(() {
+      _leads = mappedLeads;
+      _selectedLeadIds.removeWhere(
+        (id) => !_leads.any((lead) => lead.apiId == id),
+      );
+      _totalCount = provider.totalCount;
+      _priorityLeadCount = mappedLeads.where(_isPriorityLead).length;
+      _upcomingFollowUpCount = followUpCounts.upcoming;
+      _overdueFollowUpCount = followUpCounts.overdue;
+      _error = response == null ? leadError ?? 'Unable to load leads.' : null;
+      _isLoading = false;
+    });
+  }
+
+  Future<void> _openFilters() async {
+    final result = await Navigator.of(context).push<MyLeadsFilterResult>(
+      MaterialPageRoute(
+        builder: (_) => MyLeadsFilterScreen(
+          initial: _filters,
+          projects: _distinctValues((lead) => lead.project),
+          sources: _distinctValues((lead) => lead.source),
+          statuses: _distinctValues((lead) => lead.status),
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
+    setState(() {
+      _filters = result;
+      _selectedLeadIds.clear();
+    });
+    await _loadLeads();
+  }
+
+  List<String> _distinctValues(String Function(_NewLeadData lead) valueFor) {
+    return _leads
+        .map(valueFor)
+        .where((value) => value.isNotEmpty && value != '-')
+        .toSet()
+        .toList();
+  }
+
+  Future<void> _exportLeads() async {
+    final exportLeads = _selectedLeadIds.isEmpty
+        ? _leads
+        : _leads
+              .where((lead) => _selectedLeadIds.contains(lead.apiId))
+              .toList();
+    if (exportLeads.isEmpty || _isExporting) return;
+    setState(() => _isExporting = true);
+    try {
+      const headers = [
+        'Lead ID',
+        'Name',
+        'Mobile',
+        'Alternate Mobile',
+        'Email',
+        'Source',
+        'Status',
+        'Temperature',
+        'Project',
+        'Location',
+        'Budget',
+        'Property Type',
+        'Assigned To',
+        'Last Follow-up',
+        'Next Follow-up',
+        'Created On',
+        'Updated On',
+      ];
+      final rows = <List<String>>[
+        headers,
+        ...exportLeads.map(
+          (lead) => [
+            lead.leadId,
+            lead.name,
+            lead.phone,
+            lead.alternateNumber,
+            lead.email,
+            lead.source,
+            lead.status,
+            lead.temperature,
+            lead.project,
+            lead.location,
+            lead.budget,
+            lead.propertyType,
+            lead.assignedTo,
+            lead.lastFollowUp,
+            lead.nextFollowUp,
+            lead.createdOn,
+            lead.updatedOn,
+          ],
+        ),
+      ];
+      final csv = rows.map((row) => row.map(_csvCell).join(',')).join('\r\n');
+      final directory = await getTemporaryDirectory();
+      final date = DateTime.now().toIso8601String().split('T').first;
+      final file = File('${directory.path}/leads-export-$date.csv');
+      await file.writeAsString('\uFEFF$csv');
+      await Share.shareXFiles(
+        [XFile(file.path, mimeType: 'text/csv')],
+        subject: 'TrueRoot Realty leads export',
+        text:
+            '${exportLeads.length} lead${exportLeads.length == 1 ? '' : 's'} exported.',
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Unable to export leads: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isExporting = false);
+    }
+  }
+
+  String _csvCell(String value) {
+    return '"${value.replaceAll('"', '""')}"';
+  }
+
+  List<_LeadSummaryData> get _summaryCards {
+    return [
+      _LeadSummaryData(
+        title: 'My Leads',
+        value: _totalCount.toString(),
+        subtitle: 'Telecaller-assigned\nleads',
+        icon: Icons.groups_2_outlined,
+        iconColor: const Color(0xFF2563EB),
+        iconBackground: const Color(0xFFEAF1FF),
+      ),
+      _LeadSummaryData(
+        title: 'Upcoming\nFollow-Ups',
+        value: _upcomingFollowUpCount.toString(),
+        subtitle: 'Due for telecalling',
+        icon: Icons.person_add_alt_1_outlined,
+        iconColor: const Color(0xFF22C55E),
+        iconBackground: const Color(0xFFE9F9EF),
+      ),
+      _LeadSummaryData(
+        title: 'Priority Leads',
+        value: _priorityLeadCount.toString(),
+        subtitle: 'Hot or urgent leads',
+        icon: Icons.local_fire_department_outlined,
+        iconColor: const Color(0xFFF97316),
+        iconBackground: const Color(0xFFFFF1E8),
+      ),
+      _LeadSummaryData(
+        title: 'Overdue Follow-ups',
+        value: _overdueFollowUpCount.toString(),
+        subtitle: 'Need immediate attention',
+        icon: Icons.event_busy_outlined,
+        iconColor: const Color(0xFFA855F7),
+        iconBackground: const Color(0xFFF3E8FF),
+      ),
+    ];
+  }
+
+  bool _isPriorityLead(_NewLeadData lead) {
+    final value = '${lead.priority} ${lead.temperature}'.toLowerCase();
+    return value.contains('high') ||
+        value.contains('urgent') ||
+        value.contains('hot');
+  }
+
+  _FollowUpCounts _countFollowUps(Object? responseData) {
+    final now = DateTime.now();
+    var upcoming = 0;
+    var overdue = 0;
+    for (final item in _extractApiRows(responseData)) {
+      if (item is! Map) continue;
+      final map = Map<String, dynamic>.from(item);
+      final status = _apiText(
+        map['status'] ?? map['followUpStatus'],
+        fallback: '',
+      ).toLowerCase();
+      if (status.contains('complete') ||
+          status.contains('closed') ||
+          status.contains('cancel')) {
+        continue;
+      }
+      final scheduledAt = _apiDate(
+        map['scheduledAt'] ??
+            map['nextFollowUpAt'] ??
+            map['dueAt'] ??
+            map['followUpDate'],
+      );
+      if (scheduledAt == null) continue;
+      if (scheduledAt.isBefore(now)) {
+        overdue++;
+      } else {
+        upcoming++;
+      }
+    }
+    return _FollowUpCounts(upcoming: upcoming, overdue: overdue);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -297,39 +552,60 @@ class MyLeadsScreen extends StatelessWidget {
           children: [
             const _TopBar(),
             Expanded(
-              child: SingleChildScrollView(
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(15.w, 14.h, 15.w, 24.h),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildTabRow(),
-                      SizedBox(height: 24.h),
-                      _buildHeading(),
-                      SizedBox(height: 14.h),
-                      Divider(
-                        color: const Color(0xFFBCC6D6),
-                        thickness: 0.8.h,
-                        height: 1.h,
-                      ),
-                      SizedBox(height: 24.h),
-                      GridView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: _cards.length,
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
-                          crossAxisSpacing: 10.w,
-                          mainAxisSpacing: 10.h,
-                          childAspectRatio: 0.94,
+              child: RefreshIndicator(
+                color: AppColors.orangeStrong,
+                onRefresh: _loadLeads,
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(15.w, 14.h, 15.w, 24.h),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildTabRow(),
+                        SizedBox(height: 24.h),
+                        _buildHeading(),
+                        SizedBox(height: 14.h),
+                        Divider(
+                          color: const Color(0xFFBCC6D6),
+                          thickness: 0.8.h,
+                          height: 1.h,
                         ),
-                        itemBuilder: (context, index) {
-                          return _LeadSummaryCard(data: _cards[index]);
-                        },
-                      ),
-                      SizedBox(height: 20.h),
-                      _buildNewLeadsSection(context),
-                    ],
+                        SizedBox(height: 24.h),
+                        if (_isLoading) const LinearProgressIndicator(),
+                        if (_error != null && !_isUnauthorized) ...[
+                          _ApiErrorBanner(
+                            message: _error!,
+                            onRetry: _loadLeads,
+                          ),
+                          SizedBox(height: 16.h),
+                        ],
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            final columns = constraints.maxWidth >= 760 ? 4 : 2;
+                            return GridView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: _summaryCards.length,
+                              gridDelegate:
+                                  SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: columns,
+                                    crossAxisSpacing: 10.w,
+                                    mainAxisSpacing: 10.h,
+                                    childAspectRatio: columns == 4 ? 1.7 : 1.55,
+                                  ),
+                              itemBuilder: (context, index) {
+                                return _LeadSummaryCard(
+                                  data: _summaryCards[index],
+                                );
+                              },
+                            );
+                          },
+                        ),
+                        SizedBox(height: 20.h),
+                        _buildNewLeadsSection(context),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -363,7 +639,7 @@ class MyLeadsScreen extends StatelessWidget {
                 borderRadius: BorderRadius.circular(10.r),
               ),
               child: Text(
-                '24',
+                _totalCount.toString(),
                 style: GoogleFonts.inter(
                   fontSize: 12.sp,
                   fontWeight: FontWeight.w700,
@@ -374,17 +650,9 @@ class MyLeadsScreen extends StatelessWidget {
           ],
         ),
         SizedBox(height: 10.h),
-        Container(
-          width: 92.w,
-          height: 2.h,
-          color: AppColors.orangeStrong,
-        ),
+        Container(width: 92.w, height: 2.h, color: AppColors.orangeStrong),
         SizedBox(height: 9.h),
-        Divider(
-          color: const Color(0xFFD5DCE8),
-          thickness: 0.9.h,
-          height: 1.h,
-        ),
+        Divider(color: const Color(0xFFD5DCE8), thickness: 0.9.h, height: 1.h),
       ],
     );
   }
@@ -393,10 +661,7 @@ class MyLeadsScreen extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'My Leads',
-          style: MyLeadsScreen.myLeadsTitleStyle,
-        ),
+        Text('My Leads', style: MyLeadsScreen.myLeadsTitleStyle),
         SizedBox(height: 8.h),
         Text(
           'Leads assigned to you as telecaller. Track follow-ups, qualification, and next actions from the same premium workspace.',
@@ -428,51 +693,102 @@ class MyLeadsScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 12.w,
+            runSpacing: 10.h,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'New Leads',
-                      style: MyLeadsScreen.newLeadsTitleStyle,
-                    ),
-                    SizedBox(height: 2.h),
-                    Text(
-                      'Showing 1 to 8 of 120 leads',
-                      style: MyLeadsScreen.showingLeadsInfoStyle,
-                    ),
-                  ],
-                ),
+              Text(
+                'Assigned Leads  •  ${_leads.length} of $_totalCount',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: MyLeadsScreen.newLeadsTitleStyle,
               ),
-              InkWell(
-                onTap: () => Navigator.pushNamed(context, AppRouter.myLeadsFilter),
-                borderRadius: BorderRadius.circular(10.r),
-                child: Container(
-                  width: 40.w,
-                  height: 40.w,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(10.r),
-                    border: Border.all(color: const Color(0xFFDCE3EE)),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: _openFilters,
+                    icon: Icon(
+                      Icons.tune_rounded,
+                      size: MyLeadsScreen.panelIconSize.sp,
+                    ),
+                    label: Text(_filters.isEmpty ? 'Filter' : 'Filtered'),
                   ),
-                  child: Icon(
-                    Icons.tune,
-                    size: MyLeadsScreen.panelIconSize.sp,
-                    color: AppColors.textSecondary,
+                  SizedBox(width: 8.w),
+                  ElevatedButton.icon(
+                    onPressed: _isExporting ? null : _exportLeads,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.orangeStrong,
+                      foregroundColor: Colors.white,
+                    ),
+                    icon: _isExporting
+                        ? SizedBox(
+                            width: 15.w,
+                            height: 15.w,
+                            child: const CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.download_rounded),
+                    label: Text(
+                      _selectedLeadIds.isEmpty
+                          ? 'Export all'
+                          : 'Export (${_selectedLeadIds.length})',
+                    ),
                   ),
-                ),
+                ],
               ),
             ],
           ),
           SizedBox(height: 14.h),
-          for (int i = 0; i < _newLeads.length; i++) ...[
-            _NewLeadCard(data: _newLeads[i], isDarkAvatar: i == 0),
-            if (i != _newLeads.length - 1) SizedBox(height: 16.h),
-          ],
-          SizedBox(height: 16.h),
-          const _PaginationRow(),
+          if (_isUnauthorized)
+            const _SessionExpiredState()
+          else if (!_isLoading && _leads.isEmpty && _error == null)
+            const _EmptyLeadsState()
+          else
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final columns = constraints.maxWidth >= 1050
+                    ? 3
+                    : constraints.maxWidth >= 680
+                    ? 2
+                    : 1;
+                return GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: _leads.length,
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: columns,
+                    crossAxisSpacing: 14.w,
+                    mainAxisSpacing: 14.h,
+                    // The card contains a variable number of wrapped chips and
+                    // two-line API values. Keep enough vertical room at every
+                    // ScreenUtil scale instead of clipping the card content.
+                    mainAxisExtent: 430.h,
+                  ),
+                  itemBuilder: (context, i) {
+                    final lead = _leads[i];
+                    return _NewLeadCard(
+                      data: lead,
+                      isDarkAvatar: i == 0,
+                      selected: _selectedLeadIds.contains(lead.apiId),
+                      onSelected: (selected) {
+                        setState(() {
+                          if (selected) {
+                            _selectedLeadIds.add(lead.apiId);
+                          } else {
+                            _selectedLeadIds.remove(lead.apiId);
+                          }
+                        });
+                      },
+                    );
+                  },
+                );
+              },
+            ),
         ],
       ),
     );
@@ -511,12 +827,97 @@ class _TopBar extends StatelessWidget {
               ),
             ),
           ),
-          CircleAvatar(
-            radius: 16.r,
-            backgroundColor: const Color(0xFFF3F4F6),
-            backgroundImage: const AssetImage('assets/admin.png'),
-          ),
         ],
+      ),
+    );
+  }
+}
+
+class _ApiErrorBanner extends StatelessWidget {
+  const _ApiErrorBanner({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(14.r),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF1F2),
+        borderRadius: BorderRadius.circular(10.r),
+        border: Border.all(color: const Color(0xFFFECACA)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.error_outline_rounded, color: Color(0xFFB91C1C)),
+          SizedBox(width: 10.w),
+          Expanded(
+            child: Text(
+              message,
+              style: GoogleFonts.inter(
+                fontSize: 12.sp,
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFFB91C1C),
+              ),
+            ),
+          ),
+          TextButton(onPressed: onRetry, child: const Text('Retry')),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyLeadsState extends StatelessWidget {
+  const _EmptyLeadsState();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 36.h),
+      child: Center(
+        child: Column(
+          children: [
+            Icon(
+              Icons.person_search_outlined,
+              size: 42.sp,
+              color: const Color(0xFF94A3B8),
+            ),
+            SizedBox(height: 10.h),
+            Text(
+              'No assigned leads found',
+              style: GoogleFonts.inter(
+                fontSize: 15.sp,
+                fontWeight: FontWeight.w700,
+                color: AppColors.navy,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SessionExpiredState extends StatelessWidget {
+  const _SessionExpiredState();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 28.h),
+      child: Center(
+        child: Text(
+          'Your session has expired. Please sign in again.',
+          textAlign: TextAlign.center,
+          style: GoogleFonts.inter(
+            fontSize: 13.sp,
+            fontWeight: FontWeight.w600,
+            color: const Color(0xFF64748B),
+          ),
+        ),
       ),
     );
   }
@@ -530,7 +931,7 @@ class _LeadSummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.fromLTRB(13.w, 10.h, 12.w, 12.h),
+      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(8),
@@ -571,18 +972,20 @@ class _LeadSummaryCard extends StatelessWidget {
               ),
             ],
           ),
-          SizedBox(height: 10.h),
+          const Spacer(),
           Text(
             data.value,
             style: GoogleFonts.inter(
-              fontSize: 32.sp,
+              fontSize: 23.sp,
               fontWeight: FontWeight.w700,
               color: AppColors.slate900,
             ),
           ),
-          SizedBox(height: 2.h),
+          SizedBox(height: 1.h),
           Text(
             data.subtitle,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             style: MyLeadsScreen.cardSubtitleStyle,
           ),
         ],
@@ -610,10 +1013,17 @@ class _LeadSummaryData {
 }
 
 class _NewLeadCard extends StatelessWidget {
-  const _NewLeadCard({required this.data, required this.isDarkAvatar});
+  const _NewLeadCard({
+    required this.data,
+    required this.isDarkAvatar,
+    required this.selected,
+    required this.onSelected,
+  });
 
   final _NewLeadData data;
   final bool isDarkAvatar;
+  final bool selected;
+  final ValueChanged<bool> onSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -621,36 +1031,37 @@ class _NewLeadCard extends StatelessWidget {
       // padding: EdgeInsets.fromLTRB(16.w, 16.h, 16.w, 0),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20.r),
+        borderRadius: BorderRadius.circular(12.r),
         border: Border.all(color: const Color(0xFFD9E2EE)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: EdgeInsets.fromLTRB(16.w, 16.h, 16.w, 0),
+            padding: EdgeInsets.fromLTRB(14.w, 12.h, 14.w, 0),
             child: Column(
               children: [
-
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      width: 17.w,
-                      height: 17.w,
-                      margin: EdgeInsets.only(top: 14.h),
-                      decoration: BoxDecoration(
+                    Checkbox(
+                      value: selected,
+                      onChanged: (value) => onSelected(value ?? false),
+                      activeColor: AppColors.orangeStrong,
+                      visualDensity: VisualDensity.compact,
+                      shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(4.r),
-                        border: Border.all(color: const Color(0xFFD8DFEA)),
                       ),
                     ),
                     SizedBox(width: 12.w),
                     Container(
-                      width: 44.w,
-                      height: 44.w,
+                      width: 38.w,
+                      height: 38.w,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: isDarkAvatar ? const Color(0xFF252525) : const Color(0xFF2C2C2C),
+                        color: isDarkAvatar
+                            ? const Color(0xFF252525)
+                            : const Color(0xFF2C2C2C),
                       ),
                       child: Icon(
                         Icons.person,
@@ -663,17 +1074,19 @@ class _NewLeadCard extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            data.name,
-                            style: MyLeadsScreen.leadNameStyle,
-                          ),
-                          SizedBox(height: 6.h),
+                          Text(data.name, style: MyLeadsScreen.leadNameStyle),
+                          SizedBox(height: 4.h),
                           Container(
-                            padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 4.h),
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 10.w,
+                              vertical: 4.h,
+                            ),
                             decoration: BoxDecoration(
                               color: const Color(0xFFEAF2FF),
                               borderRadius: BorderRadius.circular(999.r),
-                              border: Border.all(color: const Color(0xFFC5DAFF)),
+                              border: Border.all(
+                                color: const Color(0xFFC5DAFF),
+                              ),
                             ),
                             child: Text(
                               data.leadId,
@@ -707,7 +1120,7 @@ class _NewLeadCard extends StatelessWidget {
                     ),
                   ],
                 ),
-                SizedBox(height: 16.h),
+                SizedBox(height: 12.h),
                 Row(
                   children: [
                     Icon(
@@ -723,7 +1136,10 @@ class _NewLeadCard extends StatelessWidget {
                       ),
                     ),
                     Container(
-                      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 5.h),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 10.w,
+                        vertical: 5.h,
+                      ),
                       decoration: BoxDecoration(
                         color: const Color(0xFFEAF2FF),
                         borderRadius: BorderRadius.circular(999.r),
@@ -740,22 +1156,28 @@ class _NewLeadCard extends StatelessWidget {
                     ),
                   ],
                 ),
-                SizedBox(height: 16.h),
+                SizedBox(height: 12.h),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
-                      child: _LeadMetaBlock(label: 'BUDGET', value: data.budget),
+                      child: _LeadMetaBlock(
+                        label: 'BUDGET',
+                        value: data.budget,
+                      ),
                     ),
                     SizedBox(width: 18.w),
                     Expanded(
-                      child: _LeadMetaBlock(label: 'PROPERTY TYPE', value: data.propertyType),
+                      child: _LeadMetaBlock(
+                        label: 'PROPERTY TYPE',
+                        value: data.propertyType,
+                      ),
                     ),
                   ],
                 ),
-                SizedBox(height: 12.h),
+                SizedBox(height: 9.h),
                 Divider(color: const Color(0xFFE6EBF2), height: 1.h),
-                SizedBox(height: 12.h),
+                SizedBox(height: 9.h),
                 Wrap(
                   spacing: 8.w,
                   runSpacing: 8.h,
@@ -779,30 +1201,24 @@ class _NewLeadCard extends StatelessWidget {
                     ),
                   ],
                 ),
-                SizedBox(height: 10.h),
+                SizedBox(height: 7.h),
                 Text(
                   'Within configured SLA',
                   style: MyLeadsScreen.slaStatusStyle,
                 ),
-                SizedBox(height: 14.h),
-
-
+                SizedBox(height: 10.h),
               ],
             ),
           ),
 
-
-
-
-
           Container(
             width: double.infinity,
-            padding: EdgeInsets.fromLTRB(0, 12.h, 0, 12.h),
+            padding: EdgeInsets.symmetric(vertical: 10.h),
             decoration: BoxDecoration(
               color: const Color(0xFFF3F6FD),
               borderRadius: BorderRadius.only(
-                bottomLeft: Radius.circular(20.r),
-                bottomRight: Radius.circular(20.r),
+                bottomLeft: Radius.circular(12.r),
+                bottomRight: Radius.circular(12.r),
               ),
             ),
             child: Column(
@@ -811,11 +1227,20 @@ class _NewLeadCard extends StatelessWidget {
                   padding: EdgeInsets.symmetric(horizontal: 16.w),
                   child: Column(
                     children: [
-                      _LeadInfoRow(label: 'Assigned To:', value: data.assignedTo),
+                      _LeadInfoRow(
+                        label: 'Assigned To:',
+                        value: data.assignedTo,
+                      ),
                       SizedBox(height: 10.h),
-                      _LeadInfoRow(label: 'Last Follow-up:', value: data.lastFollowUp),
+                      _LeadInfoRow(
+                        label: 'Last Follow-up:',
+                        value: data.lastFollowUp,
+                      ),
                       SizedBox(height: 10.h),
-                      _LeadInfoRow(label: 'Next Follow-up:', value: data.nextFollowUp),
+                      _LeadInfoRow(
+                        label: 'Next Follow-up:',
+                        value: data.nextFollowUp,
+                      ),
                     ],
                   ),
                 ),
@@ -885,15 +1310,9 @@ class _LeadMetaBlock extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: MyLeadsScreen.leadInfoLabelStyle,
-        ),
+        Text(label, style: MyLeadsScreen.leadInfoLabelStyle),
         SizedBox(height: 4.h),
-        Text(
-          value,
-          style: MyLeadsScreen.leadInfoValueStyle,
-        ),
+        Text(value, style: MyLeadsScreen.leadInfoValueStyle),
       ],
     );
   }
@@ -908,16 +1327,21 @@ class _LeadInfoRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        SizedBox(
+          width: 105.w,
+          child: Text(label, style: MyLeadsScreen.leadInfoLabelStyle),
+        ),
+        SizedBox(width: 8.w),
         Expanded(
           child: Text(
-            label,
-            style: MyLeadsScreen.leadInfoLabelStyle,
+            value,
+            textAlign: TextAlign.end,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: MyLeadsScreen.leadInfoValueStyle,
           ),
-        ),
-        Text(
-          value,
-          style: MyLeadsScreen.leadInfoValueStyle,
         ),
       ],
     );
@@ -926,6 +1350,7 @@ class _LeadInfoRow extends StatelessWidget {
 
 class _NewLeadData {
   const _NewLeadData({
+    this.apiId = '',
     required this.name,
     required this.leadId,
     required this.phone,
@@ -973,9 +1398,126 @@ class _NewLeadData {
     required this.ownerName,
     required this.slaStatus,
     required this.slaActivity,
+    this.nextFollowUpDate,
   });
 
+  factory _NewLeadData.fromLead(LeadModel lead) {
+    final raw = lead.raw ?? const <String, dynamic>{};
+    final requirement = raw['requirement'] is Map
+        ? Map<String, dynamic>.from(raw['requirement'] as Map)
+        : const <String, dynamic>{};
+    final nextFollowUp = _apiDate(raw['nextFollowUpAt']);
+    final createdAt = _apiDate(raw['createdAt']);
+    final updatedAt = _apiDate(raw['updatedAt']);
+    final lastContacted = _apiDate(raw['lastContactedAt']);
+    final countryCode = _apiText(raw['mobileCountryCode']);
+    final mobile = _apiText(raw['mobile'], fallback: lead.phone);
+    final alternateCode = _apiText(raw['alternateCountryCode']);
+    final alternateMobile = _apiText(raw['alternateMobile']);
+    final minBudget = _apiText(requirement['minBudget']);
+    final maxBudget = _apiText(requirement['maxBudget']);
+    final budgetUnit = _apiText(requirement['budgetUnit'], fallback: '');
+    final budgetRange = _apiText(requirement['budgetRange']);
+    final budgetValue = budgetRange != '-'
+        ? budgetRange
+        : [minBudget, maxBudget].where((value) => value != '-').join(' - ');
+    final budget = [
+      budgetValue,
+      budgetUnit,
+    ].where((value) => value.isNotEmpty && value != '-').join(' ');
+    final score = raw['leadScore'] is num
+        ? (raw['leadScore'] as num).toInt()
+        : int.tryParse(_apiText(raw['leadScore'], fallback: '0')) ?? 0;
+    final followUpState = nextFollowUp == null
+        ? 'NOT SET'
+        : nextFollowUp.isBefore(DateTime.now())
+        ? 'OVERDUE'
+        : 'UPCOMING';
+
+    return _NewLeadData(
+      apiId: lead.id ?? lead.displayId ?? lead.name,
+      name: lead.name,
+      leadId: lead.displayId ?? lead.id ?? '-',
+      phone: [
+        countryCode == '-' ? '' : countryCode,
+        mobile,
+      ].where((value) => value.isNotEmpty && value != '-').join(' '),
+      alternateNumber: [
+        alternateCode == '-' ? '' : alternateCode,
+        alternateMobile,
+      ].where((value) => value.isNotEmpty && value != '-').join(' '),
+      email: lead.email,
+      location: lead.location ?? _apiText(raw['projectArea']),
+      occupation: _apiText(requirement['occupation']),
+      source: lead.source ?? '-',
+      budget: budget.isEmpty ? '-' : budget,
+      propertyType: [
+        _apiText(requirement['configuration'], fallback: ''),
+        _apiText(requirement['propertyType'], fallback: ''),
+      ].where((value) => value.isNotEmpty && value != '-').join(' '),
+      project: lead.project ?? '-',
+      carpetArea: _apiText(requirement['carpetAreaRange']),
+      possession: _apiText(requirement['possessionTimeline']),
+      floorPreference: _apiText(requirement['zone']),
+      timelineTitle: lastContacted == null
+          ? 'No contact activity recorded'
+          : 'Last customer contact',
+      timelineDate: _formatApiDate(lastContacted ?? updatedAt),
+      timelineTime: _formatApiTime(lastContacted ?? updatedAt),
+      timelineNote: _apiText(raw['remarks']),
+      followUpState: followUpState,
+      followUpDate: _formatApiDate(nextFollowUp),
+      followUpTime: _formatApiTime(nextFollowUp),
+      followUpType: _apiText(raw['followUpType']),
+      followUpOwner: _apiText(
+        raw['telecallerName'],
+        fallback: lead.assignedTo ?? '-',
+      ),
+      followUpNotes: _apiText(raw['remarks']),
+      stage: _apiText(raw['stageName'], fallback: lead.stage ?? '-'),
+      status: lead.status,
+      priority: _apiText(
+        raw['priorityName'],
+        fallback: _apiText(raw['leadType']),
+      ),
+      sla: nextFollowUp != null && nextFollowUp.isBefore(DateTime.now())
+          ? 'Overdue'
+          : 'On Time',
+      assignedTo: lead.assignedTo ?? '-',
+      manager: _apiText(raw['managerName']),
+      lastFollowUp: lastContacted == null
+          ? 'Not Set'
+          : '${_formatApiDate(lastContacted)}, ${_formatApiTime(lastContacted)}',
+      nextFollowUp: nextFollowUp == null
+          ? 'Not Set'
+          : '${_formatApiDate(nextFollowUp)}, ${_formatApiTime(nextFollowUp)}',
+      createdOn: _formatApiDate(createdAt),
+      updatedOn: _formatApiDate(updatedAt),
+      aiLeadScore: score,
+      aiLeadStage: _apiText(raw['leadScoreLabel']),
+      estConversion: '-',
+      estRevenue: budget.isEmpty ? '-' : budget,
+      temperature: _apiText(raw['leadType']),
+      engagement: '-',
+      slaState: followUpState,
+      slaSummary: nextFollowUp == null
+          ? 'No follow-up has been scheduled for this lead.'
+          : followUpState == 'OVERDUE'
+          ? 'The scheduled follow-up is overdue and needs attention.'
+          : 'The next follow-up is scheduled.',
+      breachDate: followUpState == 'OVERDUE'
+          ? _formatApiDate(nextFollowUp)
+          : '-',
+      responseTime: '-',
+      ownerName: _apiText(raw['ownerName'], fallback: lead.assignedTo ?? '-'),
+      slaStatus: followUpState,
+      slaActivity: _apiText(raw['remarks'], fallback: 'No activity recorded'),
+      nextFollowUpDate: nextFollowUp,
+    );
+  }
+
   final String name;
+  final String apiId;
   final String leadId;
   final String phone;
   final String alternateNumber;
@@ -1022,6 +1564,7 @@ class _NewLeadData {
   final String ownerName;
   final String slaStatus;
   final String slaActivity;
+  final DateTime? nextFollowUpDate;
 }
 
 class _LeadActionsSheet extends StatelessWidget {
@@ -1127,6 +1670,7 @@ class _LeadActionsSheet extends StatelessWidget {
                       onTap: () {
                         Navigator.pop(context);
                         Future<void>.delayed(Duration.zero, () {
+                          if (!context.mounted) return;
                           _showCreateFollowUpSheet(context, data);
                         });
                       },
@@ -1263,7 +1807,12 @@ class _LeadActionsSheet extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Padding(
-                            padding: EdgeInsets.fromLTRB(16.w, 10.h, 16.w, 14.h),
+                            padding: EdgeInsets.fromLTRB(
+                              16.w,
+                              10.h,
+                              16.w,
+                              14.h,
+                            ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -1273,7 +1822,9 @@ class _LeadActionsSheet extends StatelessWidget {
                                     height: 4.h,
                                     decoration: BoxDecoration(
                                       color: const Color(0xFFC7D2FE),
-                                      borderRadius: BorderRadius.circular(999.r),
+                                      borderRadius: BorderRadius.circular(
+                                        999.r,
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -1286,7 +1837,9 @@ class _LeadActionsSheet extends StatelessWidget {
                                       height: 34.w,
                                       decoration: BoxDecoration(
                                         color: const Color(0xFFEAF2FF),
-                                        borderRadius: BorderRadius.circular(10.r),
+                                        borderRadius: BorderRadius.circular(
+                                          10.r,
+                                        ),
                                       ),
                                       child: Icon(
                                         Icons.event_note_outlined,
@@ -1297,16 +1850,17 @@ class _LeadActionsSheet extends StatelessWidget {
                                     SizedBox(width: 12.w),
                                     Expanded(
                                       child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
-                                Text(
-                                  'Create Follow-Up',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 18.sp,
-                                    fontWeight: FontWeight.w700,
-                                    color: const Color(0xFF1F2937),
-                                  ),
-                                ),
+                                          Text(
+                                            'Create Follow-Up',
+                                            style: GoogleFonts.inter(
+                                              fontSize: 18.sp,
+                                              fontWeight: FontWeight.w700,
+                                              color: const Color(0xFF1F2937),
+                                            ),
+                                          ),
                                           SizedBox(height: 4.h),
                                           Text(
                                             'Schedule the next follow-up for this CRM lead and keep the team updated.',
@@ -1336,9 +1890,17 @@ class _LeadActionsSheet extends StatelessWidget {
                               ],
                             ),
                           ),
-                          Container(height: 1.h, color: const Color(0xFFE4E7EC)),
+                          Container(
+                            height: 1.h,
+                            color: const Color(0xFFE4E7EC),
+                          ),
                           Padding(
-                            padding: EdgeInsets.fromLTRB(16.w, 14.h, 16.w, 16.h),
+                            padding: EdgeInsets.fromLTRB(
+                              16.w,
+                              14.h,
+                              16.w,
+                              16.h,
+                            ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -1363,16 +1925,25 @@ class _LeadActionsSheet extends StatelessWidget {
                               ],
                             ),
                           ),
-                          Container(height: 1.h, color: const Color(0xFFE4E7EC)),
+                          Container(
+                            height: 1.h,
+                            color: const Color(0xFFE4E7EC),
+                          ),
                           Padding(
-                            padding: EdgeInsets.fromLTRB(16.w, 16.h, 16.w, 16.h),
+                            padding: EdgeInsets.fromLTRB(
+                              16.w,
+                              16.h,
+                              16.w,
+                              16.h,
+                            ),
                             child: Column(
                               children: [
                                 _buildFollowUpSectionCard(
                                   title: 'Lead Context',
                                   icon: Icons.person_outline,
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       _buildFollowUpTextField(
                                         label: 'Lead *',
@@ -1405,17 +1976,20 @@ class _LeadActionsSheet extends StatelessWidget {
                                   title: 'Property Details',
                                   icon: Icons.apartment_outlined,
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       _buildFollowUpTextField(
                                         label: 'Project *',
-                                        value: '${data.project} - ${data.location}',
+                                        value:
+                                            '${data.project} - ${data.location}',
                                         showChevron: true,
                                       ),
                                       SizedBox(height: 14.h),
                                       _buildFollowUpTextField(
                                         label: 'Unit',
-                                        value: '${data.propertyType} - ${data.budget} - Avail...',
+                                        value:
+                                            '${data.propertyType} - ${data.budget} - Avail...',
                                         showChevron: true,
                                         maxLines: 2,
                                       ),
@@ -1425,7 +1999,9 @@ class _LeadActionsSheet extends StatelessWidget {
                                           Expanded(
                                             child: _buildFollowUpTextField(
                                               label: 'Location',
-                                              value: _compactLocation(data.location),
+                                              value: _compactLocation(
+                                                data.location,
+                                              ),
                                             ),
                                           ),
                                           SizedBox(width: 12.w),
@@ -1445,7 +2021,8 @@ class _LeadActionsSheet extends StatelessWidget {
                                   title: 'Field Handoff',
                                   icon: Icons.access_time_outlined,
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       _buildFollowUpTextField(
                                         label: 'Visit Type *',
@@ -1466,7 +2043,9 @@ class _LeadActionsSheet extends StatelessWidget {
                                             child: _buildFollowUpTextField(
                                               label: 'Visit Date *',
                                               value: 'mm/dd/yyyy',
-                                              valueColor: const Color(0xFF6B7280),
+                                              valueColor: const Color(
+                                                0xFF6B7280,
+                                              ),
                                             ),
                                           ),
                                           SizedBox(width: 12.w),
@@ -1521,7 +2100,8 @@ class _LeadActionsSheet extends StatelessWidget {
                                       SizedBox(height: 14.h),
                                       _buildFollowUpTextField(
                                         label: 'Special Request',
-                                        value: 'Parking needs, senior citizen assistance, preferred sample flat, negotiation context...',
+                                        value:
+                                            'Parking needs, senior citizen assistance, preferred sample flat, negotiation context...',
                                         maxLines: 3,
                                       ),
                                     ],
@@ -1531,7 +2111,8 @@ class _LeadActionsSheet extends StatelessWidget {
                               ],
                             ),
                           ),
-                       ] ),
+                        ],
+                      ),
                     ),
                   ),
                   Container(height: 1.h, color: const Color(0xFFD9DFEA)),
@@ -1556,7 +2137,9 @@ class _LeadActionsSheet extends StatelessWidget {
                                 onPressed: () => Navigator.pop(sheetContext),
                                 style: OutlinedButton.styleFrom(
                                   minimumSize: Size.fromHeight(46.h),
-                                  side: const BorderSide(color: Color(0xFF344054)),
+                                  side: const BorderSide(
+                                    color: Color(0xFF344054),
+                                  ),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(12.r),
                                   ),
@@ -1613,10 +2196,8 @@ class _LeadActionsSheet extends StatelessWidget {
     );
   }
 
-  Widget _followUpDetailBlock({
-    required String label,
-    required String value,
-  }) {
+  // ignore: unused_element
+  Widget _followUpDetailBlock({required String label, required String value}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1666,11 +2247,7 @@ class _LeadActionsSheet extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(
-                icon,
-                size: 20.sp,
-                color: const Color(0xFF111827),
-              ),
+              Icon(icon, size: 20.sp, color: const Color(0xFF111827)),
               SizedBox(width: 8.w),
               Text(
                 title,
@@ -1683,10 +2260,7 @@ class _LeadActionsSheet extends StatelessWidget {
             ],
           ),
           SizedBox(height: 12.h),
-          Container(
-            height: 1.h,
-            color: const Color(0xFFD9E2F2),
-          ),
+          Container(height: 1.h, color: const Color(0xFFD9E2F2)),
           SizedBox(height: 12.h),
           child,
         ],
@@ -1782,7 +2356,8 @@ class _LeadActionsSheet extends StatelessWidget {
     if (parts.length == 1) {
       return parts.first.substring(0, 1).toUpperCase();
     }
-    return (parts.first.substring(0, 1) + parts.last.substring(0, 1)).toUpperCase();
+    return (parts.first.substring(0, 1) + parts.last.substring(0, 1))
+        .toUpperCase();
   }
 }
 
@@ -1794,9 +2369,9 @@ class _LeadViewDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MediaQuery(
-      data: MediaQuery.of(context).copyWith(
-        textScaler: const TextScaler.linear(1),
-      ),
+      data: MediaQuery.of(
+        context,
+      ).copyWith(textScaler: const TextScaler.linear(1)),
       child: Scaffold(
         backgroundColor: const Color(0xFFF4F5F7),
         body: SafeArea(
@@ -1852,9 +2427,7 @@ class _LeadViewTopBar extends StatelessWidget {
       padding: EdgeInsets.fromLTRB(12.w, 10.h, 12.w, 12.h),
       decoration: const BoxDecoration(
         color: Color(0xFFF7F7F8),
-        border: Border(
-          bottom: BorderSide(color: Color(0xFFE4E7EC)),
-        ),
+        border: Border(bottom: BorderSide(color: Color(0xFFE4E7EC))),
       ),
       child: Row(
         children: [
@@ -1908,10 +2481,7 @@ class _LeadViewTopBar extends StatelessWidget {
             ),
           ),
           SizedBox(width: 8.w),
-          _LeadViewIconButton(
-            icon: Icons.more_vert,
-            onTap: () {},
-          ),
+          _LeadViewIconButton(icon: Icons.more_vert, onTap: () {}),
         ],
       ),
     );
@@ -1919,10 +2489,7 @@ class _LeadViewTopBar extends StatelessWidget {
 }
 
 class _LeadViewIconButton extends StatelessWidget {
-  const _LeadViewIconButton({
-    required this.icon,
-    required this.onTap,
-  });
+  const _LeadViewIconButton({required this.icon, required this.onTap});
 
   final IconData icon;
   final VoidCallback onTap;
@@ -1940,11 +2507,7 @@ class _LeadViewIconButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(10.r),
           border: Border.all(color: const Color(0xFFD8DCE3)),
         ),
-        child: Icon(
-          icon,
-          size: 16.sp,
-          color: const Color(0xFF101828),
-        ),
+        child: Icon(icon, size: 16.sp, color: const Color(0xFF101828)),
       ),
     );
   }
@@ -2002,7 +2565,10 @@ class _LeadViewSummaryCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Container(
-                      padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 8.w,
+                        vertical: 3.h,
+                      ),
                       decoration: BoxDecoration(
                         color: const Color(0xFFFFF1E8),
                         borderRadius: BorderRadius.circular(6.r),
@@ -2052,10 +2618,7 @@ class _LeadViewSummaryCard extends StatelessWidget {
             ],
           ),
           SizedBox(height: 22.h),
-          _LeadViewInfoLine(
-            icon: Icons.call_outlined,
-            value: data.phone,
-          ),
+          _LeadViewInfoLine(icon: Icons.call_outlined, value: data.phone),
           SizedBox(height: 14.h),
           _LeadViewInfoLine(
             icon: Icons.mail_outline_rounded,
@@ -2067,10 +2630,7 @@ class _LeadViewSummaryCard extends StatelessWidget {
             value: data.location,
           ),
           SizedBox(height: 14.h),
-          _LeadViewInfoLine(
-            icon: Icons.campaign_outlined,
-            value: data.source,
-          ),
+          _LeadViewInfoLine(icon: Icons.campaign_outlined, value: data.source),
           SizedBox(height: 18.h),
           Divider(color: const Color(0xFFE5E7EB), height: 1.h),
           SizedBox(height: 22.h),
@@ -2082,9 +2642,15 @@ class _LeadViewSummaryCard extends StatelessWidget {
                   children: [
                     _LeadViewStatBlock(label: 'Stage', value: data.stage),
                     SizedBox(height: 18.h),
-                    _LeadViewStatBlock(label: 'Assigned To', value: data.assignedTo),
+                    _LeadViewStatBlock(
+                      label: 'Assigned To',
+                      value: data.assignedTo,
+                    ),
                     SizedBox(height: 18.h),
-                    _LeadViewStatBlock(label: 'Created On', value: data.createdOn),
+                    _LeadViewStatBlock(
+                      label: 'Created On',
+                      value: data.createdOn,
+                    ),
                   ],
                 ),
               ),
@@ -2096,7 +2662,10 @@ class _LeadViewSummaryCard extends StatelessWidget {
                     SizedBox(height: 18.h),
                     _LeadViewStatBlock(label: 'Manager', value: data.manager),
                     SizedBox(height: 18.h),
-                    _LeadViewStatBlock(label: 'Last Updated', value: data.updatedOn),
+                    _LeadViewStatBlock(
+                      label: 'Last Updated',
+                      value: data.updatedOn,
+                    ),
                   ],
                 ),
               ),
@@ -2109,10 +2678,7 @@ class _LeadViewSummaryCard extends StatelessWidget {
 }
 
 class _LeadViewInfoLine extends StatelessWidget {
-  const _LeadViewInfoLine({
-    required this.icon,
-    required this.value,
-  });
+  const _LeadViewInfoLine({required this.icon, required this.value});
 
   final IconData icon;
   final String value;
@@ -2121,11 +2687,7 @@ class _LeadViewInfoLine extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(
-          icon,
-          size: 20.sp,
-          color: const Color(0xFF6B7280),
-        ),
+        Icon(icon, size: 20.sp, color: const Color(0xFF6B7280)),
         SizedBox(width: 12.w),
         Expanded(
           child: Text(
@@ -2220,7 +2782,9 @@ class _LeadAiScoreCard extends StatelessWidget {
                     value: data.aiLeadScore / 100,
                     strokeWidth: 14.w,
                     backgroundColor: const Color(0xFFECEEF3),
-                    valueColor: const AlwaysStoppedAnimation<Color>(AppColors.orangeDeep),
+                    valueColor: const AlwaysStoppedAnimation<Color>(
+                      AppColors.orangeDeep,
+                    ),
                   ),
                 ),
                 Column(
@@ -2375,11 +2939,7 @@ class _LeadAiMetricBlock extends StatelessWidget {
         Row(
           children: [
             if (leadingIcon != null) ...[
-              Icon(
-                leadingIcon,
-                size: 14.sp,
-                color: leadingColor,
-              ),
+              Icon(leadingIcon, size: 14.sp, color: leadingColor),
               SizedBox(width: 4.w),
             ],
             Expanded(
@@ -2446,7 +3006,10 @@ class _LeadSlaSummaryCard extends StatelessWidget {
                       ),
                     ),
                     Container(
-                      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 10.w,
+                        vertical: 6.h,
+                      ),
                       decoration: BoxDecoration(
                         color: const Color(0xFFFEE4E2),
                         borderRadius: BorderRadius.circular(6.r),
@@ -2550,10 +3113,7 @@ class _LeadSlaSummaryCard extends StatelessWidget {
                   ],
                 ),
                 SizedBox(height: 18.h),
-                _LeadViewStatBlock(
-                  label: 'Activity',
-                  value: data.slaActivity,
-                ),
+                _LeadViewStatBlock(label: 'Activity', value: data.slaActivity),
               ],
             ),
           ),
@@ -2571,9 +3131,7 @@ class _LeadDetailTabsRow extends StatelessWidget {
     return Container(
       padding: EdgeInsets.only(bottom: 6.h),
       decoration: const BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: Color(0xFFD9DFEA)),
-        ),
+        border: Border(bottom: BorderSide(color: Color(0xFFD9DFEA))),
       ),
       child: Row(
         children: [
@@ -2589,10 +3147,7 @@ class _LeadDetailTabsRow extends StatelessWidget {
 }
 
 class _LeadDetailTab extends StatelessWidget {
-  const _LeadDetailTab({
-    required this.label,
-    this.selected = false,
-  });
+  const _LeadDetailTab({required this.label, this.selected = false});
 
   final String label;
   final bool selected;
@@ -2604,10 +3159,7 @@ class _LeadDetailTab extends StatelessWidget {
       decoration: BoxDecoration(
         border: selected
             ? const Border(
-                bottom: BorderSide(
-                  color: AppColors.orangeDeep,
-                  width: 2,
-                ),
+                bottom: BorderSide(color: AppColors.orangeDeep, width: 2),
               )
             : null,
       ),
@@ -2662,7 +3214,10 @@ class _LeadAboutCard extends StatelessWidget {
           SizedBox(height: 16.h),
           _LeadInfoDividerRow(label: 'Full Name', value: data.name),
           _LeadInfoDividerRow(label: 'Mobile', value: data.phone),
-          _LeadInfoDividerRow(label: 'Alternate Number', value: data.alternateNumber),
+          _LeadInfoDividerRow(
+            label: 'Alternate Number',
+            value: data.alternateNumber,
+          ),
           _LeadInfoDividerRow(label: 'Email Address', value: data.email),
           _LeadInfoDividerRow(
             label: 'Occupation',
@@ -2699,9 +3254,7 @@ class _LeadInfoDividerRow extends StatelessWidget {
       padding: EdgeInsets.symmetric(vertical: 11.h),
       decoration: showDivider
           ? const BoxDecoration(
-              border: Border(
-                bottom: BorderSide(color: Color(0xFFE5E7EB)),
-              ),
+              border: Border(bottom: BorderSide(color: Color(0xFFE5E7EB))),
             )
           : null,
       child: Row(
@@ -2723,7 +3276,9 @@ class _LeadInfoDividerRow extends StatelessWidget {
               style: GoogleFonts.inter(
                 fontSize: 14.sp,
                 fontWeight: FontWeight.w500,
-                color: mutedValue ? const Color(0xFF8A8F98) : const Color(0xFF1F2937),
+                color: mutedValue
+                    ? const Color(0xFF8A8F98)
+                    : const Color(0xFF1F2937),
               ),
             ),
           ),
@@ -2875,11 +3430,7 @@ class _LeadRequirementTile extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(
-                icon,
-                size: 15.sp,
-                color: const Color(0xFF4B5563),
-              ),
+              Icon(icon, size: 15.sp, color: const Color(0xFF4B5563)),
               SizedBox(width: 6.w),
               Expanded(
                 child: Text(
@@ -3090,7 +3641,11 @@ class _LeadNextFollowUpCard extends StatelessWidget {
           SizedBox(height: 16.h),
           Row(
             children: [
-              Icon(Icons.calendar_today_outlined, size: 15.sp, color: const Color(0xFF6B7280)),
+              Icon(
+                Icons.calendar_today_outlined,
+                size: 15.sp,
+                color: const Color(0xFF6B7280),
+              ),
               SizedBox(width: 8.w),
               Text(
                 data.followUpDate,
@@ -3101,7 +3656,11 @@ class _LeadNextFollowUpCard extends StatelessWidget {
                 ),
               ),
               SizedBox(width: 22.w),
-              Icon(Icons.access_time_outlined, size: 15.sp, color: const Color(0xFF6B7280)),
+              Icon(
+                Icons.access_time_outlined,
+                size: 15.sp,
+                color: const Color(0xFF6B7280),
+              ),
               SizedBox(width: 8.w),
               Text(
                 data.followUpTime,
@@ -3357,11 +3916,7 @@ class _LeadQuickViewMetricTile extends StatelessWidget {
               color: iconBackground,
               shape: BoxShape.circle,
             ),
-            child: Icon(
-              icon,
-              size: 15.sp,
-              color: iconColor,
-            ),
+            child: Icon(icon, size: 15.sp, color: iconColor),
           ),
           SizedBox(width: 10.w),
           Expanded(
@@ -3483,6 +4038,7 @@ class _LeadLatestBookingCard extends StatelessWidget {
   }
 }
 
+// ignore: unused_element
 class _PaginationRow extends StatelessWidget {
   const _PaginationRow();
 
@@ -3586,4 +4142,71 @@ class _PaginationRow extends StatelessWidget {
       ),
     );
   }
+}
+
+String _apiText(Object? value, {String fallback = '-'}) {
+  final text = value?.toString().trim() ?? '';
+  return text.isEmpty ? fallback : text;
+}
+
+DateTime? _apiDate(Object? value) {
+  final text = value?.toString().trim() ?? '';
+  return text.isEmpty ? null : DateTime.tryParse(text)?.toLocal();
+}
+
+String _formatApiDate(DateTime? value) {
+  if (value == null) return '-';
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  return '${value.day.toString().padLeft(2, '0')} '
+      '${months[value.month - 1]} ${value.year}';
+}
+
+String _formatApiTime(DateTime? value) {
+  if (value == null) return '-';
+  final hour = value.hour % 12 == 0 ? 12 : value.hour % 12;
+  final minute = value.minute.toString().padLeft(2, '0');
+  final period = value.hour >= 12 ? 'pm' : 'am';
+  return '$hour:$minute $period';
+}
+
+List<dynamic> _extractApiRows(Object? source) {
+  if (source is List) return source;
+  if (source is Map) {
+    for (final key in const [
+      'data',
+      'items',
+      'results',
+      'rows',
+      'records',
+      'followUps',
+    ]) {
+      final value = source[key];
+      if (value is List) return value;
+      if (value is Map) {
+        final nested = _extractApiRows(value);
+        if (nested.isNotEmpty) return nested;
+      }
+    }
+  }
+  return const [];
+}
+
+class _FollowUpCounts {
+  const _FollowUpCounts({required this.upcoming, required this.overdue});
+
+  final int upcoming;
+  final int overdue;
 }

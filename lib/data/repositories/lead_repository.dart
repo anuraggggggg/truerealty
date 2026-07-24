@@ -33,6 +33,7 @@ class LeadRepository {
         'dateFrom': dateFrom,
         'dateTo': dateTo,
       },
+      headers: const {'Cache-Control': 'no-cache', 'Pragma': 'no-cache'},
     );
   }
 
@@ -122,6 +123,7 @@ class LeadRepository {
         'due': due,
         'status': status,
       },
+      headers: const {'Cache-Control': 'no-cache', 'Pragma': 'no-cache'},
     );
   }
 

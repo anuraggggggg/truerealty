@@ -7,7 +7,6 @@ import 'package:truerealtycrm/provider/dashboard_provider.dart';
 import 'package:truerealtycrm/provider/employee_provider.dart';
 import 'package:truerealtycrm/provider/leads_provider.dart';
 import 'package:truerealtycrm/provider/notification_provider.dart';
-import 'package:truerealtycrm/provider/project_provider.dart';
 import 'package:truerealtycrm/router/app_router.dart';
 
 class AdminDashboardView extends StatefulWidget {
@@ -458,24 +457,17 @@ class _AdminDashboardViewState extends State<AdminDashboardView> {
     final notifications = _extractList(response?.data);
     setState(() => _notificationCount = _countUnread(response?.data));
 
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: AppColors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22.r)),
+    await _showTopRightPopover(
+      barrierLabel: 'Dismiss notifications',
+      child: _NotificationsPopup(
+        notifications: notifications,
+        error: provider.error,
+        onCountChanged: (count) {
+          if (mounted) {
+            setState(() => _notificationCount = count);
+          }
+        },
       ),
-      builder: (sheetContext) {
-        return _NotificationsSheet(
-          notifications: notifications,
-          error: provider.error,
-          onCountChanged: (count) {
-            if (mounted) {
-              setState(() => _notificationCount = count);
-            }
-          },
-        );
-      },
     );
   }
 
@@ -489,30 +481,51 @@ class _AdminDashboardViewState extends State<AdminDashboardView> {
 
     setState(() => _currentEmployee = response?.data ?? _currentEmployee);
 
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: AppColors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22.r)),
+    await _showTopRightPopover(
+      barrierLabel: 'Dismiss profile menu',
+      child: _ProfilePopup(
+        profile: response?.data ?? _currentEmployee,
+        error: provider.error,
+        onLogout: (popupContext) {
+          Navigator.of(popupContext).pop();
+          if (!mounted) {
+            return;
+          }
+          Navigator.of(context).pushNamed(AppRouter.logoutConfirmation);
+        },
       ),
-      builder: (_) {
-        return _ProfileSheet(
-          profile: response?.data ?? _currentEmployee,
-          error: provider.error,
-        );
-      },
     );
   }
 
-  Future<void> _openGlobalSearch() async {
-    await showModalBottomSheet<void>(
+  Future<void> _showTopRightPopover({
+    required String barrierLabel,
+    required Widget child,
+  }) {
+    return showGeneralDialog<void>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: AppColors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22.r)),
-      ),
-      builder: (_) => const _GlobalSearchSheet(),
+      barrierDismissible: true,
+      barrierLabel: barrierLabel,
+      barrierColor: Colors.transparent,
+      transitionDuration: const Duration(milliseconds: 140),
+      pageBuilder: (context, animation, secondaryAnimation) {
+        return _TopRightPopoverFrame(child: child);
+      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        );
+        return FadeTransition(
+          opacity: curved,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0, -0.03),
+              end: Offset.zero,
+            ).animate(curved),
+            child: child,
+          ),
+        );
+      },
     );
   }
 
@@ -576,7 +589,6 @@ class _AdminDashboardViewState extends State<AdminDashboardView> {
               children: [
                 _DashboardHero(
                   onMenuTap: widget.onMenuTap,
-                  onSearchTap: _openGlobalSearch,
                   onNotificationTap: _openNotifications,
                   onProfileTap: _openProfile,
                   notificationCount: _notificationCount,
@@ -714,7 +726,6 @@ class _AdminDashboardViewState extends State<AdminDashboardView> {
 class _DashboardHero extends StatelessWidget {
   const _DashboardHero({
     required this.onMenuTap,
-    required this.onSearchTap,
     required this.onNotificationTap,
     required this.onProfileTap,
     required this.notificationCount,
@@ -723,7 +734,6 @@ class _DashboardHero extends StatelessWidget {
   });
 
   final VoidCallback onMenuTap;
-  final VoidCallback onSearchTap;
   final VoidCallback onNotificationTap;
   final VoidCallback onProfileTap;
   final int notificationCount;
@@ -754,8 +764,6 @@ class _DashboardHero extends StatelessWidget {
                     ),
                   ),
                 ),
-                _HeaderIconButton(icon: Icons.search, onTap: onSearchTap),
-                SizedBox(width: 14.w),
                 _NotificationBell(
                   count: notificationCount,
                   onTap: onNotificationTap,
@@ -2483,8 +2491,33 @@ class _ReportsShortcutsCard extends StatelessWidget {
   }
 }
 
-class _NotificationsSheet extends StatefulWidget {
-  const _NotificationsSheet({
+class _TopRightPopoverFrame extends StatelessWidget {
+  const _TopRightPopoverFrame({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Align(
+        alignment: Alignment.topRight,
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(36.w, 34.h, 36.w, 0),
+          child: Material(
+            color: Colors.transparent,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minWidth: 292.w, maxWidth: 326.w),
+              child: child,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NotificationsPopup extends StatefulWidget {
+  const _NotificationsPopup({
     required this.notifications,
     required this.error,
     required this.onCountChanged,
@@ -2495,10 +2528,10 @@ class _NotificationsSheet extends StatefulWidget {
   final ValueChanged<int> onCountChanged;
 
   @override
-  State<_NotificationsSheet> createState() => _NotificationsSheetState();
+  State<_NotificationsPopup> createState() => _NotificationsPopupState();
 }
 
-class _NotificationsSheetState extends State<_NotificationsSheet> {
+class _NotificationsPopupState extends State<_NotificationsPopup> {
   late List<dynamic> _notifications = widget.notifications;
   String? _error;
   bool _isLoading = false;
@@ -2509,38 +2542,12 @@ class _NotificationsSheetState extends State<_NotificationsSheet> {
     _error = widget.error;
   }
 
-  Future<void> _refresh() async {
-    setState(() => _isLoading = true);
-    final provider = context.read<NotificationProvider>();
-    final response = await provider.fetchNotifications(limit: 20);
-    if (!mounted) return;
-    setState(() {
-      _notifications = _extractList(response?.data);
-      _error = provider.error;
-      _isLoading = false;
-    });
-    widget.onCountChanged(_countUnread(response?.data));
-  }
-
-  Future<void> _markAllRead() async {
-    setState(() => _isLoading = true);
-    final provider = context.read<NotificationProvider>();
-    await provider.markAllNotificationsRead();
-    final response = await provider.fetchNotifications(limit: 20);
-    if (!mounted) return;
-    setState(() {
-      _notifications = _extractList(response?.data);
-      _error = provider.error;
-      _isLoading = false;
-    });
-    widget.onCountChanged(_countUnread(response?.data));
-  }
-
   Future<void> _markRead(Object? item) async {
     final id = _itemId(item);
     if (id == null) {
       return;
     }
+    setState(() => _isLoading = true);
     final provider = context.read<NotificationProvider>();
     await provider.markNotificationRead(id);
     final response = await provider.fetchNotifications(limit: 20);
@@ -2548,354 +2555,345 @@ class _NotificationsSheetState extends State<_NotificationsSheet> {
     setState(() {
       _notifications = _extractList(response?.data);
       _error = provider.error;
+      _isLoading = false;
     });
     widget.onCountChanged(_countUnread(response?.data));
   }
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(18.w, 16.h, 18.w, 22.h),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Text(
+    final hasNotifications = _notifications.isNotEmpty;
+
+    return _WebPopupSurface(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            height: 44.h,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16.w),
+                child: Text(
                   'Notifications',
                   style: GoogleFonts.inter(
-                    fontSize: 18.sp,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.navy,
+                    fontSize: 14.sp,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF0B1F44),
                   ),
                 ),
-                const Spacer(),
-                IconButton(
-                  onPressed: _isLoading ? null : _refresh,
-                  icon: const Icon(Icons.refresh),
-                ),
-                TextButton(
-                  onPressed: _isLoading ? null : _markAllRead,
-                  child: const Text('Mark all read'),
-                ),
-              ],
-            ),
-            if (_isLoading) const LinearProgressIndicator(),
-            if (_error != null) ...[
-              SizedBox(height: 8.h),
-              Text(
-                _error!,
-                style: GoogleFonts.inter(
-                  fontSize: 12.sp,
-                  color: const Color(0xFFB91C1C),
-                ),
               ),
-            ],
-            SizedBox(height: 12.h),
-            ConstrainedBox(
-              constraints: BoxConstraints(maxHeight: 480.h),
-              child: _notifications.isEmpty
-                  ? const _EmptyApiState(message: 'No notifications found.')
-                  : ListView.separated(
-                      shrinkWrap: true,
-                      itemCount: _notifications.length,
-                      separatorBuilder: (context, index) =>
-                          Divider(height: 1.h),
-                      itemBuilder: (context, index) {
-                        final item = _notifications[index];
-                        return ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(
-                            Icons.notifications_none_outlined,
-                            color: _isUnread(item)
-                                ? AppColors.orangeDeep
-                                : const Color(0xFF6B7280),
-                          ),
-                          title: Text(
-                            _itemTitle(item),
-                            style: GoogleFonts.inter(
-                              fontSize: 14.sp,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.navy,
-                            ),
-                          ),
-                          subtitle: Text(
-                            _itemSubtitle(item),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          onTap: () => _markRead(item),
-                        );
-                      },
-                    ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _GlobalSearchSheet extends StatefulWidget {
-  const _GlobalSearchSheet();
-
-  @override
-  State<_GlobalSearchSheet> createState() => _GlobalSearchSheetState();
-}
-
-class _GlobalSearchSheetState extends State<_GlobalSearchSheet> {
-  final TextEditingController _controller = TextEditingController();
-  final Map<String, List<dynamic>> _results = {};
-  String? _error;
-  bool _isSearching = false;
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  Future<void> _search() async {
-    final query = _controller.text.trim();
-    if (query.isEmpty) {
-      setState(() {
-        _results.clear();
-        _error = 'Enter a search term.';
-      });
-      return;
-    }
-
-    setState(() {
-      _isSearching = true;
-      _error = null;
-    });
-
-    final leadProvider = context.read<LeadProvider>();
-    final employeeProvider = context.read<EmployeeProvider>();
-    final projectProvider = context.read<ProjectProvider>();
-
-    final leadResponse = await leadProvider.fetchLeads(
-      search: query,
-      limit: 10,
-    );
-    final employeeResponse = await employeeProvider.fetchEmployees(
-      search: query,
-      limit: 10,
-      status: null,
-    );
-    final projectResponse = await projectProvider.fetchProjects(search: query);
-
-    if (!mounted) {
-      return;
-    }
-
-    setState(() {
-      _results
-        ..clear()
-        ..addAll({
-          'Leads': _extractList(leadResponse?.data),
-          'Employees': _extractList(employeeResponse?.data),
-          'Projects': _extractList(projectResponse?.data),
-        });
-      _error =
-          leadProvider.error ?? employeeProvider.error ?? projectProvider.error;
-      _isSearching = false;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.only(
-          left: 18.w,
-          right: 18.w,
-          top: 16.h,
-          bottom: MediaQuery.of(context).viewInsets.bottom + 18.h,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Global Search',
-              style: GoogleFonts.inter(
-                fontSize: 18.sp,
-                fontWeight: FontWeight.w800,
-                color: AppColors.navy,
-              ),
-            ),
-            SizedBox(height: 12.h),
-            TextField(
-              controller: _controller,
-              autofocus: true,
-              textInputAction: TextInputAction.search,
-              onSubmitted: (_) => _search(),
-              decoration: InputDecoration(
-                hintText: 'Search leads, employees, projects',
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: IconButton(
-                  onPressed: _isSearching ? null : _search,
-                  icon: const Icon(Icons.arrow_forward),
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12.r),
-                ),
-              ),
-            ),
-            if (_isSearching) ...[
-              SizedBox(height: 12.h),
-              const LinearProgressIndicator(),
-            ],
-            if (_error != null) ...[
-              SizedBox(height: 10.h),
-              Text(
-                _error!,
-                style: GoogleFonts.inter(
-                  color: const Color(0xFFB91C1C),
-                  fontSize: 12.sp,
-                ),
-              ),
-            ],
-            SizedBox(height: 12.h),
-            ConstrainedBox(
-              constraints: BoxConstraints(maxHeight: 520.h),
-              child: _results.isEmpty
-                  ? const _EmptyApiState(
-                      message: 'Search results will appear here.',
-                    )
-                  : ListView(
-                      shrinkWrap: true,
-                      children: _results.entries
-                          .map(
-                            (entry) => _SearchResultGroup(
-                              title: entry.key,
-                              items: entry.value,
-                            ),
-                          )
-                          .toList(),
-                    ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SearchResultGroup extends StatelessWidget {
-  const _SearchResultGroup({required this.title, required this.items});
-
-  final String title;
-  final List<dynamic> items;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: 14.h),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '$title (${items.length})',
-            style: GoogleFonts.inter(
-              fontSize: 13.sp,
-              fontWeight: FontWeight.w800,
-              color: AppColors.navy,
             ),
           ),
-          SizedBox(height: 6.h),
-          if (items.isEmpty)
-            Text(
-              'No matching $title',
-              style: GoogleFonts.inter(fontSize: 12.sp),
-            )
-          else
-            ...items.map(
-              (item) => ListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                title: Text(_itemTitle(item)),
-                subtitle: Text(
-                  _itemSubtitle(item),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+          Divider(height: 1.h, color: const Color(0xFFE1E7F0)),
+          if (_isLoading) const LinearProgressIndicator(minHeight: 2),
+          if (_error != null)
+            Padding(
+              padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 0),
+              child: Text(
+                _error!,
+                style: GoogleFonts.inter(
+                  fontSize: 12.sp,
+                  color: const Color(0xFFB91C1C),
                 ),
               ),
             ),
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: hasNotifications ? 0 : 92.h,
+              maxHeight: 292.h,
+            ),
+            child: hasNotifications
+                ? ListView.separated(
+                    shrinkWrap: true,
+                    padding: EdgeInsets.symmetric(vertical: 6.h),
+                    itemCount: _notifications.length,
+                    separatorBuilder: (context, index) => Divider(
+                      height: 1.h,
+                      indent: 16.w,
+                      endIndent: 16.w,
+                      color: const Color(0xFFE8EDF5),
+                    ),
+                    itemBuilder: (context, index) {
+                      final item = _notifications[index];
+                      return ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 16.w),
+                        minLeadingWidth: 28.w,
+                        leading: Icon(
+                          Icons.notifications_none_outlined,
+                          color: _isUnread(item)
+                              ? AppColors.orangeDeep
+                              : const Color(0xFF64748B),
+                          size: 20.sp,
+                        ),
+                        title: Text(
+                          _itemTitle(item),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.inter(
+                            fontSize: 13.sp,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.navy,
+                          ),
+                        ),
+                        subtitle: Text(
+                          _itemSubtitle(item),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.inter(
+                            fontSize: 11.sp,
+                            color: const Color(0xFF64748B),
+                          ),
+                        ),
+                        onTap: _isLoading ? null : () => _markRead(item),
+                      );
+                    },
+                  )
+                : Center(
+                    child: Text(
+                      'You\'re all caught up!',
+                      style: GoogleFonts.inter(
+                        fontSize: 14.sp,
+                        fontWeight: FontWeight.w500,
+                        color: const Color(0xFF66758F),
+                      ),
+                    ),
+                  ),
+          ),
+          Divider(height: 1.h, color: const Color(0xFFE1E7F0)),
+          SizedBox(
+            height: 48.h,
+            child: Center(
+              child: TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text(
+                  'View all notifications',
+                  style: GoogleFonts.inter(
+                    fontSize: 14.sp,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.orangeDeep,
+                  ),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-class _ProfileSheet extends StatelessWidget {
-  const _ProfileSheet({required this.profile, required this.error});
+class _ProfilePopup extends StatelessWidget {
+  const _ProfilePopup({
+    required this.profile,
+    required this.error,
+    required this.onLogout,
+  });
 
   final Object? profile;
   final String? error;
+  final ValueChanged<BuildContext> onLogout;
 
   @override
   Widget build(BuildContext context) {
     final rows = _displayRows(profile);
+    final name = _profileName(profile) ?? 'Admin';
+    final email = _profileEmail(profile);
+    final role = _profileRole(profile);
 
-    return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(18.w, 16.h, 18.w, 22.h),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Profile',
-              style: GoogleFonts.inter(
-                fontSize: 18.sp,
-                fontWeight: FontWeight.w800,
-                color: AppColors.navy,
-              ),
-            ),
-            SizedBox(height: 14.h),
-            if (error != null)
-              Text(error!, style: const TextStyle(color: Color(0xFFB91C1C)))
-            else if (rows.isEmpty)
-              const _EmptyApiState(message: 'Profile details are unavailable.')
-            else
-              ...rows.map(
-                (row) => Padding(
-                  padding: EdgeInsets.only(bottom: 10.h),
-                  child: Row(
+    return _WebPopupSurface(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: EdgeInsets.fromLTRB(16.w, 16.h, 16.w, 14.h),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 22.r,
+                  backgroundColor: const Color(0xFFE6ECF5),
+                  child: Text(
+                    _initials(name),
+                    style: GoogleFonts.inter(
+                      fontSize: 13.sp,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.navy,
+                    ),
+                  ),
+                ),
+                SizedBox(width: 12.w),
+                Expanded(
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      SizedBox(
-                        width: 118.w,
-                        child: Text(
-                          row.key,
+                      Text(
+                        name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.inter(
+                          fontSize: 14.sp,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.navy,
+                        ),
+                      ),
+                      if (email != null) ...[
+                        SizedBox(height: 3.h),
+                        Text(
+                          email,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: GoogleFonts.inter(
-                            fontSize: 12.sp,
+                            fontSize: 11.sp,
+                            fontWeight: FontWeight.w500,
+                            color: const Color(0xFF66758F),
+                          ),
+                        ),
+                      ],
+                      if (role != null) ...[
+                        SizedBox(height: 3.h),
+                        Text(
+                          role,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.inter(
+                            fontSize: 11.sp,
                             fontWeight: FontWeight.w700,
-                            color: const Color(0xFF6B7280),
+                            color: AppColors.orangeDeep,
                           ),
                         ),
-                      ),
-                      Expanded(
-                        child: Text(
-                          row.value,
-                          style: GoogleFonts.inter(
-                            fontSize: 13.sp,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.navy,
-                          ),
-                        ),
-                      ),
+                      ],
                     ],
                   ),
                 ),
+              ],
+            ),
+          ),
+          Divider(height: 1.h, color: const Color(0xFFE1E7F0)),
+          if (error != null)
+            Padding(
+              padding: EdgeInsets.all(16.r),
+              child: Text(
+                error!,
+                style: GoogleFonts.inter(
+                  fontSize: 12.sp,
+                  color: const Color(0xFFB91C1C),
+                ),
               ),
-          ],
-        ),
+            )
+          else if (rows.isEmpty)
+            Padding(
+              padding: EdgeInsets.all(16.r),
+              child: Text(
+                'Profile details are unavailable.',
+                style: GoogleFonts.inter(
+                  fontSize: 13.sp,
+                  color: const Color(0xFF66758F),
+                ),
+              ),
+            )
+          else
+            Padding(
+              padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 8.h),
+              child: Column(
+                children: rows.take(4).map((row) {
+                  return Padding(
+                    padding: EdgeInsets.only(bottom: 8.h),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 92.w,
+                          child: Text(
+                            row.key,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.inter(
+                              fontSize: 11.sp,
+                              fontWeight: FontWeight.w700,
+                              color: const Color(0xFF66758F),
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            row.value,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.inter(
+                              fontSize: 12.sp,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.navy,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          Divider(height: 1.h, color: const Color(0xFFE1E7F0)),
+          SizedBox(
+            height: 48.h,
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: Text(
+                      'My Profile',
+                      style: GoogleFonts.inter(
+                        fontSize: 13.sp,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.navy,
+                      ),
+                    ),
+                  ),
+                ),
+                VerticalDivider(width: 1.w, color: const Color(0xFFE1E7F0)),
+                Expanded(
+                  child: TextButton(
+                    onPressed: () => onLogout(context),
+                    child: Text(
+                      'Logout',
+                      style: GoogleFonts.inter(
+                        fontSize: 13.sp,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.orangeDeep,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
+    );
+  }
+}
+
+class _WebPopupSurface extends StatelessWidget {
+  const _WebPopupSurface({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(8.r),
+        border: Border.all(color: AppColors.orangeDeep, width: 1.4),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0x22000000),
+            blurRadius: 18.r,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: ClipRRect(borderRadius: BorderRadius.circular(8.r), child: child),
     );
   }
 }
@@ -3041,29 +3039,6 @@ class _DialogTextField extends StatelessWidget {
       decoration: InputDecoration(
         labelText: label,
         border: const OutlineInputBorder(),
-      ),
-    );
-  }
-}
-
-class _EmptyApiState extends StatelessWidget {
-  const _EmptyApiState({required this.message});
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.symmetric(vertical: 22.h),
-      child: Center(
-        child: Text(
-          message,
-          textAlign: TextAlign.center,
-          style: GoogleFonts.inter(
-            fontSize: 13.sp,
-            color: const Color(0xFF6B7280),
-          ),
-        ),
       ),
     );
   }
@@ -4064,6 +4039,22 @@ String? _profileName(Object? source) {
     'full_name',
     'name',
     'email',
+  ]);
+  final text = value?.toString().trim();
+  return text == null || text.isEmpty ? null : text;
+}
+
+String? _profileEmail(Object? source) {
+  final value = _findFirstValue(source, const ['email', 'emailAddress']);
+  final text = value?.toString().trim();
+  return text == null || text.isEmpty ? null : text;
+}
+
+String? _profileRole(Object? source) {
+  final value = _findFirstValue(source, const [
+    'role',
+    'designation',
+    'department',
   ]);
   final text = value?.toString().trim();
   return text == null || text.isEmpty ? null : text;

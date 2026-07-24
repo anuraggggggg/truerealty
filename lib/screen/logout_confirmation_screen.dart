@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:truerealtycrm/constant/colors_screen.dart';
+import 'package:truerealtycrm/provider/auth_provider.dart';
 import 'package:truerealtycrm/router/app_router.dart';
 
 class LogoutConfirmationScreen extends StatelessWidget {
@@ -96,11 +98,7 @@ class _BrandBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Image.asset(
-      'assets/app_icon.png',
-      width: 210,
-      fit: BoxFit.contain,
-    );
+    return Image.asset('assets/app_icon.png', width: 210, fit: BoxFit.contain);
   }
 }
 
@@ -132,11 +130,7 @@ class _LogoutCard extends StatelessWidget {
               color: AppColors.orangeBg,
               shape: BoxShape.circle,
             ),
-            child: const Icon(
-              Icons.logout,
-              color: AppColors.orange,
-              size: 42,
-            ),
+            child: const Icon(Icons.logout, color: AppColors.orange, size: 42),
           ),
           const SizedBox(height: 26),
           const Text(
@@ -192,11 +186,12 @@ class _LogoutCard extends StatelessWidget {
                 child: SizedBox(
                   height: 52,
                   child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.of(context).pushNamedAndRemoveUntil(
-                        AppRouter.login,
-                        (_) => false,
-                      );
+                    onPressed: () async {
+                      await context.read<AuthProvider>().logout();
+                      if (!context.mounted) return;
+                      Navigator.of(
+                        context,
+                      ).pushNamedAndRemoveUntil(AppRouter.login, (_) => false);
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.orange,
@@ -364,10 +359,7 @@ class _BuildingTower extends StatelessWidget {
           floors,
           (_) => Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: const [
-              _Window(),
-              _Window(),
-            ],
+            children: const [_Window(), _Window()],
           ),
         ),
       ),

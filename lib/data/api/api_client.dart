@@ -18,7 +18,7 @@ class ApiClient {
   }) : _httpClient = httpClient ?? http.Client(),
        _tokenStore = tokenStore ?? AuthTokenStore(),
        _baseUrl = _resolveBaseUrl(baseUrl) {
-    _debugLog('Base URL: $_baseUrl');
+    _debugLog('⚙️ Base URL: $_baseUrl');
   }
 
   final http.Client _httpClient;
@@ -103,30 +103,58 @@ class ApiClient {
     final requestHeaders = await _buildHeaders(headers, requiresAuth);
     final stopwatch = Stopwatch()..start();
 
-    _debugLog('--> $method $uri');
-    _debugLog('requiresAuth: $requiresAuth');
-    _debugLog('headers: ${_sanitizeHeaders(requestHeaders)}');
+    _debugLog('🔵 📤 REQUEST --> $method $uri');
+    _debugLog('🔐 requiresAuth: $requiresAuth');
+    _debugLog('📋 headers: ${_sanitizeHeaders(requestHeaders)}');
     if (body != null) {
-      _debugLog('body: ${_sanitizeBody(body)}');
+      _debugLog('📦 body: ${_sanitizeBody(body)}');
     }
 
     try {
-      final response = await _send(
+      var response = await _send(
         method,
         uri,
         requestHeaders,
         body,
       ).timeout(ApiConstants.requestTimeout);
+      if (response.statusCode == HttpStatus.unauthorized &&
+          requiresAuth &&
+          path != '/auth/refresh') {
+        _debugLog(
+          '🟠 🔄 Access token rejected; attempting one session refresh',
+        );
+        final refreshed = await _refreshAccessToken();
+        if (refreshed) {
+          final retryHeaders = await _buildHeaders(headers, true);
+          response = await _send(
+            method,
+            uri,
+            retryHeaders,
+            body,
+          ).timeout(ApiConstants.requestTimeout);
+          _debugLog(
+            '${_responseIcon(response.statusCode)} <-- '
+            '${response.statusCode} $method $uri '
+            '(after session refresh)',
+          );
+        }
+      }
       stopwatch.stop();
       _debugLog(
-        '<-- ${response.statusCode} $method $uri (${stopwatch.elapsedMilliseconds}ms)',
+        '${_responseIcon(response.statusCode)} RESPONSE <-- '
+        '${response.statusCode} $method $uri '
+        '(${stopwatch.elapsedMilliseconds}ms)',
       );
-      _debugLog('response: ${_truncateForLog(response.body)}');
+      _debugLog(
+        '${_responseIcon(response.statusCode)} body: '
+        '${_sanitizeResponseForLog(response.body)}',
+      );
       return _parseResponse(response);
     } on TimeoutException catch (error) {
       stopwatch.stop();
       _debugLog(
-        'TIMEOUT $method $uri (${stopwatch.elapsedMilliseconds}ms): $error',
+        '🔴 ⏱️ TIMEOUT $method $uri '
+        '(${stopwatch.elapsedMilliseconds}ms): $error',
       );
       throw ApiException(
         type: ApiExceptionType.timeout,
@@ -136,7 +164,8 @@ class ApiClient {
     } on SocketException catch (error) {
       stopwatch.stop();
       _debugLog(
-        'SOCKET ERROR $method $uri (${stopwatch.elapsedMilliseconds}ms): $error',
+        '🔴 🌐 SOCKET ERROR $method $uri '
+        '(${stopwatch.elapsedMilliseconds}ms): $error',
       );
       throw ApiException(
         type: ApiExceptionType.noInternet,
@@ -146,17 +175,19 @@ class ApiClient {
     } on ApiException catch (error) {
       stopwatch.stop();
       _debugLog(
-        'API ERROR $method $uri (${stopwatch.elapsedMilliseconds}ms): '
+        '🔴 🐛 API ERROR $method $uri '
+        '(${stopwatch.elapsedMilliseconds}ms): '
         '${error.statusCode ?? '-'} ${error.message}',
       );
       if (error.body != null) {
-        _debugLog('error body: ${_sanitizeBody(error.body)}');
+        _debugLog('🔴 📦 error body: ${_sanitizeBody(error.body)}');
       }
       rethrow;
     } catch (error) {
       stopwatch.stop();
       _debugLog(
-        'UNEXPECTED ERROR $method $uri (${stopwatch.elapsedMilliseconds}ms): $error',
+        '🔴 💥 UNEXPECTED ERROR $method $uri '
+        '(${stopwatch.elapsedMilliseconds}ms): $error',
       );
       throw ApiException(
         type: ApiExceptionType.unexpected,
@@ -174,39 +205,59 @@ class ApiClient {
     bool requiresAuth = true,
   }) async {
     final uri = _buildUri(path, null);
-    final request = http.MultipartRequest('POST', uri);
-    final requestHeaders = await _buildHeaders(headers, requiresAuth);
-    requestHeaders.remove(HttpHeaders.contentTypeHeader);
-    request.headers.addAll(requestHeaders);
     final stopwatch = Stopwatch()..start();
 
-    _debugLog('--> POST $uri');
-    _debugLog('upload file: $filePath');
-    _debugLog('fields: ${_sanitizeBody(fields ?? <String, Object?>{})}');
-    _debugLog('headers: ${_sanitizeHeaders(requestHeaders)}');
-
-    for (final entry in (fields ?? <String, Object?>{}).entries) {
-      if (entry.value != null) {
-        request.fields[entry.key] = entry.value.toString();
-      }
-    }
-    request.files.add(await http.MultipartFile.fromPath(fieldName, filePath));
+    _debugLog('🔵 📤 UPLOAD REQUEST --> POST $uri');
+    _debugLog('📎 upload file: $filePath');
+    _debugLog('📦 fields: ${_sanitizeBody(fields ?? <String, Object?>{})}');
 
     try {
-      final streamed = await request.send().timeout(
-        ApiConstants.requestTimeout,
+      var response = await _sendMultipart(
+        uri: uri,
+        filePath: filePath,
+        fieldName: fieldName,
+        fields: fields,
+        headers: headers,
+        requiresAuth: requiresAuth,
       );
-      final response = await http.Response.fromStream(streamed);
+      if (response.statusCode == HttpStatus.unauthorized && requiresAuth) {
+        _debugLog(
+          '🟠 🔄 Upload access token rejected; '
+          'attempting one session refresh',
+        );
+        final refreshed = await _refreshAccessToken();
+        if (refreshed) {
+          response = await _sendMultipart(
+            uri: uri,
+            filePath: filePath,
+            fieldName: fieldName,
+            fields: fields,
+            headers: headers,
+            requiresAuth: true,
+          );
+          _debugLog(
+            '${_responseIcon(response.statusCode)} <-- '
+            '${response.statusCode} POST $uri '
+            '(upload after session refresh)',
+          );
+        }
+      }
       stopwatch.stop();
       _debugLog(
-        '<-- ${response.statusCode} POST $uri (${stopwatch.elapsedMilliseconds}ms)',
+        '${_responseIcon(response.statusCode)} UPLOAD RESPONSE <-- '
+        '${response.statusCode} POST $uri '
+        '(${stopwatch.elapsedMilliseconds}ms)',
       );
-      _debugLog('response: ${_truncateForLog(response.body)}');
+      _debugLog(
+        '${_responseIcon(response.statusCode)} body: '
+        '${_sanitizeResponseForLog(response.body)}',
+      );
       return _parseResponse(response);
     } on TimeoutException catch (error) {
       stopwatch.stop();
       _debugLog(
-        'UPLOAD TIMEOUT POST $uri (${stopwatch.elapsedMilliseconds}ms): $error',
+        '🔴 ⏱️ UPLOAD TIMEOUT POST $uri '
+        '(${stopwatch.elapsedMilliseconds}ms): $error',
       );
       throw ApiException(
         type: ApiExceptionType.timeout,
@@ -216,7 +267,8 @@ class ApiClient {
     } on SocketException catch (error) {
       stopwatch.stop();
       _debugLog(
-        'UPLOAD SOCKET ERROR POST $uri (${stopwatch.elapsedMilliseconds}ms): $error',
+        '🔴 🌐 UPLOAD SOCKET ERROR POST $uri '
+        '(${stopwatch.elapsedMilliseconds}ms): $error',
       );
       throw ApiException(
         type: ApiExceptionType.noInternet,
@@ -226,23 +278,49 @@ class ApiClient {
     } on ApiException catch (error) {
       stopwatch.stop();
       _debugLog(
-        'UPLOAD API ERROR POST $uri (${stopwatch.elapsedMilliseconds}ms): '
+        '🔴 🐛 UPLOAD API ERROR POST $uri '
+        '(${stopwatch.elapsedMilliseconds}ms): '
         '${error.statusCode ?? '-'} ${error.message}',
       );
       if (error.body != null) {
-        _debugLog('error body: ${_sanitizeBody(error.body)}');
+        _debugLog('🔴 📦 error body: ${_sanitizeBody(error.body)}');
       }
       rethrow;
     } catch (error) {
       stopwatch.stop();
       _debugLog(
-        'UPLOAD UNEXPECTED ERROR POST $uri (${stopwatch.elapsedMilliseconds}ms): $error',
+        '🔴 💥 UPLOAD UNEXPECTED ERROR POST $uri '
+        '(${stopwatch.elapsedMilliseconds}ms): $error',
       );
       throw ApiException(
         type: ApiExceptionType.unexpected,
         message: 'Unexpected upload error: $error',
       );
     }
+  }
+
+  Future<http.Response> _sendMultipart({
+    required Uri uri,
+    required String filePath,
+    required String fieldName,
+    required Map<String, Object?>? fields,
+    required Map<String, String>? headers,
+    required bool requiresAuth,
+  }) async {
+    final request = http.MultipartRequest('POST', uri);
+    final requestHeaders = await _buildHeaders(headers, requiresAuth);
+    requestHeaders.remove(HttpHeaders.contentTypeHeader);
+    request.headers.addAll(requestHeaders);
+    _debugLog('📋 headers: ${_sanitizeHeaders(requestHeaders)}');
+
+    for (final entry in (fields ?? <String, Object?>{}).entries) {
+      if (entry.value != null) {
+        request.fields[entry.key] = entry.value.toString();
+      }
+    }
+    request.files.add(await http.MultipartFile.fromPath(fieldName, filePath));
+    final streamed = await request.send().timeout(ApiConstants.requestTimeout);
+    return http.Response.fromStream(streamed);
   }
 
   Future<http.Response> _send(
@@ -324,6 +402,77 @@ class ApiClient {
     return requestHeaders;
   }
 
+  Future<bool> _refreshAccessToken() async {
+    final refreshToken = await _tokenStore.getRefreshToken();
+    if (refreshToken == null || refreshToken.isEmpty) {
+      await _tokenStore.clear();
+      return false;
+    }
+
+    final uri = _buildUri('/auth/refresh', null);
+    final response = await _httpClient
+        .post(
+          uri,
+          headers: {
+            HttpHeaders.acceptHeader: 'application/json',
+            HttpHeaders.contentTypeHeader: 'application/json',
+            HttpHeaders.cookieHeader: 'refreshToken=$refreshToken',
+          },
+          body: jsonEncode({'refreshToken': refreshToken}),
+        )
+        .timeout(ApiConstants.requestTimeout);
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      _debugLog('Session refresh failed with ${response.statusCode}');
+      await _tokenStore.clear();
+      return false;
+    }
+
+    final decoded = _decodeBody(response.body);
+    final data = decoded is Map && decoded['data'] is Map
+        ? Map<String, dynamic>.from(decoded['data'] as Map)
+        : decoded is Map
+        ? Map<String, dynamic>.from(decoded)
+        : const <String, dynamic>{};
+    final setCookie = response.headers[HttpHeaders.setCookieHeader] ?? '';
+    final accessToken =
+        _firstString(data, const [
+          'accessToken',
+          'access_token',
+          'token',
+          'jwt',
+        ]) ??
+        _cookieValue(setCookie, 'accessToken');
+    final nextRefreshToken =
+        _firstString(data, const ['refreshToken', 'refresh_token']) ??
+        _cookieValue(setCookie, 'refreshToken') ??
+        refreshToken;
+
+    if (accessToken == null || accessToken.isEmpty) {
+      await _tokenStore.clear();
+      return false;
+    }
+    await _tokenStore.saveTokens(
+      accessToken: accessToken,
+      refreshToken: nextRefreshToken,
+    );
+    _debugLog('Session refreshed successfully');
+    return true;
+  }
+
+  static String? _firstString(Map<String, dynamic> map, List<String> keys) {
+    for (final key in keys) {
+      final value = map[key]?.toString().trim();
+      if (value != null && value.isNotEmpty) return value;
+    }
+    return null;
+  }
+
+  static String? _cookieValue(String setCookie, String name) {
+    final match = RegExp('(?:^|,?\\s*)$name=([^;]+)').firstMatch(setCookie);
+    return match?.group(1);
+  }
+
   Map<String, String>? _stringifyQuery(Map<String, Object?>? queryParameters) {
     if (queryParameters == null) {
       return null;
@@ -342,7 +491,8 @@ class ApiClient {
 
   ApiResponse<dynamic> _parseResponse(http.Response response) {
     final decodedBody = _decodeBody(response.body);
-    if (response.statusCode >= 200 && response.statusCode < 300) {
+    if ((response.statusCode >= 200 && response.statusCode < 300) ||
+        response.statusCode == HttpStatus.notModified) {
       return ApiResponse<dynamic>(
         statusCode: response.statusCode,
         data: decodedBody,
@@ -460,6 +610,25 @@ class ApiClient {
       return text;
     }
     return '${text.substring(0, maxLength)}... <truncated ${text.length - maxLength} chars>';
+  }
+
+  static String _sanitizeResponseForLog(String responseBody) {
+    if (responseBody.trim().isEmpty) return '<empty>';
+    try {
+      return _truncateForLog(_sanitizeBody(jsonDecode(responseBody)));
+    } on FormatException {
+      return _truncateForLog(responseBody);
+    }
+  }
+
+  static String _responseIcon(int statusCode) {
+    if (statusCode >= 200 && statusCode < 400) {
+      return '🟢 🐛';
+    }
+    if (statusCode >= 400 && statusCode < 500) {
+      return '🟠 🐛';
+    }
+    return '🔴 🐛';
   }
 
   static void _debugLog(String message) {

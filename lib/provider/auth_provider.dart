@@ -10,7 +10,7 @@ class AuthProvider extends ApiProviderBase {
     : _repository = repository ?? AuthRepository();
 
   final AuthRepository _repository;
-  UserRole _role = UserRole.owner;
+  UserRole _role = UserRole.telecaller;
   AuthSession? _session;
 
   UserRole get role => _role;

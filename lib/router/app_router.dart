@@ -7,6 +7,7 @@ import 'package:truerealtycrm/screen/login_screen.dart';
 import 'package:truerealtycrm/screen/leads_screen.dart';
 import 'package:truerealtycrm/screen/lead_detail_screen.dart';
 import 'package:truerealtycrm/screen/lead_profile_management_screen.dart';
+import 'package:truerealtycrm/screen/add_lead_screen.dart';
 import 'package:truerealtycrm/screen/add_activity_screen.dart';
 import 'package:truerealtycrm/screen/dashboard_screen.dart';
 import 'package:truerealtycrm/screen/forgot_password_screen.dart';
@@ -23,6 +24,8 @@ import 'package:truerealtycrm/screen/my_follow_ups_screen.dart';
 import 'package:truerealtycrm/screen/my_performance_screen.dart';
 import 'package:truerealtycrm/screen/employee_directory_screen.dart';
 import 'package:truerealtycrm/screen/telecaller_communication_screen.dart';
+import 'package:truerealtycrm/screen/notifications_screen.dart';
+import 'package:truerealtycrm/screen/personal_settings_screen.dart';
 
 import '../screen/my_leads_screen.dart';
 
@@ -34,6 +37,7 @@ class AppRouter {
   static const String leads = '/leads';
   static const String leadDetail = '/lead-detail';
   static const String leadProfileManagement = '/lead-profile-management';
+  static const String addLead = '/add-lead';
   static const String addActivity = '/add-activity';
   static const String assignLeads = '/assign-leads';
   static const String tasks = '/tasks';
@@ -42,13 +46,15 @@ class AppRouter {
   static const String siteVisits = '/site-visits';
   static const String telecallerDashboard = '/telecaller-dashboard';
   static const String telecallerLeadDetails = '/telecaller-lead-details';
-  static const String myleads ='/my-leads';
+  static const String myleads = '/my-leads';
   static const String myLeadsFilter = '/my-leads-filter';
   static const String followUpTest = '/follow-up-test';
   static const String myFollowUps = '/my-follow-ups';
   static const String myPerformance = '/my-performance';
   static const String employeeDirectory = '/employee-directory';
   static const String telecallerCommunication = '/telecaller-communication';
+  static const String notifications = '/notifications';
+  static const String personalSettings = '/personal-settings';
 
   static Route<dynamic> generateRoute(RouteSettings settings) {
     switch (settings.name) {
@@ -78,47 +84,47 @@ class AppRouter {
         return MaterialPageRoute(
           builder: (_) => LeadProfileManagementScreen(lead: lead),
         );
+      case addLead:
+        return MaterialPageRoute(builder: (_) => const AddLeadScreen());
       case addActivity:
         return MaterialPageRoute(builder: (_) => const AddActivityScreen());
       case assignLeads:
         return MaterialPageRoute(builder: (_) => const AssignLeadsScreen());
       case tasks:
-        return MaterialPageRoute(builder: (_) => const Scaffold(body: SafeArea(child: TasksScreen())));
+        return MaterialPageRoute(
+          builder: (_) => const Scaffold(body: SafeArea(child: TasksScreen())),
+        );
       case reports:
-        return MaterialPageRoute(builder: (_) => const Scaffold(body: SafeArea(child: ReportsScreen())));
+        return MaterialPageRoute(
+          builder: (_) =>
+              const Scaffold(body: SafeArea(child: ReportsScreen())),
+        );
       case logoutConfirmation:
-        return MaterialPageRoute(builder: (_) => const LogoutConfirmationScreen());
+        return MaterialPageRoute(
+          builder: (_) => const LogoutConfirmationScreen(),
+        );
       case siteVisits:
-        return MaterialPageRoute(builder: (_) => const SiteVisitDetailsScreen());
+        return MaterialPageRoute(
+          builder: (_) => const SiteVisitDetailsScreen(),
+        );
       case telecallerDashboard:
         return MaterialPageRoute(
           builder: (_) => const _TelecallerDashboardRouteEntry(),
         );
 
       case myleads:
-        return MaterialPageRoute(
-          builder: (_) => const MyLeadsScreen(),
-        );
+        return MaterialPageRoute(builder: (_) => const MyLeadsScreen());
 
       case myLeadsFilter:
-        return MaterialPageRoute(
-          builder: (_) => const MyLeadsFilterScreen(),
-        );
+        return MaterialPageRoute(builder: (_) => const MyLeadsFilterScreen());
 
       case followUpTest:
-        return MaterialPageRoute(
-          builder: (_) =>
-          const FollowUpTestScreen(),
-        );
-      
+        return MaterialPageRoute(builder: (_) => const FollowUpTestScreen());
+
       case myFollowUps:
-        return MaterialPageRoute(
-          builder: (_) => const MyFollowUpsScreen(),
-        );
+        return MaterialPageRoute(builder: (_) => const MyFollowUpsScreen());
       case myPerformance:
-        return MaterialPageRoute(
-          builder: (_) => const MyPerformanceScreen(),
-        );
+        return MaterialPageRoute(builder: (_) => const MyPerformanceScreen());
       case employeeDirectory:
         return MaterialPageRoute(
           builder: (_) =>
@@ -132,6 +138,12 @@ class AppRouter {
       case telecallerCommunication:
         return MaterialPageRoute(
           builder: (_) => const TelecallerCommunicationScreen(),
+        );
+      case notifications:
+        return MaterialPageRoute(builder: (_) => const NotificationsScreen());
+      case personalSettings:
+        return MaterialPageRoute(
+          builder: (_) => const PersonalSettingsScreen(),
         );
       default:
         return MaterialPageRoute(

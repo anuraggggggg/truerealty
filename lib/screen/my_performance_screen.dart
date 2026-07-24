@@ -1,11 +1,21 @@
 import 'dart:math' as math;
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:truerealtycrm/provider/dashboard_provider.dart';
+import 'package:truerealtycrm/provider/leads_provider.dart';
+import 'package:truerealtycrm/provider/reports_provider.dart';
 
-class MyPerformanceScreen extends StatelessWidget {
+class MyPerformanceScreen extends StatefulWidget {
   const MyPerformanceScreen({super.key});
+
+  @override
+  State<MyPerformanceScreen> createState() => _MyPerformanceScreenState();
 
   static const double headerIconSize = 22;
   static const double actionIconSize = 22;
@@ -72,21 +82,27 @@ class MyPerformanceScreen extends StatelessWidget {
     color: Color(0xFF16A34A),
   );
 
+  static const List<_DailySummary> _dailySummaries = [];
+
+  /*
+   * Historical UI mock values are excluded from the compiled application.
+   * Runtime values are built in _MyPerformanceScreenState from API responses.
+   *
   static const List<_PerformanceMetric> _topMetrics = [
     _PerformanceMetric(
-      label: 'Leads\nAssigned',
+      label: 'Leads Assigned',
       value: '5',
       icon: Icons.group_add_outlined,
       color: Color(0xFF2563EB),
     ),
     _PerformanceMetric(
-      label: 'Total\nCalls',
+      label: 'Total Calls',
       value: '5',
       icon: Icons.call_outlined,
       color: Color(0xFFF97316),
     ),
     _PerformanceMetric(
-      label: 'Connected\nCalls',
+      label: 'Connected Calls',
       value: '5',
       icon: Icons.phone_in_talk_outlined,
       color: Color(0xFF10B981),
@@ -98,19 +114,382 @@ class MyPerformanceScreen extends StatelessWidget {
       color: Color(0xFFF97316),
     ),
     _PerformanceMetric(
-      label: 'Converted\nLeads',
+      label: 'Converted Leads',
       value: '2',
       icon: Icons.workspace_premium_outlined,
       color: Color(0xFF2563EB),
     ),
     _PerformanceMetric(
-      label: 'Conversion\n%',
+      label: 'Conversion %',
       value: '0',
       icon: Icons.pie_chart_outline,
       color: Color(0xFF10B981),
     ),
   ];
+   */
+}
 
+class _MyPerformanceScreenState extends State<MyPerformanceScreen> {
+  bool _isLoading = true;
+  bool _isExporting = false;
+  String? _error;
+  Object? _dashboardData;
+  Object? _performanceData;
+  Object? _conversionData;
+  List<LeadModel> _leads = const [];
+  List<dynamic> _followUps = const [];
+  String _selectedPeriod = 'This Week';
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadPerformance());
+  }
+
+  Future<void> _loadPerformance() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    final dashboardProvider = context.read<DashboardProvider>();
+    final reportsProvider = context.read<ReportsProvider>();
+    final leadProvider = context.read<LeadProvider>();
+    final dashboard = await dashboardProvider.fetchTelecallerDashboard();
+    final performance = await dashboardProvider.fetchAdminPerformance(
+      dateFrom: _dateKey(_rangeStart),
+      dateTo: _dateKey(_rangeEnd),
+      role: 'telecaller',
+      limit: 100,
+    );
+    final conversion = await reportsProvider.fetchConversionAnalytics(
+      dateFrom: _dateKey(_rangeStart),
+      dateTo: _dateKey(_rangeEnd),
+    );
+    final leads = await leadProvider.fetchLeads(
+      limit: 500,
+      dateFrom: _dateKey(_rangeStart),
+      dateTo: _dateKey(_rangeEnd),
+    );
+    final leadItems = List<LeadModel>.from(leadProvider.leads);
+    final followUps = await leadProvider.fetchFollowUps(limit: 500);
+    if (!mounted) return;
+    setState(() {
+      _dashboardData = dashboard?.data;
+      _performanceData = performance?.data;
+      _conversionData = conversion?.data;
+      _leads = leadItems;
+      _followUps = _extractList(followUps?.data);
+      _error = dashboard == null && leads == null
+          ? dashboardProvider.error ??
+                leadProvider.error ??
+                'Unable to load performance.'
+          : null;
+      _isLoading = false;
+    });
+  }
+
+  DateTime get _weekStart {
+    final now = DateTime.now();
+    final day = DateTime(now.year, now.month, now.day);
+    return day.subtract(Duration(days: day.weekday - 1));
+  }
+
+  DateTime get _weekEnd => _weekStart.add(const Duration(days: 6));
+
+  DateTime get _rangeStart {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    switch (_selectedPeriod) {
+      case 'Today':
+        return today;
+      case 'This Month':
+        return DateTime(now.year, now.month);
+      default:
+        return _weekStart;
+    }
+  }
+
+  DateTime get _rangeEnd {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    switch (_selectedPeriod) {
+      case 'Today':
+        return today;
+      case 'This Month':
+        return DateTime(now.year, now.month + 1, 0);
+      default:
+        return _weekEnd;
+    }
+  }
+
+  List<Object?> get _metricSource => [_dashboardData, _performanceData];
+
+  int get _totalCalls =>
+      _findInt(_metricSource, const ['totalCalls', 'callsMade', 'callCount']);
+  int get _connectedCalls => _findInt(_metricSource, const [
+    'connectedCalls',
+    'callsConnected',
+    'connected',
+  ]);
+  int get _interested => _leads
+      .where((lead) => lead.status.toLowerCase().contains('interested'))
+      .length;
+  int get _converted => _leads
+      .where((lead) => lead.status.toLowerCase().contains('converted'))
+      .length;
+  int get _overdueFollowUps {
+    final now = DateTime.now();
+    return _followUps.where((item) {
+      final Map<String, dynamic> map = item is Map
+          ? Map<String, dynamic>.from(item)
+          : const {};
+      final date = _findDate(map, const [
+        'scheduledAt',
+        'dueAt',
+        'nextFollowUpAt',
+      ]);
+      final status = _findText(map, const [
+        'status',
+        'followUpStatus',
+      ]).toLowerCase();
+      return date != null &&
+          !date.isBefore(_rangeStart) &&
+          date.isBefore(_rangeEnd.add(const Duration(days: 1))) &&
+          date.isBefore(now) &&
+          !status.contains('complete') &&
+          !status.contains('cancel');
+    }).length;
+  }
+
+  List<_PerformanceMetric> get _topMetrics => [
+    _PerformanceMetric(
+      label: 'Leads\nAssigned',
+      value: _leads.length.toString(),
+      icon: Icons.group_add_outlined,
+      color: const Color(0xFF2563EB),
+    ),
+    _PerformanceMetric(
+      label: 'Total\nCalls',
+      value: _valueOrDash(_totalCalls),
+      icon: Icons.call_outlined,
+      color: const Color(0xFFF97316),
+    ),
+    _PerformanceMetric(
+      label: 'Connected\nCalls',
+      value: _valueOrDash(_connectedCalls),
+      icon: Icons.phone_in_talk_outlined,
+      color: const Color(0xFF10B981),
+    ),
+    _PerformanceMetric(
+      label: 'Interested Leads',
+      value: _interested.toString(),
+      icon: Icons.thumb_up_alt_outlined,
+      color: const Color(0xFFF97316),
+    ),
+    _PerformanceMetric(
+      label: 'Converted\nLeads',
+      value: _converted.toString(),
+      icon: Icons.workspace_premium_outlined,
+      color: const Color(0xFF2563EB),
+    ),
+    _PerformanceMetric(
+      label: 'Conversion\n%',
+      value: _leads.isEmpty
+          ? '0%'
+          : '${((_converted / _leads.length) * 100).toStringAsFixed(1)}%',
+      icon: Icons.pie_chart_outline,
+      color: const Color(0xFF10B981),
+    ),
+  ];
+
+  List<_PerformanceMetric> get _wideMetrics => [
+    _PerformanceMetric(
+      label: 'Avg Response Time',
+      value: _findDisplay(_metricSource, const [
+        'avgResponseTime',
+        'averageResponseTime',
+      ]),
+      icon: Icons.alarm_outlined,
+      color: const Color(0xFFF97316),
+    ),
+    _PerformanceMetric(
+      label: 'On-time Follow-up %',
+      value: _findDisplay(_metricSource, const [
+        'onTimeFollowUpPercentage',
+        'onTimeFollowUpRate',
+      ], suffix: '%'),
+      icon: Icons.check_circle,
+      color: const Color(0xFF10B981),
+    ),
+    _PerformanceMetric(
+      label: 'Site Visits Scheduled',
+      value: _findDisplay(_metricSource, const [
+        'siteVisitsScheduled',
+        'scheduledSiteVisits',
+      ]),
+      icon: Icons.event_note_outlined,
+      color: const Color(0xFF9333EA),
+    ),
+    _PerformanceMetric(
+      label: 'Follow-up Breaches',
+      value: _overdueFollowUps.toString(),
+      icon: Icons.calendar_today_outlined,
+      color: const Color(0xFFDC2626),
+    ),
+  ];
+
+  List<_CallOutcome> get _leadStatuses {
+    final counts = <String, int>{};
+    for (final lead in _leads) {
+      final status = lead.status.trim().isEmpty
+          ? 'Unknown'
+          : lead.status.trim();
+      counts[status] = (counts[status] ?? 0) + 1;
+    }
+    const colors = [
+      Color(0xFF10B981),
+      Color(0xFF0EA5E9),
+      Color(0xFFF59E0B),
+      Color(0xFFA855F7),
+      Color(0xFF3B82F6),
+      Color(0xFFEF4444),
+    ];
+    return counts.entries.toList().asMap().entries.map((entry) {
+      final count = entry.value.value;
+      final percentage = _leads.isEmpty ? 0 : count * 100 / _leads.length;
+      return _CallOutcome(
+        label: entry.value.key,
+        count: count.toString(),
+        percentage: '(${percentage.toStringAsFixed(1)}%)',
+        color: colors[entry.key % colors.length],
+      );
+    }).toList();
+  }
+
+  List<_CallOutcome> get _callOutcomes {
+    final list = _findList(_metricSource, const [
+      'callOutcomes',
+      'callOutcomeDistribution',
+    ]);
+    return list
+        .asMap()
+        .entries
+        .map((entry) {
+          final map = entry.value is Map
+              ? Map<String, dynamic>.from(entry.value as Map)
+              : const <String, dynamic>{};
+          final count = _findInt(map, const ['count', 'value', 'total']);
+          final percentage = _totalCalls == 0 ? 0 : count * 100 / _totalCalls;
+          const colors = [
+            Color(0xFF0F2F66),
+            Color(0xFFF97316),
+            Color(0xFFEAB308),
+            Color(0xFF3B82F6),
+            Color(0xFFA855F7),
+            Color(0xFFEF4444),
+          ];
+          return _CallOutcome(
+            label: _findText(map, const ['label', 'name', 'outcome']),
+            count: count.toString(),
+            percentage: '(${percentage.toStringAsFixed(1)}%)',
+            color: colors[entry.key % colors.length],
+          );
+        })
+        .where((item) => item.label.isNotEmpty)
+        .toList();
+  }
+
+  List<_BarSeries> get _barSeries {
+    final previous = _findMap(_conversionData, const [
+      'previousPeriod',
+      'lastWeek',
+    ]);
+    return [
+      _BarSeries(
+        label: 'Leads Assigned',
+        backgroundValue: _findInt(previous, const [
+          'leadsAssigned',
+          'leads',
+        ]).toDouble(),
+        value: _leads.length.toDouble(),
+      ),
+      _BarSeries(
+        label: 'Calls Made',
+        backgroundValue: _findInt(previous, const [
+          'callsMade',
+          'totalCalls',
+        ]).toDouble(),
+        value: _totalCalls.toDouble(),
+      ),
+      _BarSeries(
+        label: 'Connected',
+        backgroundValue: _findInt(previous, const [
+          'connectedCalls',
+          'connected',
+        ]).toDouble(),
+        value: _connectedCalls.toDouble(),
+      ),
+    ];
+  }
+
+  Future<void> _exportPerformance() async {
+    if (_isExporting) return;
+    setState(() => _isExporting = true);
+    try {
+      final rows = <List<String>>[
+        ['My Performance Export'],
+        ['Period', _selectedPeriod],
+        ['Date From', _dateKey(_rangeStart)],
+        ['Date To', _dateKey(_rangeEnd)],
+        [],
+        ['Summary Metric', 'Value'],
+        ..._topMetrics.map(
+          (metric) => [metric.label.replaceAll('\n', ' '), metric.value],
+        ),
+        ..._wideMetrics.map((metric) => [metric.label, metric.value]),
+        [],
+        ['Call Outcome', 'Count', 'Percentage'],
+        if (_callOutcomes.isEmpty)
+          ['Not available', '—', '—']
+        else
+          ..._callOutcomes.map(
+            (outcome) => [outcome.label, outcome.count, outcome.percentage],
+          ),
+        [],
+        ['Lead Status', 'Count', 'Percentage'],
+        if (_leadStatuses.isEmpty)
+          ['No lead status data', '0', '0%']
+        else
+          ..._leadStatuses.map(
+            (status) => [status.label, status.count, status.percentage],
+          ),
+      ];
+      final csv = rows.map((row) => row.map(_csvValue).join(',')).join('\r\n');
+      final directory = await getTemporaryDirectory();
+      final file = File(
+        '${directory.path}/my-performance-${_dateKey(DateTime.now())}.csv',
+      );
+      await file.writeAsString('\uFEFF$csv');
+      await Share.shareXFiles(
+        [XFile(file.path, mimeType: 'text/csv')],
+        subject: 'My Performance - $_selectedPeriod',
+        text:
+            'Performance report for ${_formatDate(_rangeStart)} to ${_formatDate(_rangeEnd)}.',
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Unable to export performance: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isExporting = false);
+    }
+  }
+
+  String _csvValue(String value) => '"${value.replaceAll('"', '""')}"';
+
+  /*
   static const List<_PerformanceMetric> _wideMetrics = [
     _PerformanceMetric(
       label: 'Avg Response Time',
@@ -296,198 +675,238 @@ class MyPerformanceScreen extends StatelessWidget {
     ),
   ];
 
+  */
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(20.w, 18.h, 20.w, 24.h),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'My Performance',
-                textAlign: TextAlign.left,
-                maxLines: 1,
-                style: TextStyle(
-                  fontFamily: 'Manrope',
-                  fontSize: 30.sp,
-                  fontWeight: FontWeight.bold,
-                  fontStyle: FontStyle.normal,
-                  height: 1.4,
-                  letterSpacing: -0.5,
-                  color: const Color(0xFF002149),
-                ),
-              ),
-              SizedBox(height: 8.h),
-              Text(
-                'Track your daily, weekly and monthly performance.',
-                style: TextStyle(
-                  fontFamily: 'Inter',
-                  fontSize: 16.sp,
-                  fontWeight: FontWeight.normal,
-                  fontStyle: FontStyle.normal,
-                  height: 1.43,
-                  letterSpacing: 0.0,
-                  color: const Color(0xFF2563EB),
-                ),
-              ),
-              SizedBox(height: 22.h),
-              const Divider(height: 1, color: Color(0xFFE5E7EB)),
-              SizedBox(height: 20.h),
-              _FieldShell(
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.calendar_today_outlined,
-                      size: MyPerformanceScreen.headerIconSize.sp,
-                      color: const Color(0xFF4B5563),
-                    ),
-                    Expanded(
-                      child: Center(
-                        child: Text(
-                          '20 May 2025 - 20 May 2025',
-                          style: TextStyle(
-                            fontFamily: 'Inter',
-                            fontSize: 18.sp,
-                            fontWeight: FontWeight.w400,
-                            fontStyle: FontStyle.normal,
-                            height: 1.43,
-                            color: const Color(0xFF44474E),
-                          ),
-                        ),
-                      ),
-                    ),
-                    Icon(
-                      Icons.calendar_today_outlined,
-                      size: MyPerformanceScreen.headerIconSize.sp,
-                      color: const Color(0xFF4B5563),
-                    ),
-                  ],
-                ),
-              ),
-              SizedBox(height: 12.h),
-              Container(
-                width: 128.w,
-                padding: EdgeInsets.symmetric(horizontal: 12.w),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(10.r),
-                  border: Border.all(color: const Color(0xFFD1D5DB)),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x08000000),
-                      blurRadius: 10,
-                      offset: Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: 'This Week',
-                    icon: Icon(
-                      Icons.keyboard_arrow_down_rounded,
-                      size: MyPerformanceScreen.headerIconSize.sp,
-                    ),
-                    isExpanded: true,
-                    items: [
-                      DropdownMenuItem(
-                        value: 'This Week',
-                        child: Text(
-                          'This Week',
-                          style: TextStyle(
-                            fontFamily: 'Inter',
-                            fontSize: 14.sp,
-                            fontWeight: FontWeight.w500,
-                            fontStyle: FontStyle.normal,
-                            height: 1.33,
-                            color: const Color(0xFF002149),
-                          ),
-                        ),
-                      ),
-                    ],
-                    onChanged: (_) {},
-                    style: GoogleFonts.inter(
-                      color: const Color(0xFF082B63),
-                      fontSize: 15.sp,
-                      fontWeight: FontWeight.w600,
-                    ),
+        child: RefreshIndicator(
+          onRefresh: _loadPerformance,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: EdgeInsets.fromLTRB(20.w, 18.h, 20.w, 24.h),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (_isLoading) const LinearProgressIndicator(),
+                if (_error != null) ...[
+                  _PerformanceError(
+                    message: _error!,
+                    onRetry: _loadPerformance,
                   ),
-                ),
-              ),
-              SizedBox(height: 20.h),
-              OutlinedButton.icon(
-                onPressed: () {},
-                style: OutlinedButton.styleFrom(
-                  minimumSize: Size(double.infinity, 48.h),
-                  backgroundColor: Colors.white,
-                  side: const BorderSide(color: Color(0xFFD1D5DB)),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10.r),
-                  ),
-                ),
-                icon: Icon(
-                  Icons.download_outlined,
-                  size: MyPerformanceScreen.actionIconSize.sp,
-                  color: const Color(0xFF082B63),
-                ),
-                label: Text(
-                  'Export',
-                  style: GoogleFonts.inter(
+                  SizedBox(height: 12.h),
+                ],
+                Text(
+                  'My Performance',
+                  textAlign: TextAlign.left,
+                  maxLines: 1,
+                  style: TextStyle(
+                    fontFamily: 'Manrope',
+                    fontSize: 30.sp,
+                    fontWeight: FontWeight.bold,
+                    fontStyle: FontStyle.normal,
+                    height: 1.4,
+                    letterSpacing: -0.5,
                     color: const Color(0xFF002149),
-                    fontSize: 18.sp,
-                    fontWeight: FontWeight.w500,
-                    height: 1.33,
                   ),
                 ),
-              ),
-              SizedBox(height: 24.h),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final smallCardWidth = (constraints.maxWidth - 20.w) / 3;
-                  final wideCardWidth = (constraints.maxWidth - 12.w) / 2;
-
-                  return Column(
+                SizedBox(height: 8.h),
+                Text(
+                  'Track your daily, weekly and monthly performance.',
+                  style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 16.sp,
+                    fontWeight: FontWeight.normal,
+                    fontStyle: FontStyle.normal,
+                    height: 1.43,
+                    letterSpacing: 0.0,
+                    color: const Color(0xFF2563EB),
+                  ),
+                ),
+                SizedBox(height: 22.h),
+                const Divider(height: 1, color: Color(0xFFE5E7EB)),
+                SizedBox(height: 20.h),
+                _FieldShell(
+                  child: Row(
                     children: [
-                      Wrap(
-                        spacing: 10.w,
-                        runSpacing: 10.h,
-                        children: _topMetrics
-                            .map(
-                              (metric) => SizedBox(
-                                width: smallCardWidth,
-                                child: _MetricCard(metric: metric, compact: true),
-                              ),
-                            )
-                            .toList(),
+                      Icon(
+                        Icons.calendar_today_outlined,
+                        size: MyPerformanceScreen.headerIconSize.sp,
+                        color: const Color(0xFF4B5563),
                       ),
-                      SizedBox(height: 10.h),
-                      Wrap(
-                        spacing: 12.w,
-                        runSpacing: 10.h,
-                        children: _wideMetrics
-                            .map(
-                              (metric) => SizedBox(
-                                width: wideCardWidth,
-                                child: _MetricCard(metric: metric),
-                              ),
-                            )
-                            .toList(),
+                      Expanded(
+                        child: Center(
+                          child: Text(
+                            '${_formatDate(_rangeStart)} - ${_formatDate(_rangeEnd)}',
+                            style: TextStyle(
+                              fontFamily: 'Inter',
+                              fontSize: 18.sp,
+                              fontWeight: FontWeight.w400,
+                              fontStyle: FontStyle.normal,
+                              height: 1.43,
+                              color: const Color(0xFF44474E),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Icon(
+                        Icons.calendar_today_outlined,
+                        size: MyPerformanceScreen.headerIconSize.sp,
+                        color: const Color(0xFF4B5563),
                       ),
                     ],
-                  );
-                },
-              ),
-              SizedBox(height: 18.h),
-              const _OverviewCard(),
-              SizedBox(height: 14.h),
-              const _OutcomeCard(),
-              SizedBox(height: 14.h),
-              const _LeadStatusCard(),
-              SizedBox(height: 14.h),
-              const _DailyPerformanceCard(),
-            ],
+                  ),
+                ),
+                SizedBox(height: 12.h),
+                Container(
+                  width: 128.w,
+                  padding: EdgeInsets.symmetric(horizontal: 12.w),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(10.r),
+                    border: Border.all(color: const Color(0xFFD1D5DB)),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x08000000),
+                        blurRadius: 10,
+                        offset: Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: _selectedPeriod,
+                      icon: Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        size: MyPerformanceScreen.headerIconSize.sp,
+                      ),
+                      isExpanded: true,
+                      items: const ['Today', 'This Week', 'This Month']
+                          .map(
+                            (period) => DropdownMenuItem(
+                              value: period,
+                              child: Text(
+                                period,
+                                style: TextStyle(
+                                  fontFamily: 'Inter',
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                  fontStyle: FontStyle.normal,
+                                  height: 1.33,
+                                  color: Color(0xFF002149),
+                                ),
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (period) {
+                        if (period == null || period == _selectedPeriod) return;
+                        setState(() => _selectedPeriod = period);
+                        _loadPerformance();
+                      },
+                      style: GoogleFonts.inter(
+                        color: const Color(0xFF082B63),
+                        fontSize: 15.sp,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(height: 20.h),
+                OutlinedButton.icon(
+                  onPressed: _isLoading || _isExporting
+                      ? null
+                      : _exportPerformance,
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: Size(double.infinity, 48.h),
+                    backgroundColor: Colors.white,
+                    side: const BorderSide(color: Color(0xFFD1D5DB)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10.r),
+                    ),
+                  ),
+                  icon: _isExporting
+                      ? SizedBox.square(
+                          dimension: 18.sp,
+                          child: const CircularProgressIndicator(
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : Icon(
+                          Icons.download_outlined,
+                          size: MyPerformanceScreen.actionIconSize.sp,
+                          color: const Color(0xFF082B63),
+                        ),
+                  label: Text(
+                    'Export',
+                    style: GoogleFonts.inter(
+                      color: const Color(0xFF002149),
+                      fontSize: 18.sp,
+                      fontWeight: FontWeight.w500,
+                      height: 1.33,
+                    ),
+                  ),
+                ),
+                SizedBox(height: 24.h),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final cardSpacing = 12.w;
+                    final twoColumnWidth =
+                        (constraints.maxWidth - cardSpacing) / 2;
+
+                    return Column(
+                      children: [
+                        Wrap(
+                          spacing: cardSpacing,
+                          runSpacing: 12.h,
+                          children: _topMetrics
+                              .map(
+                                (metric) => SizedBox(
+                                  width: twoColumnWidth,
+                                  child: _MetricCard(
+                                    metric: metric,
+                                    compact: true,
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                        ),
+                        SizedBox(height: 10.h),
+                        Wrap(
+                          spacing: cardSpacing,
+                          runSpacing: 12.h,
+                          children: _wideMetrics
+                              .map(
+                                (metric) => SizedBox(
+                                  width: twoColumnWidth,
+                                  child: _MetricCard(metric: metric),
+                                ),
+                              )
+                              .toList(),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+                SizedBox(height: 18.h),
+                _OverviewCard(series: _barSeries),
+                SizedBox(height: 14.h),
+                _OutcomeCard(outcomes: _callOutcomes, totalCalls: _totalCalls),
+                SizedBox(height: 14.h),
+                _LeadStatusCard(
+                  statuses: _leadStatuses,
+                  totalLeads: _leads.length,
+                ),
+                SizedBox(height: 14.h),
+                const _UnavailablePerformanceCard(
+                  title: 'Daily Performance',
+                  message:
+                      'Daily call, site-visit, remarks and follow-up aggregates are not returned by the available APIs.',
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -496,7 +915,9 @@ class MyPerformanceScreen extends StatelessWidget {
 }
 
 class _OverviewCard extends StatelessWidget {
-  const _OverviewCard();
+  const _OverviewCard({required this.series});
+
+  final List<_BarSeries> series;
 
   @override
   Widget build(BuildContext context) {
@@ -575,7 +996,7 @@ class _OverviewCard extends StatelessWidget {
                             ),
                           )
                           .toList(),
-                        ),
+                    ),
                   ),
                   SizedBox(width: 10.w),
                   Expanded(
@@ -596,7 +1017,7 @@ class _OverviewCard extends StatelessWidget {
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                             crossAxisAlignment: CrossAxisAlignment.end,
-                            children: MyPerformanceScreen._barSeries
+                            children: series
                                 .map((series) => _BarGroup(series: series))
                                 .toList(),
                           ),
@@ -615,7 +1036,10 @@ class _OverviewCard extends StatelessWidget {
 }
 
 class _OutcomeCard extends StatelessWidget {
-  const _OutcomeCard();
+  const _OutcomeCard({required this.outcomes, required this.totalCalls});
+
+  final List<_CallOutcome> outcomes;
+  final int totalCalls;
 
   @override
   Widget build(BuildContext context) {
@@ -652,7 +1076,7 @@ class _OutcomeCard extends StatelessWidget {
                   CustomPaint(
                     size: Size(180.w, 180.h),
                     painter: _DonutChartPainter(
-                      segments: MyPerformanceScreen._callOutcomes,
+                      segments: outcomes,
                       strokeWidth: 34,
                       gapRadians: 0.06,
                     ),
@@ -669,7 +1093,7 @@ class _OutcomeCard extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          '5',
+                          totalCalls.toString(),
                           style: GoogleFonts.inter(
                             color: const Color(0xFF0F2F66),
                             fontSize: 25.sp,
@@ -692,34 +1116,39 @@ class _OutcomeCard extends StatelessWidget {
             ),
           ),
           SizedBox(height: 18.h),
-          ...MyPerformanceScreen._callOutcomes.map(
-            (outcome) => Padding(
-              padding: EdgeInsets.only(bottom: 12.h),
-              child: Row(
-                children: [
-                  Container(
-                    width: 8.w,
-                    height: 8.w,
-                    decoration: BoxDecoration(
-                      color: outcome.color,
-                      shape: BoxShape.circle,
+          if (outcomes.isEmpty)
+            const _InlineUnavailable(
+              'Call outcome distribution was not found in the telecaller dashboard response.',
+            )
+          else
+            ...outcomes.map(
+              (outcome) => Padding(
+                padding: EdgeInsets.only(bottom: 12.h),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 8.w,
+                      height: 8.w,
+                      decoration: BoxDecoration(
+                        color: outcome.color,
+                        shape: BoxShape.circle,
+                      ),
                     ),
-                  ),
-                  SizedBox(width: 10.w),
-                  Expanded(
-                    child: Text(
-                      outcome.label,
-                      style: MyPerformanceScreen.itemLabelStyle,
+                    SizedBox(width: 10.w),
+                    Expanded(
+                      child: Text(
+                        outcome.label,
+                        style: MyPerformanceScreen.itemLabelStyle,
+                      ),
                     ),
-                  ),
-                  Text(
-                    '${outcome.count} ${outcome.percentage}',
-                    style: MyPerformanceScreen.countPercentageStyle,
-                  ),
-                ],
+                    Text(
+                      '${outcome.count} ${outcome.percentage}',
+                      style: MyPerformanceScreen.countPercentageStyle,
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
         ],
       ),
     );
@@ -727,7 +1156,10 @@ class _OutcomeCard extends StatelessWidget {
 }
 
 class _LeadStatusCard extends StatelessWidget {
-  const _LeadStatusCard();
+  const _LeadStatusCard({required this.statuses, required this.totalLeads});
+
+  final List<_CallOutcome> statuses;
+  final int totalLeads;
 
   @override
   Widget build(BuildContext context) {
@@ -764,7 +1196,7 @@ class _LeadStatusCard extends StatelessWidget {
                   CustomPaint(
                     size: Size(188.w, 188.h),
                     painter: _DonutChartPainter(
-                      segments: MyPerformanceScreen._leadStatuses,
+                      segments: statuses,
                       strokeWidth: 36,
                       gapRadians: 0.04,
                     ),
@@ -781,7 +1213,7 @@ class _LeadStatusCard extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          '5',
+                          totalLeads.toString(),
                           style: GoogleFonts.inter(
                             color: const Color(0xFF0F2F66),
                             fontSize: 16.sp,
@@ -804,33 +1236,37 @@ class _LeadStatusCard extends StatelessWidget {
             ),
           ),
           SizedBox(height: 14.h),
-          ...MyPerformanceScreen._leadStatuses.map(
-            (status) => Padding(
-              padding: EdgeInsets.only(bottom: 9.h),
-              child: Row(
-                children: [
-                  _LegendDot(color: status.color),
-                  SizedBox(width: 8.w),
-                  Expanded(
-                    child: Text(
-                      status.label,
-                      style: MyPerformanceScreen.itemLabelStyle,
+          if (statuses.isEmpty)
+            const _InlineUnavailable('No lead status data was returned.')
+          else
+            ...statuses.map(
+              (status) => Padding(
+                padding: EdgeInsets.only(bottom: 9.h),
+                child: Row(
+                  children: [
+                    _LegendDot(color: status.color),
+                    SizedBox(width: 8.w),
+                    Expanded(
+                      child: Text(
+                        status.label,
+                        style: MyPerformanceScreen.itemLabelStyle,
+                      ),
                     ),
-                  ),
-                  Text(
-                    '${status.count} ${status.percentage}',
-                    style: MyPerformanceScreen.countPercentageStyle,
-                  ),
-                ],
+                    Text(
+                      '${status.count} ${status.percentage}',
+                      style: MyPerformanceScreen.countPercentageStyle,
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
         ],
       ),
     );
   }
 }
 
+// ignore: unused_element
 class _DailyPerformanceCard extends StatelessWidget {
   const _DailyPerformanceCard();
 
@@ -863,8 +1299,14 @@ class _DailyPerformanceCard extends StatelessWidget {
           ),
           child: Column(
             children: [
-              for (var i = 0; i < MyPerformanceScreen._dailySummaries.length; i++) ...[
-                _DailySummaryBlock(summary: MyPerformanceScreen._dailySummaries[i]),
+              for (
+                var i = 0;
+                i < MyPerformanceScreen._dailySummaries.length;
+                i++
+              ) ...[
+                _DailySummaryBlock(
+                  summary: MyPerformanceScreen._dailySummaries[i],
+                ),
                 if (i != MyPerformanceScreen._dailySummaries.length - 1)
                   const Divider(height: 1, color: Color(0xFFE5E7EB)),
               ],
@@ -919,7 +1361,9 @@ class _DailySummaryBlock extends StatelessWidget {
                     Text(
                       summary.conversion,
                       style: summary.isTotal
-                          ? MyPerformanceScreen.conversionStyle.copyWith(color: Colors.white)
+                          ? MyPerformanceScreen.conversionStyle.copyWith(
+                              color: Colors.white,
+                            )
                           : MyPerformanceScreen.conversionStyle,
                     ),
                   ],
@@ -1005,8 +1449,8 @@ class _MetricCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      constraints: BoxConstraints(minHeight: compact ? 100.h : 90.h),
-      padding: EdgeInsets.fromLTRB(14.w, 12.h, 14.w, 14.h),
+      constraints: BoxConstraints(minHeight: compact ? 116.h : 108.h),
+      padding: EdgeInsets.fromLTRB(16.w, 15.h, 14.w, 16.h),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14.r),
@@ -1035,11 +1479,11 @@ class _MetricCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   metric.label,
-                  maxLines: compact ? 2 : 1,
-                  overflow: TextOverflow.ellipsis,
+                  maxLines: 2,
+                  overflow: TextOverflow.visible,
                   style: TextStyle(
                     fontFamily: 'Inter',
-                    fontSize: 15.sp,
+                    fontSize: 14.sp,
                     fontWeight: FontWeight.bold,
                     fontStyle: FontStyle.normal,
                     height: 1.33,
@@ -1049,12 +1493,12 @@ class _MetricCard extends StatelessWidget {
               ),
             ],
           ),
-          SizedBox(height: compact ? 16.h : 14.h),
+          SizedBox(height: compact ? 18.h : 16.h),
           Text(
             metric.value,
-                  style: GoogleFonts.inter(
-                    color: const Color(0xFF1F2937),
-                    fontSize: 21.sp,
+            style: GoogleFonts.inter(
+              color: const Color(0xFF1F2937),
+              fontSize: 21.sp,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -1084,7 +1528,9 @@ class _BarGroup extends StatelessWidget {
               children: [
                 Container(
                   width: 28.w,
-                  height: (series.backgroundValue / maxValue) * 185.h,
+                  height:
+                      (math.min(series.backgroundValue, maxValue) / maxValue) *
+                      185.h,
                   decoration: BoxDecoration(
                     color: const Color(0xFFD7DCE6),
                     borderRadius: BorderRadius.circular(2.r),
@@ -1093,7 +1539,7 @@ class _BarGroup extends StatelessWidget {
                 SizedBox(width: 6.w),
                 Container(
                   width: 28.w,
-                  height: (series.value / maxValue) * 185.h,
+                  height: (math.min(series.value, maxValue) / maxValue) * 185.h,
                   decoration: BoxDecoration(
                     color: const Color(0xFF255FAA),
                     borderRadius: BorderRadius.circular(2.r),
@@ -1243,6 +1689,190 @@ class _PerformanceMetric {
   final Color color;
 }
 
+class _UnavailablePerformanceCard extends StatelessWidget {
+  const _UnavailablePerformanceCard({
+    required this.title,
+    required this.message,
+  });
+
+  final String title;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(16.r),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14.r),
+        border: Border.all(color: const Color(0xFFD9E2EF)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: MyPerformanceScreen.sectionHeaderStyle),
+          SizedBox(height: 10.h),
+          const Icon(Icons.info_outline_rounded, color: Color(0xFF64748B)),
+          SizedBox(height: 8.h),
+          Text(
+            message,
+            style: GoogleFonts.inter(
+              fontSize: 12.sp,
+              color: const Color(0xFF64748B),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InlineUnavailable extends StatelessWidget {
+  const _InlineUnavailable(this.message);
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 14.h),
+      child: Text(
+        message,
+        style: GoogleFonts.inter(
+          fontSize: 12.sp,
+          color: const Color(0xFF64748B),
+        ),
+      ),
+    );
+  }
+}
+
+class _PerformanceError extends StatelessWidget {
+  const _PerformanceError({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.all(12.r),
+      color: const Color(0xFFFFF1F2),
+      child: Row(
+        children: [
+          Expanded(child: Text(message)),
+          TextButton(onPressed: onRetry, child: const Text('Retry')),
+        ],
+      ),
+    );
+  }
+}
+
+String _dateKey(DateTime value) =>
+    '${value.year}-${value.month.toString().padLeft(2, '0')}-'
+    '${value.day.toString().padLeft(2, '0')}';
+
+String _formatDate(DateTime value) {
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  return '${value.day} ${months[value.month - 1]} ${value.year}';
+}
+
+String _valueOrDash(int value) => value == 0 ? '—' : value.toString();
+
+String _findDisplay(Object? source, List<String> keys, {String suffix = ''}) {
+  final value = _findValue(source, keys);
+  if (value == null || value.toString().trim().isEmpty) return '—';
+  final text = value.toString();
+  return suffix.isNotEmpty && !text.endsWith(suffix) ? '$text$suffix' : text;
+}
+
+int _findInt(Object? source, List<String> keys) {
+  final value = _findValue(source, keys);
+  if (value is num) return value.toInt();
+  return int.tryParse(value?.toString() ?? '') ?? 0;
+}
+
+String _findText(Map<String, dynamic> source, List<String> keys) {
+  final value = _findValue(source, keys);
+  return value?.toString().trim() ?? '';
+}
+
+DateTime? _findDate(Map<String, dynamic> source, List<String> keys) {
+  final text = _findText(source, keys);
+  return text.isEmpty ? null : DateTime.tryParse(text)?.toLocal();
+}
+
+Object? _findValue(Object? source, List<String> keys) {
+  if (source is Map) {
+    final map = Map<String, dynamic>.from(source);
+    for (final key in keys) {
+      for (final entry in map.entries) {
+        if (entry.key.toLowerCase() == key.toLowerCase() &&
+            entry.value != null) {
+          return entry.value;
+        }
+      }
+    }
+    for (final value in map.values) {
+      final nested = _findValue(value, keys);
+      if (nested != null) return nested;
+    }
+  }
+  if (source is List) {
+    for (final item in source) {
+      final nested = _findValue(item, keys);
+      if (nested != null) return nested;
+    }
+  }
+  return null;
+}
+
+List<dynamic> _findList(Object? source, List<String> keys) {
+  final value = _findValue(source, keys);
+  return value is List ? value : const [];
+}
+
+Map<String, dynamic> _findMap(Object? source, List<String> keys) {
+  final value = _findValue(source, keys);
+  return value is Map ? Map<String, dynamic>.from(value) : const {};
+}
+
+List<dynamic> _extractList(Object? source) {
+  if (source is List) return source;
+  if (source is Map) {
+    for (final key in const [
+      'data',
+      'items',
+      'results',
+      'rows',
+      'records',
+      'followUps',
+    ]) {
+      final value = source[key];
+      if (value is List) return value;
+      if (value is Map) {
+        final nested = _extractList(value);
+        if (nested.isNotEmpty) return nested;
+      }
+    }
+  }
+  return const [];
+}
+
 class _BarSeries {
   const _BarSeries({
     required this.label,
@@ -1274,6 +1904,7 @@ class _DailySummary {
     required this.date,
     required this.conversion,
     required this.items,
+    // ignore: unused_element_parameter
     this.isTotal = false,
   });
 
