@@ -3,8 +3,13 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:truerealtycrm/constant/colors_screen.dart';
+import 'package:truerealtycrm/provider/employee_provider.dart';
+import 'package:truerealtycrm/provider/auth_provider.dart';
+import 'package:truerealtycrm/provider/lead_master_provider.dart';
+import 'package:truerealtycrm/provider/project_provider.dart';
 import 'package:truerealtycrm/router/app_router.dart';
 import '../provider/leads_provider.dart';
+import 'package:truerealtycrm/widget/app_loading.dart';
 
 class LeadListWidget extends StatefulWidget {
   const LeadListWidget({super.key, this.isInsideScrollView = false});
@@ -15,9 +20,28 @@ class LeadListWidget extends StatefulWidget {
 }
 
 class _LeadListWidgetState extends State<LeadListWidget> {
-  final TextEditingController _searchController = TextEditingController();
   int _page = 1;
   String _selectedTab = 'All';
+  bool _showFilters = false;
+  bool _loadingFilters = false;
+  String? _source;
+  String? _status;
+  String? _leadType;
+  String? _propertyType;
+  String? _configuration;
+  String? _assignedTo;
+  String? _team;
+  String? _area;
+  String? _dateRange;
+  String? _slaStatus;
+  List<String> _sources = const [];
+  List<String> _statuses = const [];
+  List<String> _leadTypes = const [];
+  List<String> _propertyTypes = const [];
+  List<String> _configurations = const [];
+  List<String> _employees = const [];
+  List<String> _teams = const [];
+  List<String> _areas = const [];
 
   static const double _sectionGap = 18;
   static const double _cardGap = 14;
@@ -28,24 +52,139 @@ class _LeadListWidgetState extends State<LeadListWidget> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _fetchLeads();
+        _loadFilterOptions();
       }
     });
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
   }
 
   Future<void> _fetchLeads({int page = 1}) async {
     _page = page;
     await context.read<LeadProvider>().fetchLeads(
-      search: _searchController.text.trim(),
       page: page,
       limit: 10,
-      status: _statusFilterForTab(_selectedTab),
+      status: _status ?? _statusFilterForTab(_selectedTab),
+      source: _source,
+      leadType: _leadType,
+      configuration: _configuration,
+      propertyType: _propertyType,
+      assignedTo: _assignedTo,
+      team: _team,
+      area: _area,
+      slaStatus: _slaStatus,
+      dateFrom: _dateBounds.$1,
+      dateTo: _dateBounds.$2,
     );
+  }
+
+  Future<void> _loadFilterOptions() async {
+    if (_loadingFilters) return;
+    setState(() => _loadingFilters = true);
+    final master = context.read<LeadMasterProvider>();
+    final employee = context.read<EmployeeProvider>();
+    final project = context.read<ProjectProvider>();
+    final auth = context.read<AuthProvider>();
+    final canViewMasters = auth.canViewModule('lead_masters');
+    final canViewEmployees = auth.canViewModule('employees');
+    final canViewTeams = auth.canViewModule('teams');
+    final canViewProjects = auth.canViewModule('projects');
+    final responses = await Future.wait([
+      if (canViewMasters)
+        master.fetchMasterValues(masterCategory: 'source')
+      else
+        Future.value(null),
+      if (canViewMasters)
+        master.fetchMasterValues(masterCategory: 'status')
+      else
+        Future.value(null),
+      if (canViewMasters)
+        master.fetchMasterValues(masterCategory: 'lead_type')
+      else
+        Future.value(null),
+      if (canViewMasters)
+        master.fetchMasterValues(masterCategory: 'property_type')
+      else
+        Future.value(null),
+      if (canViewMasters)
+        master.fetchMasterValues(masterCategory: 'configuration')
+      else
+        Future.value(null),
+      if (canViewEmployees)
+        employee.fetchEmployees(limit: 100)
+      else
+        Future.value(null),
+      if (canViewTeams) employee.fetchTeams() else Future.value(null),
+      if (canViewProjects) project.fetchProjects() else Future.value(null),
+    ]);
+    if (!mounted) return;
+    setState(() {
+      _sources = _optionLabels(responses[0]?.data);
+      _statuses = _optionLabels(responses[1]?.data);
+      _leadTypes = _optionLabels(responses[2]?.data);
+      _propertyTypes = _optionLabels(responses[3]?.data);
+      _configurations = _optionLabels(responses[4]?.data);
+      _employees = _optionLabels(responses[5]?.data);
+      _teams = _optionLabels(responses[6]?.data);
+      _areas = _optionLabels(
+        responses[7]?.data,
+        keys: const ['location', 'area', 'city'],
+      );
+      _loadingFilters = false;
+    });
+  }
+
+  List<String> _optionLabels(
+    Object? source, {
+    List<String> keys = const ['label', 'name', 'title', 'value', 'fullName'],
+  }) {
+    Object? value = source;
+    for (var i = 0; i < 4 && value is Map; i++) {
+      final map = Map<String, dynamic>.from(value);
+      value =
+          map['data'] ??
+          map['items'] ??
+          map['results'] ??
+          map['rows'] ??
+          map['projects'] ??
+          map['employees'] ??
+          map['teams'];
+    }
+    if (value is! List) return const [];
+    final values = <String>{};
+    for (final item in value) {
+      if (item is Map) {
+        final map = Map<String, dynamic>.from(item);
+        for (final key in keys) {
+          final text = map[key]?.toString().trim() ?? '';
+          if (text.isNotEmpty) {
+            values.add(text);
+            break;
+          }
+        }
+      } else {
+        final text = item.toString().trim();
+        if (text.isNotEmpty) values.add(text);
+      }
+    }
+    return values.toList()..sort();
+  }
+
+  (String?, String?) get _dateBounds {
+    final now = DateTime.now();
+    DateTime? from;
+    switch (_dateRange) {
+      case 'Today':
+        from = DateTime(now.year, now.month, now.day);
+      case 'Last 7 days':
+        from = now.subtract(const Duration(days: 7));
+      case 'Last 30 days':
+        from = now.subtract(const Duration(days: 30));
+      case 'This month':
+        from = DateTime(now.year, now.month);
+    }
+    String? date(DateTime? value) => value == null
+        ? null
+        : '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
+    return (date(from), from == null ? null : date(now));
   }
 
   Future<void> _selectTab(String tab) async {
@@ -54,6 +193,7 @@ class _LeadListWidgetState extends State<LeadListWidget> {
     }
     setState(() {
       _selectedTab = tab;
+      _status = null;
     });
     await _fetchLeads(page: 1);
   }
@@ -71,12 +211,13 @@ class _LeadListWidgetState extends State<LeadListWidget> {
         SizedBox(height: _sectionGap.h),
         _buildStatsRow(leadProvider),
         SizedBox(height: _sectionGap.h),
-        _buildSearchAndActions(context, leadProvider),
+        _buildSearchAndActions(context),
+        if (_showFilters) ...[SizedBox(height: 14.h), _buildAdvancedFilters()],
         SizedBox(height: 14.h),
         _buildTabs(leadProvider),
         SizedBox(height: _sectionGap.h),
         if (leadProvider.isLoading && leadProvider.leads.isEmpty)
-          const Center(child: CircularProgressIndicator())
+          const AppListSkeleton(itemCount: 4, itemHeight: 176)
         else if (leadProvider.error != null && leadProvider.leads.isEmpty)
           _buildErrorState(leadProvider.error!)
         else if (leadProvider.leads.isEmpty)
@@ -151,7 +292,7 @@ class _LeadListWidgetState extends State<LeadListWidget> {
 
     final addButton = Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF0F172A),
+        color: AppColors.orangeStrong,
         borderRadius: BorderRadius.circular(8),
         boxShadow: const [
           BoxShadow(
@@ -182,7 +323,7 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                   'Add Lead',
                   style: TextStyle(
                     color: AppColors.white,
-                    fontSize: 20.sp,
+                    fontSize: 15.sp,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -274,7 +415,6 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                   AppColors.blueStrong,
                   'Total\nLeads',
                   _formatCount(leadProvider.totalLeads),
-                  'Live',
                 ),
               ),
               SizedBox(width: 14.w),
@@ -284,7 +424,6 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                   AppColors.orangeStrong,
                   'Hot\nLeads',
                   _formatCount(leadProvider.hotLeads),
-                  'Live',
                 ),
               ),
             ],
@@ -301,7 +440,6 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                   AppColors.purpleStrong,
                   'Qualified\nLeads',
                   _formatCount(leadProvider.qualifiedLeads),
-                  'Live',
                 ),
               ),
               SizedBox(width: 14.w),
@@ -311,7 +449,6 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                   AppColors.greenStrong,
                   'Converted\nLeads',
                   _formatCount(leadProvider.convertedLeads),
-                  'Live',
                 ),
               ),
             ],
@@ -321,80 +458,28 @@ class _LeadListWidgetState extends State<LeadListWidget> {
     );
   }
 
-  Widget _buildSearchAndActions(
-    BuildContext context,
-    LeadProvider leadProvider,
-  ) {
-    final searchField = Container(
-      height: 44.h,
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(12.r),
-        border: Border.all(color: AppColors.borderMuted),
+  Widget _buildSearchAndActions(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerRight,
+      child: OutlinedButton.icon(
+        onPressed: () => setState(() => _showFilters = !_showFilters),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppColors.navy,
+          side: BorderSide(
+            color: _showFilters
+                ? AppColors.orangeStrong
+                : const Color(0xFFCBD5E1),
+          ),
+          padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 11.h),
+        ),
+        icon: Icon(
+          _showFilters
+              ? Icons.keyboard_arrow_up_rounded
+              : Icons.filter_alt_rounded,
+          size: 18.sp,
+        ),
+        label: Text(_showFilters ? 'Hide filters' : 'All filters'),
       ),
-      child: TextField(
-        controller: _searchController,
-        textInputAction: TextInputAction.search,
-        onSubmitted: (_) => _fetchLeads(page: 1),
-        decoration: InputDecoration(
-          contentPadding: const EdgeInsets.fromLTRB(36, 10, 12, 10),
-          filled: true,
-          hintText: 'Search by name, phone, email...',
-          hintStyle: TextStyle(fontSize: 16.sp, color: AppColors.inputHint),
-          fillColor: Colors.white,
-          prefixIcon: Icon(
-            Icons.search,
-            size: 22.sp,
-            color: AppColors.iconMuted,
-          ),
-          suffixIcon: leadProvider.isLoading
-              ? Padding(
-                  padding: EdgeInsets.all(12.r),
-                  child: const CircularProgressIndicator(strokeWidth: 2),
-                )
-              : IconButton(
-                  onPressed: () => _fetchLeads(page: 1),
-                  icon: Icon(Icons.arrow_forward, size: 18.sp),
-                ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1),
-          ),
-        ),
-        textAlignVertical: TextAlignVertical.top,
-      ),
-    );
-
-    final actionButtons = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _iconActionButton(
-          Icons.filter_alt_rounded,
-          onTap: () => Navigator.of(context).pushNamed(AppRouter.myLeadsFilter),
-        ),
-        SizedBox(width: 6.w),
-        _iconActionButton(Icons.swap_vert_rounded, onTap: () => _fetchLeads()),
-        SizedBox(width: 6.w),
-        _iconActionButton(Icons.view_list_rounded, onTap: () => _fetchLeads()),
-      ],
-    );
-
-    return Row(
-      children: [
-        Expanded(child: searchField),
-        SizedBox(width: 6.w),
-        Flexible(
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerRight,
-            child: actionButtons,
-          ),
-        ),
-      ],
     );
   }
 
@@ -422,6 +507,260 @@ class _LeadListWidgetState extends State<LeadListWidget> {
         ],
       ),
     );
+  }
+
+  Widget _buildAdvancedFilters() {
+    final auth = context.read<AuthProvider>();
+    final canViewEmployees = auth.canViewModule('employees');
+    final canViewTeams = auth.canViewModule('teams');
+    final activeCount = [
+      _source,
+      _status,
+      _leadType,
+      _propertyType,
+      _configuration,
+      _assignedTo,
+      _team,
+      _area,
+      _dateRange,
+      _slaStatus,
+    ].where((value) => value != null).length;
+    return Container(
+      padding: EdgeInsets.all(16.r),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14.r),
+        border: Border.all(color: const Color(0xFFCBD5E1)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          'Advanced filters',
+                          style: GoogleFonts.inter(
+                            fontSize: 16.sp,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.navy,
+                          ),
+                        ),
+                        SizedBox(width: 8.w),
+                        _filterCountBadge(activeCount),
+                      ],
+                    ),
+                    SizedBox(height: 4.h),
+                    Text(
+                      'Refine leads by ownership, source, status, SLA and date.',
+                      style: GoogleFonts.inter(
+                        fontSize: 11.5.sp,
+                        color: const Color(0xFF64748B),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: 'Hide filters',
+                onPressed: () => setState(() => _showFilters = false),
+                icon: const Icon(Icons.keyboard_arrow_up_rounded),
+              ),
+            ],
+          ),
+          Divider(height: 24.h),
+          if (_loadingFilters)
+            const LinearProgressIndicator()
+          else
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final width = constraints.maxWidth >= 900
+                    ? (constraints.maxWidth - 36.w) / 4
+                    : constraints.maxWidth >= 560
+                    ? (constraints.maxWidth - 12.w) / 2
+                    : constraints.maxWidth;
+                return Wrap(
+                  spacing: 12.w,
+                  runSpacing: 14.h,
+                  children: [
+                    _filterDropdown(
+                      'Lead Source',
+                      _source,
+                      _sources,
+                      width,
+                      (v) => setState(() => _source = v),
+                    ),
+                    _filterDropdown(
+                      'Lead Status',
+                      _status,
+                      _statuses,
+                      width,
+                      (v) => setState(() => _status = v),
+                    ),
+                    _filterDropdown(
+                      'Lead Type',
+                      _leadType,
+                      _leadTypes,
+                      width,
+                      (v) => setState(() => _leadType = v),
+                    ),
+                    _filterDropdown(
+                      'Property Type',
+                      _propertyType,
+                      _propertyTypes,
+                      width,
+                      (v) => setState(() => _propertyType = v),
+                    ),
+                    _filterDropdown(
+                      'Configuration',
+                      _configuration,
+                      _configurations,
+                      width,
+                      (v) => setState(() => _configuration = v),
+                    ),
+                    if (canViewEmployees)
+                      _filterDropdown(
+                        'Assigned To',
+                        _assignedTo,
+                        _employees,
+                        width,
+                        (v) => setState(() => _assignedTo = v),
+                      ),
+                    if (canViewTeams)
+                      _filterDropdown(
+                        'Team-wise',
+                        _team,
+                        _teams,
+                        width,
+                        (v) => setState(() => _team = v),
+                      ),
+                    _filterDropdown(
+                      'Area-wise',
+                      _area,
+                      _areas,
+                      width,
+                      (v) => setState(() => _area = v),
+                    ),
+                    _filterDropdown(
+                      'Date Range',
+                      _dateRange,
+                      const [
+                        'Today',
+                        'Last 7 days',
+                        'Last 30 days',
+                        'This month',
+                      ],
+                      width,
+                      (v) => setState(() => _dateRange = v),
+                    ),
+                    _filterDropdown(
+                      'SLA Status',
+                      _slaStatus,
+                      const ['On track', 'At risk', 'Breached'],
+                      width,
+                      (v) => setState(() => _slaStatus = v),
+                    ),
+                  ],
+                );
+              },
+            ),
+          SizedBox(height: 18.h),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              OutlinedButton(
+                onPressed: _resetFilters,
+                child: const Text('Reset'),
+              ),
+              SizedBox(width: 10.w),
+              ElevatedButton.icon(
+                onPressed: () => _fetchLeads(page: 1),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.orangeStrong,
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 18.w,
+                    vertical: 13.h,
+                  ),
+                ),
+                icon: const Icon(Icons.filter_alt_outlined),
+                label: const Text('Apply Filter'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _filterDropdown(
+    String label,
+    String? value,
+    List<String> options,
+    double width,
+    ValueChanged<String?> onChanged,
+  ) {
+    final unique = options.toSet().toList();
+    return SizedBox(
+      width: width,
+      child: DropdownButtonFormField<String>(
+        key: ValueKey('$label-$value-${unique.length}'),
+        initialValue: unique.contains(value) ? value : null,
+        isExpanded: true,
+        decoration: InputDecoration(
+          labelText: label,
+          prefixIcon: const Icon(Icons.tune_rounded),
+          filled: true,
+          fillColor: const Color(0xFFFCFDFE),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10.r)),
+        ),
+        hint: Text('All $label'),
+        items: unique
+            .map((item) => DropdownMenuItem(value: item, child: Text(item)))
+            .toList(),
+        onChanged: onChanged,
+      ),
+    );
+  }
+
+  Widget _filterCountBadge(int count) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(99.r),
+      ),
+      child: Text(
+        '$count active',
+        style: GoogleFonts.inter(
+          fontSize: 10.sp,
+          fontWeight: FontWeight.w700,
+          color: const Color(0xFF64748B),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _resetFilters() async {
+    setState(() {
+      _source = null;
+      _status = null;
+      _leadType = null;
+      _propertyType = null;
+      _configuration = null;
+      _assignedTo = null;
+      _team = null;
+      _area = null;
+      _dateRange = null;
+      _slaStatus = null;
+      _selectedTab = 'All';
+    });
+    await _fetchLeads(page: 1);
   }
 
   Widget _buildLeadCard(BuildContext context, LeadModel lead, int index) {
@@ -1279,13 +1618,7 @@ class _LeadListWidgetState extends State<LeadListWidget> {
     );
   }
 
-  Widget _statCard(
-    IconData icon,
-    Color color,
-    String title,
-    String value,
-    String growth,
-  ) {
+  Widget _statCard(IconData icon, Color color, String title, String value) {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 16.h),
       decoration: BoxDecoration(
@@ -1336,48 +1669,7 @@ class _LeadListWidgetState extends State<LeadListWidget> {
               color: const Color(0xFF002149),
             ),
           ),
-          RichText(
-            text: TextSpan(
-              children: [
-                TextSpan(
-                  text: growth,
-                  style: GoogleFonts.inter(
-                    fontSize: 14.sp,
-                    fontWeight: FontWeight.w500,
-                    height: 1.5,
-                    color: const Color(0xFF16A34A),
-                  ),
-                ),
-                TextSpan(
-                  text: growth == 'Live' ? '  from API' : '  vs month',
-                  style: GoogleFonts.inter(
-                    fontSize: 13.5.sp,
-                    fontWeight: FontWeight.w500,
-                    height: 1.5,
-                    color: const Color(0xFF747781),
-                  ),
-                ),
-              ],
-            ),
-          ),
         ],
-      ),
-    );
-  }
-
-  Widget _iconActionButton(IconData icon, {VoidCallback? onTap}) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(10.r),
-      child: Container(
-        width: 36.w,
-        height: 36.w,
-        decoration: BoxDecoration(
-          color: AppColors.white,
-          borderRadius: BorderRadius.circular(10.r),
-          border: Border.all(color: const Color(0xFFE2E8F0)),
-        ),
-        child: Icon(icon, size: 18.sp, color: AppColors.textSecondary),
       ),
     );
   }

@@ -7,7 +7,6 @@ class LeadProvider extends ApiProviderBase {
     : _repository = repository ?? LeadRepository();
 
   final LeadRepository _repository;
-  final List<LeadModel> _allLeads = [];
   final List<LeadModel> _leads = [];
   final Map<String, int> _statusCounts = {};
   int _totalCount = 0;
@@ -58,6 +57,11 @@ class LeadProvider extends ApiProviderBase {
     String? leadType,
     String? configuration,
     String? project,
+    String? propertyType,
+    String? assignedTo,
+    String? team,
+    String? area,
+    String? slaStatus,
     String? dateFrom,
     String? dateTo,
   }) async {
@@ -71,6 +75,11 @@ class LeadProvider extends ApiProviderBase {
         leadType: leadType,
         configuration: configuration,
         project: project,
+        propertyType: propertyType,
+        assignedTo: assignedTo,
+        team: team,
+        area: area,
+        slaStatus: slaStatus,
         dateFrom: dateFrom,
         dateTo: dateTo,
       ),
@@ -83,12 +92,6 @@ class LeadProvider extends ApiProviderBase {
       final visibleLeads = statusFilter.isEmpty
           ? parsedLeads
           : _filterLeadsByStatus(parsedLeads, statusFilter);
-
-      if (statusFilter.isEmpty) {
-        _allLeads
-          ..clear()
-          ..addAll(parsedLeads);
-      }
 
       _leads
         ..clear()
@@ -135,17 +138,9 @@ class LeadProvider extends ApiProviderBase {
     List<LeadModel> apiLeads,
     String status,
   ) {
-    final apiMatches = apiLeads
+    return apiLeads
         .where((lead) => _statusMatches(lead.status, status))
         .toList();
-    if (apiMatches.length != apiLeads.length) {
-      return apiMatches;
-    }
-
-    final cachedMatches = _allLeads
-        .where((lead) => _statusMatches(lead.status, status))
-        .toList();
-    return cachedMatches.isEmpty ? apiMatches : cachedMatches;
   }
 
   Future<ApiResponse<dynamic>?> fetchDeletedLeads({

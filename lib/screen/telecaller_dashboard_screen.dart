@@ -6,11 +6,13 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:truerealtycrm/constant/colors_screen.dart';
+import 'package:truerealtycrm/provider/auth_provider.dart';
 import 'package:truerealtycrm/provider/attendance_provider.dart';
 import 'package:truerealtycrm/provider/leads_provider.dart';
 import 'package:truerealtycrm/provider/notification_provider.dart';
 import 'package:truerealtycrm/provider/upload_provider.dart';
 import 'package:truerealtycrm/router/app_router.dart';
+import 'package:truerealtycrm/screen/telecaller_activities_screen.dart';
 
 const double _telecallerMetricIconSize = 24;
 const double _telecallerSectionIconSize = 26;
@@ -225,6 +227,10 @@ class _TelecallerDashboardViewState extends State<TelecallerDashboardView> {
   @override
   Widget build(BuildContext context) {
     final headerHeight = 302.h;
+    final user = context.watch<AuthProvider>().session?.user;
+    final userName = (user?['fullName'] ?? user?['name'] ?? 'Telecaller')
+        .toString()
+        .trim();
     final summary = _summary;
     final topRows = _metricRows(_topRows, {
       'TOTAL ASSIGNED\nLEADS': summary.totalLeads,
@@ -258,6 +264,7 @@ class _TelecallerDashboardViewState extends State<TelecallerDashboardView> {
                       66.h, // Extra room for scaled header content
                   width: double.infinity,
                   child: _DashboardHeader(
+                    userName: userName.isEmpty ? 'Telecaller' : userName,
                     notificationCount: _unreadNotificationCount,
                     onNotificationTap: _openNotifications,
                     onProfileTap: _openProfile,
@@ -266,22 +273,13 @@ class _TelecallerDashboardViewState extends State<TelecallerDashboardView> {
                   ),
                 ),
                 Padding(
-                  padding: EdgeInsets.only(top: 206.h, left: 16.w, right: 16.w),
+                  padding: EdgeInsets.only(top: 180.h, left: 16.w, right: 16.w),
                   child: _DashboardPanel(
                     topRows: topRows,
                     bottomRows: bottomRows,
                   ),
                 ),
               ],
-            ),
-            Padding(
-              padding: EdgeInsets.fromLTRB(16.w, 14.h, 16.w, 0),
-              child: _TodayPunchCard(
-                data: _todayAttendance,
-                isLoading: _attendanceActionLoading,
-                onPunchIn: _openPunchIn,
-                onPunchOut: _punchOut,
-              ),
             ),
             Padding(
               padding: EdgeInsets.fromLTRB(16.w, 14.h, 16.w, 0),
@@ -301,9 +299,21 @@ class _TelecallerDashboardViewState extends State<TelecallerDashboardView> {
                   const _SectionGap(),
                   _UpcomingFollowUpsSection(items: summary.upcomingFollowUps),
                   const _SectionGap(),
-                  const _ActionOnlySection(
+                  _ActionOnlySection(
                     title: 'Recent Activities',
                     actionText: 'View All Activities',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const TelecallerActivitiesScreen(),
+                      ),
+                    ),
+                  ),
+                  const _SectionGap(),
+                  _TodayPunchCard(
+                    data: _todayAttendance,
+                    isLoading: _attendanceActionLoading,
+                    onPunchIn: _openPunchIn,
+                    onPunchOut: _punchOut,
                   ),
                   const _SectionGap(),
                   _PerformanceSection(summary: summary),
@@ -315,8 +325,6 @@ class _TelecallerDashboardViewState extends State<TelecallerDashboardView> {
                   const _LeadStatusDistributionSection(),
                   const _SectionGap(),
                   const _ConversionFunnelSection(),
-                  const _SectionGap(),
-                  const _QuickActionsSection(),
                   SizedBox(height: widget.bottomSpacing.h),
                 ],
               ),
@@ -509,7 +517,10 @@ class _TelecallerDashboardViewState extends State<TelecallerDashboardView> {
       pageBuilder: (context, animation, secondaryAnimation) {
         return _TelecallerProfilePopoverFrame(
           child: _TelecallerProfilePopup(
-            onProfileTap: (popupContext) => Navigator.of(popupContext).pop(),
+            onProfileTap: (popupContext) {
+              Navigator.of(popupContext).pop();
+              Navigator.of(context).pushNamed(AppRouter.profile);
+            },
             onSettingsTap: (popupContext) {
               Navigator.of(popupContext).pop();
               Navigator.of(context).pushNamed(AppRouter.personalSettings);
@@ -1124,12 +1135,14 @@ class _TelecallerNotificationItem {
 
 class _DashboardHeader extends StatelessWidget {
   const _DashboardHeader({
+    required this.userName,
     required this.notificationCount,
     required this.onNotificationTap,
     required this.onProfileTap,
     required this.onAddLeadTap,
   });
 
+  final String userName;
   final int notificationCount;
   final VoidCallback onNotificationTap;
   final VoidCallback onProfileTap;
@@ -1157,49 +1170,38 @@ class _DashboardHeader extends StatelessWidget {
             ),
             child: Row(
               children: [
-                Image.asset(
-                  'assets/app_icon.png',
-                  width: 154.w,
-                  fit: BoxFit.contain,
-                ),
-                SizedBox(width: 16.w),
-                Expanded(
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerRight,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _AddLeadHeaderButton(onTap: onAddLeadTap),
-                          SizedBox(width: 12.w),
-                          _HeaderIcon(
-                            icon: Icons.notifications_none_rounded,
-                            badgeText: _formatBadgeCount(notificationCount),
-                            onTap: onNotificationTap,
-                          ),
-                          SizedBox(width: 14.w),
-                          _TelecallerProfileButton(onTap: onProfileTap),
-                        ],
-                      ),
-                    ),
+                SizedBox(
+                  width: 112.w,
+                  child: Image.asset(
+                    'assets/app_icon.png',
+                    fit: BoxFit.contain,
+                    alignment: Alignment.centerLeft,
                   ),
                 ),
+                const Spacer(),
+                _AddLeadHeaderButton(onTap: onAddLeadTap),
+                SizedBox(width: 10.w),
+                _HeaderIcon(
+                  icon: Icons.notifications_none_rounded,
+                  badgeText: _formatBadgeCount(notificationCount),
+                  onTap: onNotificationTap,
+                ),
+                SizedBox(width: 10.w),
+                _TelecallerProfileButton(onTap: onProfileTap),
               ],
             ),
           ),
           Expanded(
             child: Container(
               width: double.infinity,
-              padding: EdgeInsets.fromLTRB(16.w, 36.h, 16.w, 76.h),
+              padding: EdgeInsets.fromLTRB(16.w, 26.h, 16.w, 16.h),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     'Telecaller Dashboard',
                     style: GoogleFonts.inter(
-                      fontSize: 32,
+                      fontSize: 28.sp,
                       fontWeight: FontWeight.bold,
                       fontStyle: FontStyle.normal,
                       height: 1.0,
@@ -1207,15 +1209,16 @@ class _DashboardHeader extends StatelessWidget {
                       color: Colors.white,
                     ),
                   ),
-                  SizedBox(height: 10.h),
+                  SizedBox(height: 5.h),
                   Text(
-                    "Welcome back, Telecaller Test. Here's your today's overview.",
+                    "Welcome back, $userName. Here's today's overview.",
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.inter(
-                      fontSize: 18,
+                      fontSize: 15.sp,
                       fontWeight: FontWeight.normal,
                       fontStyle: FontStyle.normal,
-                      height: 1.72,
-                      letterSpacing: 0,
+                      height: 1.35,
                       color: Colors.white.withValues(alpha: 0.9),
                     ),
                   ),
@@ -1243,19 +1246,19 @@ class _AddLeadHeaderButton extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(8.r),
         child: SizedBox(
-          height: 42.h,
+          height: 36.h,
           child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16.w),
+            padding: EdgeInsets.symmetric(horizontal: 10.w),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.add_rounded, color: Colors.white, size: 22.sp),
-                SizedBox(width: 8.w),
+                Icon(Icons.add_rounded, color: Colors.white, size: 18.sp),
+                SizedBox(width: 5.w),
                 Text(
                   'Add Lead',
                   style: GoogleFonts.inter(
                     color: Colors.white,
-                    fontSize: 14.sp,
+                    fontSize: 12.sp,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -2140,7 +2143,7 @@ class _TodayTasksSection extends StatelessWidget {
     return [
       _TaskStatData(
         icon: Icons.call_outlined,
-        label: 'Make\nCalls',
+        label: 'Make Calls',
         value: _formatCount(summary.todayFollowUps),
         iconColor: const Color(0xFF98A2B3),
         valueColor: const Color(0xFFFF6B00),
@@ -2154,14 +2157,14 @@ class _TodayTasksSection extends StatelessWidget {
       ),
       const _TaskStatData(
         icon: Icons.location_on_outlined,
-        label: 'Site\nVisits',
+        label: 'Site Visits',
         value: '0',
         iconColor: Color(0xFF98A2B3),
         valueColor: AppColors.navy,
       ),
       _TaskStatData(
         icon: Icons.ring_volume_outlined,
-        label: 'Missed\nFollow-ups',
+        label: 'Missed Follow-ups',
         value: _formatCount(summary.missedFollowUps),
         iconColor: const Color(0xFF98A2B3),
         valueColor: AppColors.navy,
@@ -2200,56 +2203,62 @@ class _TodayTasksSection extends StatelessWidget {
             ],
           ),
           SizedBox(height: 18.h),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: List.generate(_items.length, (index) {
-              final item = _items[index];
-              return Expanded(
-                child: Row(
-                  children: [
-                    if (index != 0)
-                      Container(
-                        width: 1,
-                        height: 76.h,
-                        margin: EdgeInsets.only(right: 12.w),
-                        color: const Color(0xFFE6ECF4),
-                      ),
-                    Expanded(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.start,
-                        children: [
-                          Icon(
-                            item.icon,
-                            color: item.iconColor,
-                            size: _telecallerSectionIconSize.sp,
-                          ),
-                          SizedBox(height: 8.h),
-                          Text(
-                            item.label,
-                            textAlign: TextAlign.center,
-                            style: GoogleFonts.inter(
-                              fontSize: 13.sp,
-                              fontWeight: FontWeight.w600,
-                              height: 1.31,
-                              color: const Color(0xFF2D2C2C),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: List.generate(_items.length, (index) {
+                final item = _items[index];
+                return SizedBox(
+                  width: 102.w,
+                  child: Row(
+                    children: [
+                      if (index != 0)
+                        Container(
+                          width: 1,
+                          height: 76.h,
+                          margin: EdgeInsets.only(right: 10.w),
+                          color: const Color(0xFFE6ECF4),
+                        ),
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.start,
+                          children: [
+                            Icon(
+                              item.icon,
+                              color: item.iconColor,
+                              size: _telecallerSectionIconSize.sp,
                             ),
-                          ),
-                          SizedBox(height: 8.h),
-                          Text(
-                            item.value,
-                            style: GoogleFonts.inter(
-                              fontSize: 19.sp,
-                              fontWeight: FontWeight.w800,
-                              color: item.valueColor,
+                            SizedBox(height: 7.h),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                item.label,
+                                maxLines: 1,
+                                style: GoogleFonts.inter(
+                                  fontSize: 12.sp,
+                                  fontWeight: FontWeight.w600,
+                                  color: const Color(0xFF2D2C2C),
+                                ),
+                              ),
                             ),
-                          ),
-                        ],
+                            SizedBox(height: 7.h),
+                            Text(
+                              item.value,
+                              style: GoogleFonts.inter(
+                                fontSize: 19.sp,
+                                fontWeight: FontWeight.w800,
+                                color: item.valueColor,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              );
-            }),
+                    ],
+                  ),
+                );
+              }),
+            ),
           ),
         ],
       ),
@@ -2258,31 +2267,39 @@ class _TodayTasksSection extends StatelessWidget {
 }
 
 class _ActionOnlySection extends StatelessWidget {
-  const _ActionOnlySection({required this.title, required this.actionText});
+  const _ActionOnlySection({
+    required this.title,
+    required this.actionText,
+    required this.onTap,
+  });
 
   final String title;
   final String actionText;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return _SectionCard(
       padding: EdgeInsets.fromLTRB(20.w, 18.h, 20.w, 18.h),
-      child: SizedBox(
-        height: 58.h,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 58),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             _SectionTitle(title),
             Align(
-              alignment: Alignment.center,
-              child: Text(
-                '$actionText ›',
-                style: GoogleFonts.inter(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  height: 1.33,
-                  color: const Color(0xFFF97316),
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: onTap,
+                child: Text(
+                  '$actionText ›',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    height: 1.33,
+                    color: const Color(0xFFF97316),
+                  ),
                 ),
               ),
             ),
@@ -3055,144 +3072,6 @@ class _FunnelStage {
   final String label;
 }
 
-class _QuickActionsSection extends StatelessWidget {
-  const _QuickActionsSection();
-
-  static const List<_QuickActionItemData> _items = [
-    _QuickActionItemData(
-      title: 'Call Lead',
-      subtitle: 'Make a call to lead',
-      icon: Icons.call,
-      iconColor: Color(0xFF2563EB),
-      iconBackground: Color(0xFFEAF2FF),
-    ),
-    _QuickActionItemData(
-      title: 'Add Follow-up',
-      subtitle: 'Add new follow-up',
-      icon: Icons.event_outlined,
-      iconColor: Color(0xFFFF7A1A),
-      iconBackground: Color(0xFFFFF1E8),
-    ),
-    _QuickActionItemData(
-      title: 'Schedule Site Visit',
-      subtitle: 'Book site visit',
-      icon: Icons.location_on,
-      iconColor: Color(0xFF0F2E63),
-      iconBackground: Color(0xFFF3F6FB),
-    ),
-    _QuickActionItemData(
-      title: 'Update Status',
-      subtitle: 'Update lead status',
-      icon: Icons.check_circle,
-      iconColor: Color(0xFF10B981),
-      iconBackground: Color(0xFFE8F8EC),
-    ),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return _SectionCard(
-      padding: EdgeInsets.fromLTRB(14.w, 14.h, 14.w, 14.h),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const _SectionTitle('Quick Actions', fontSize: 17),
-          SizedBox(height: 16.h),
-          for (int i = 0; i < _items.length; i++) ...[
-            _QuickActionTile(data: _items[i]),
-            if (i != _items.length - 1) SizedBox(height: 10.h),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _QuickActionTile extends StatelessWidget {
-  const _QuickActionTile({required this.data});
-
-  final _QuickActionItemData data;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14.r),
-        border: Border.all(color: const Color(0xFFD9E3EF)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 46.w,
-            height: 46.w,
-            decoration: BoxDecoration(
-              color: data.iconBackground,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              data.icon,
-              color: data.iconColor,
-              size: _telecallerQuickActionIconSize.sp,
-            ),
-          ),
-          SizedBox(width: 14.w),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  data.title,
-                  style: TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 18.sp,
-                    fontWeight: FontWeight.w600,
-                    fontStyle: FontStyle.normal,
-                    height: 1.33,
-                    letterSpacing: 0.6,
-                    color: const Color(0xFF000B20),
-                  ),
-                ),
-                SizedBox(height: 2.h),
-                Text(
-                  data.subtitle,
-                  style: GoogleFonts.inter(
-                    fontSize: 16.sp,
-                    fontWeight: FontWeight.w500,
-                    color: const Color(0xFF6B7280),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Icon(
-            Icons.chevron_right,
-            color: const Color(0xFFFF6B00),
-            size: _telecallerQuickActionIconSize.sp,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _QuickActionItemData {
-  const _QuickActionItemData({
-    required this.title,
-    required this.subtitle,
-    required this.icon,
-    required this.iconColor,
-    required this.iconBackground,
-  });
-
-  final String title;
-  final String subtitle;
-  final IconData icon;
-  final Color iconColor;
-  final Color iconBackground;
-}
-
 List<dynamic> _extractApiList(Object? source) {
   if (source is List) {
     return source;
@@ -3439,13 +3318,37 @@ class _TodayPunchCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isCheckedOut = data.checkOut != null;
+    final isCheckedIn = data.checkIn != null && !isCheckedOut;
+    final accent = isCheckedOut
+        ? const Color(0xFF0F766E)
+        : isCheckedIn
+        ? const Color(0xFF2563EB)
+        : AppColors.orangeDeep;
+    final softAccent = isCheckedOut
+        ? const Color(0xFFECFDF5)
+        : isCheckedIn
+        ? const Color(0xFFEFF6FF)
+        : const Color(0xFFFFF7ED);
+
     return Container(
       width: double.infinity,
       padding: EdgeInsets.all(16.r),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10.r),
-        border: Border.all(color: const Color(0xFFD9E3EF)),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Colors.white, softAccent],
+        ),
+        borderRadius: BorderRadius.circular(14.r),
+        border: Border.all(color: const Color(0xFF334155), width: 1.4),
+        boxShadow: [
+          BoxShadow(
+            color: accent.withValues(alpha: .12),
+            blurRadius: 18,
+            offset: const Offset(0, 7),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3477,14 +3380,6 @@ class _TodayPunchCard extends StatelessWidget {
                   ],
                 ),
               ),
-              CircleAvatar(
-                radius: 20.r,
-                backgroundColor: const Color(0xFFF1F5F9),
-                child: const Icon(
-                  Icons.schedule_rounded,
-                  color: Color(0xFF64748B),
-                ),
-              ),
             ],
           ),
           SizedBox(height: 18.h),
@@ -3492,8 +3387,9 @@ class _TodayPunchCard extends StatelessWidget {
             width: double.infinity,
             padding: EdgeInsets.all(14.r),
             decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
+              color: softAccent,
               borderRadius: BorderRadius.circular(9.r),
+              border: Border.all(color: accent.withValues(alpha: .45)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -3507,7 +3403,7 @@ class _TodayPunchCard extends StatelessWidget {
                   ),
                 ),
                 SizedBox(height: 8.h),
-                _AttendanceStatusChip(text: data.statusLabel),
+                _AttendanceStatusChip(text: data.statusLabel, color: accent),
               ],
             ),
           ),
@@ -3517,10 +3413,12 @@ class _TodayPunchCard extends StatelessWidget {
               final shift = _PunchInfoBox(
                 label: 'SHIFT',
                 value: data.shiftLabel,
+                accent: accent,
               );
               final log = _PunchInfoBox(
                 label: 'PUNCH LOG',
                 value: '${data.checkInLabel} – ${data.checkOutLabel}',
+                accent: accent,
               );
               if (constraints.maxWidth < 620) {
                 return Column(
@@ -3541,53 +3439,85 @@ class _TodayPunchCard extends StatelessWidget {
             },
           ),
           SizedBox(height: 12.h),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final punchIn = ElevatedButton.icon(
-                onPressed: !isLoading && data.canPunchIn ? onPunchIn : null,
-                style: ElevatedButton.styleFrom(
-                  minimumSize: Size.fromHeight(42.h),
-                  backgroundColor: AppColors.orangeDeep,
-                  foregroundColor: Colors.white,
+          if (isCheckedOut)
+            Container(
+              width: double.infinity,
+              padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 13.h),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF0F766E), Color(0xFF059669)],
                 ),
-                icon: isLoading
-                    ? const SizedBox.square(
-                        dimension: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Icon(Icons.login_rounded),
-                label: const Text('Punch In'),
-              );
-              final punchOut = OutlinedButton.icon(
-                onPressed: !isLoading && data.canPunchOut ? onPunchOut : null,
-                style: OutlinedButton.styleFrom(
-                  minimumSize: Size.fromHeight(42.h),
-                ),
-                icon: const Icon(Icons.logout_rounded),
-                label: const Text('Punch Out'),
-              );
-              if (constraints.maxWidth < 520) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                borderRadius: BorderRadius.circular(9.r),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.verified_rounded,
+                    color: Colors.white,
+                    size: 21,
+                  ),
+                  SizedBox(width: 10.w),
+                  Expanded(
+                    child: Text(
+                      'Today’s attendance is complete',
+                      style: GoogleFonts.inter(
+                        color: Colors.white,
+                        fontSize: 13.sp,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final punchIn = ElevatedButton.icon(
+                  onPressed: !isLoading && data.canPunchIn ? onPunchIn : null,
+                  style: ElevatedButton.styleFrom(
+                    minimumSize: Size.fromHeight(42.h),
+                    backgroundColor: AppColors.orangeDeep,
+                    foregroundColor: Colors.white,
+                  ),
+                  icon: isLoading
+                      ? const SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.login_rounded),
+                  label: const Text('Punch In'),
+                );
+                final punchOut = OutlinedButton.icon(
+                  onPressed: !isLoading && data.canPunchOut ? onPunchOut : null,
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: Size.fromHeight(42.h),
+                  ),
+                  icon: const Icon(Icons.logout_rounded),
+                  label: const Text('Punch Out'),
+                );
+                if (constraints.maxWidth < 520) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      punchIn,
+                      SizedBox(height: 10.h),
+                      punchOut,
+                    ],
+                  );
+                }
+                return Row(
                   children: [
-                    punchIn,
-                    SizedBox(height: 10.h),
-                    punchOut,
+                    Expanded(child: punchIn),
+                    SizedBox(width: 12.w),
+                    Expanded(child: punchOut),
                   ],
                 );
-              }
-              return Row(
-                children: [
-                  Expanded(child: punchIn),
-                  SizedBox(width: 12.w),
-                  Expanded(child: punchOut),
-                ],
-              );
-            },
-          ),
+              },
+            ),
         ],
       ),
     );
@@ -3595,10 +3525,15 @@ class _TodayPunchCard extends StatelessWidget {
 }
 
 class _PunchInfoBox extends StatelessWidget {
-  const _PunchInfoBox({required this.label, required this.value});
+  const _PunchInfoBox({
+    required this.label,
+    required this.value,
+    required this.accent,
+  });
 
   final String label;
   final String value;
+  final Color accent;
 
   @override
   Widget build(BuildContext context) {
@@ -3606,8 +3541,9 @@ class _PunchInfoBox extends StatelessWidget {
       width: double.infinity,
       padding: EdgeInsets.all(12.r),
       decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: .82),
         borderRadius: BorderRadius.circular(8.r),
-        border: Border.all(color: const Color(0xFFD9E3EF)),
+        border: Border.all(color: const Color(0xFF64748B), width: 1.1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3618,7 +3554,7 @@ class _PunchInfoBox extends StatelessWidget {
               fontSize: 10.sp,
               fontWeight: FontWeight.w800,
               letterSpacing: .7,
-              color: const Color(0xFF64748B),
+              color: accent,
             ),
           ),
           SizedBox(height: 6.h),
@@ -3639,30 +3575,31 @@ class _PunchInfoBox extends StatelessWidget {
 }
 
 class _AttendanceStatusChip extends StatelessWidget {
-  const _AttendanceStatusChip({required this.text});
+  const _AttendanceStatusChip({required this.text, required this.color});
 
   final String text;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 5.h),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: color,
         borderRadius: BorderRadius.circular(999.r),
-        border: Border.all(color: const Color(0xFFD9E3EF)),
+        border: Border.all(color: color),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const CircleAvatar(radius: 3, backgroundColor: Color(0xFF94A3B8)),
+          const CircleAvatar(radius: 3, backgroundColor: Colors.white),
           SizedBox(width: 7.w),
           Text(
             text,
             style: GoogleFonts.inter(
               fontSize: 11.sp,
               fontWeight: FontWeight.w500,
-              color: const Color(0xFF475569),
+              color: Colors.white,
             ),
           ),
         ],

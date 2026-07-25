@@ -122,6 +122,7 @@ class _LoginCard extends StatelessWidget {
       final response = await context.read<AuthProvider>().login(
         email: email,
         password: password,
+        expectedRole: authProvider.role,
       );
 
       if (!context.mounted) {
@@ -133,7 +134,7 @@ class _LoginCard extends StatelessWidget {
         return;
       }
 
-      final error = context.read<AuthProvider>().error;
+      final error = context.read<AuthProvider>().loginError;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(error ?? 'Login failed. Please try again.')),
       );

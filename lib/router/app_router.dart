@@ -26,6 +26,7 @@ import 'package:truerealtycrm/screen/employee_directory_screen.dart';
 import 'package:truerealtycrm/screen/telecaller_communication_screen.dart';
 import 'package:truerealtycrm/screen/notifications_screen.dart';
 import 'package:truerealtycrm/screen/personal_settings_screen.dart';
+import 'package:truerealtycrm/screen/profile_screen.dart';
 
 import '../screen/my_leads_screen.dart';
 
@@ -55,6 +56,7 @@ class AppRouter {
   static const String telecallerCommunication = '/telecaller-communication';
   static const String notifications = '/notifications';
   static const String personalSettings = '/personal-settings';
+  static const String profile = '/profile';
 
   static Route<dynamic> generateRoute(RouteSettings settings) {
     switch (settings.name) {
@@ -145,6 +147,8 @@ class AppRouter {
         return MaterialPageRoute(
           builder: (_) => const PersonalSettingsScreen(),
         );
+      case profile:
+        return MaterialPageRoute(builder: (_) => const ProfileScreen());
       default:
         return MaterialPageRoute(
           builder: (_) => Scaffold(

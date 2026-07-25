@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:truerealtycrm/constant/colors_screen.dart';
 import 'package:truerealtycrm/provider/employee_provider.dart';
+import 'package:truerealtycrm/widget/app_loading.dart';
 
 class PersonalSettingsScreen extends StatefulWidget {
   const PersonalSettingsScreen({super.key});
@@ -142,7 +143,10 @@ class _PersonalSettingsScreenState extends State<PersonalSettingsScreen> {
       ),
       body: SafeArea(
         child: _loading
-            ? const Center(child: CircularProgressIndicator())
+            ? const SingleChildScrollView(
+                padding: EdgeInsets.all(16),
+                child: AppListSkeleton(itemCount: 3, itemHeight: 180),
+              )
             : _loadError != null
             ? _SettingsError(message: _loadError!, onRetry: _loadProfile)
             : LayoutBuilder(

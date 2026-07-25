@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:truerealtycrm/constant/colors_screen.dart';
 import 'package:truerealtycrm/provider/notification_provider.dart';
+import 'package:truerealtycrm/widget/app_loading.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -197,7 +198,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 ),
               ),
               if (_isLoading)
-                const SliverToBoxAdapter(child: LinearProgressIndicator())
+                SliverToBoxAdapter(
+                  child: AppListSkeleton(
+                    itemCount: 5,
+                    itemHeight: 104,
+                    padding: EdgeInsets.fromLTRB(18.w, 8.h, 18.w, 24.h),
+                  ),
+                )
               else if (visibleNotifications.isEmpty)
                 SliverFillRemaining(
                   hasScrollBody: false,

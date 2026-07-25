@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 
 import 'package:truerealtycrm/data/api/api_constants.dart';
 import 'package:truerealtycrm/data/api/api_exception.dart';
@@ -11,6 +12,10 @@ import 'package:truerealtycrm/data/local/auth_token_store.dart';
 import 'package:truerealtycrm/data/models/api_response.dart';
 
 class ApiClient {
+  static final ValueNotifier<int> sessionExpiredNotifier = ValueNotifier<int>(
+    0,
+  );
+
   ApiClient({
     http.Client? httpClient,
     AuthTokenStore? tokenStore,
@@ -139,6 +144,9 @@ class ApiClient {
           );
         }
       }
+      if (response.statusCode == HttpStatus.unauthorized && requiresAuth) {
+        await _expireSession();
+      }
       stopwatch.stop();
       _debugLog(
         '${_responseIcon(response.statusCode)} RESPONSE <-- '
@@ -242,6 +250,9 @@ class ApiClient {
           );
         }
       }
+      if (response.statusCode == HttpStatus.unauthorized && requiresAuth) {
+        await _expireSession();
+      }
       stopwatch.stop();
       _debugLog(
         '${_responseIcon(response.statusCode)} UPLOAD RESPONSE <-- '
@@ -318,9 +329,43 @@ class ApiClient {
         request.fields[entry.key] = entry.value.toString();
       }
     }
-    request.files.add(await http.MultipartFile.fromPath(fieldName, filePath));
+    request.files.add(
+      await http.MultipartFile.fromPath(
+        fieldName,
+        filePath,
+        contentType: _mediaTypeForFile(filePath),
+      ),
+    );
     final streamed = await request.send().timeout(ApiConstants.requestTimeout);
     return http.Response.fromStream(streamed);
+  }
+
+  MediaType _mediaTypeForFile(String filePath) {
+    final normalizedPath = filePath.toLowerCase().split('?').first;
+    if (normalizedPath.endsWith('.jpg') ||
+        normalizedPath.endsWith('.jpeg') ||
+        normalizedPath.endsWith('.jfif')) {
+      return MediaType('image', 'jpeg');
+    }
+    if (normalizedPath.endsWith('.png')) {
+      return MediaType('image', 'png');
+    }
+    if (normalizedPath.endsWith('.webp')) {
+      return MediaType('image', 'webp');
+    }
+    if (normalizedPath.endsWith('.heic')) {
+      return MediaType('image', 'heic');
+    }
+    if (normalizedPath.endsWith('.heif')) {
+      return MediaType('image', 'heif');
+    }
+    if (normalizedPath.endsWith('.gif')) {
+      return MediaType('image', 'gif');
+    }
+    if (normalizedPath.endsWith('.pdf')) {
+      return MediaType('application', 'pdf');
+    }
+    return MediaType('application', 'octet-stream');
   }
 
   Future<http.Response> _send(
@@ -458,6 +503,14 @@ class ApiClient {
     );
     _debugLog('Session refreshed successfully');
     return true;
+  }
+
+  Future<void> _expireSession() async {
+    await _tokenStore.clear();
+    sessionExpiredNotifier.value++;
+    _debugLog(
+      '🔴 🔐 Session expired; cleared credentials and requested logout',
+    );
   }
 
   static String? _firstString(Map<String, dynamic> map, List<String> keys) {

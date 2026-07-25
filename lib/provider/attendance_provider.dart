@@ -30,6 +30,20 @@ class AttendanceProvider extends ApiProviderBase {
     return runApiRequest(_repository.todayAttendance);
   }
 
+  Future<ApiResponse<dynamic>?> fetchMonthlyAttendance({
+    required String employeeId,
+    required int month,
+    required int year,
+  }) {
+    return runApiRequest(
+      () => _repository.monthlyAttendance(
+        employeeId: employeeId,
+        month: month,
+        year: year,
+      ),
+    );
+  }
+
   Future<ApiResponse<dynamic>?> fetchAttendanceReportPdf({
     String? employeeId,
     required int month,

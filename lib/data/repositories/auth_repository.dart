@@ -64,6 +64,14 @@ class AuthRepository {
     return _tokenStore.getAccessToken();
   }
 
+  Future<void> saveRole(String role) {
+    return _tokenStore.saveRole(role);
+  }
+
+  Future<String?> getRole() {
+    return _tokenStore.getRole();
+  }
+
   Future<void> clearSession() {
     return _tokenStore.clear();
   }

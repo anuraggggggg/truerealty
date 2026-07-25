@@ -8380,6 +8380,9 @@ class _MoreTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final canAssignLeads = context
+        .watch<AuthProvider>()
+        .canViewModule('employees');
     return Padding(
       padding: EdgeInsets.fromLTRB(18.w, 24.h, 18.w, 22.h),
       child: Column(
@@ -8387,15 +8390,18 @@ class _MoreTab extends StatelessWidget {
         children: [
           Text('More', style: AppStyles.h2),
           SizedBox(height: 16.h),
-          _ActionTile(
-            icon: Icons.assignment_ind_outlined,
-            title: 'Assign Leads',
-            subtitle: 'Manage manual and AI lead assignment',
-            color: AppColors.vividBlue,
-            bg: AppColors.windowBlue,
-            onTap: () => Navigator.of(context).pushNamed(AppRouter.assignLeads),
-          ),
-          SizedBox(height: 10.h),
+          if (canAssignLeads) ...[
+            _ActionTile(
+              icon: Icons.assignment_ind_outlined,
+              title: 'Assign Leads',
+              subtitle: 'Manage manual and AI lead assignment',
+              color: AppColors.vividBlue,
+              bg: AppColors.windowBlue,
+              onTap: () =>
+                  Navigator.of(context).pushNamed(AppRouter.assignLeads),
+            ),
+            SizedBox(height: 10.h),
+          ],
           _ActionTile(
             icon: Icons.calendar_today_outlined,
             title: 'Site Visits',

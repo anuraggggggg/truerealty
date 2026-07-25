@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:truerealtycrm/constant/colors_screen.dart';
 import 'package:truerealtycrm/provider/auth_provider.dart';
+import 'package:truerealtycrm/router/app_router.dart';
 
 class TasksScreen extends StatefulWidget {
   const TasksScreen({super.key});
@@ -25,7 +26,6 @@ class _TasksScreenState extends State<TasksScreen> {
       priority: 'High',
       color: AppColors.green,
       bg: Color(0xFFEAF8F0),
-      completed: true,
     ),
     _TaskData(
       type: 'Visits',
@@ -145,7 +145,6 @@ class _TasksScreenState extends State<TasksScreen> {
               priority: task.priority,
               color: task.color,
               bg: task.bg,
-              completed: task.completed,
             ),
           ),
         ],
@@ -156,9 +155,13 @@ class _TasksScreenState extends State<TasksScreen> {
   List<_TaskData> _getRoleTasks(UserRole role) {
     List<_TaskData> roleTasks = _tasks;
     if (role == UserRole.telecaller) {
-      roleTasks = _tasks.where((t) => t.type == 'Calls' || t.type == 'Overdue').toList();
+      roleTasks = _tasks
+          .where((t) => t.type == 'Calls' || t.type == 'Overdue')
+          .toList();
     } else if (role == UserRole.fieldExecutive) {
-      roleTasks = _tasks.where((t) => t.type == 'Visits' || t.type == 'Meetings').toList();
+      roleTasks = _tasks
+          .where((t) => t.type == 'Visits' || t.type == 'Meetings')
+          .toList();
     }
 
     if (_selectedFilter == 'All') return roleTasks;
@@ -299,14 +302,15 @@ class _TasksHeader extends StatelessWidget {
             borderRadius: BorderRadius.circular(12.r),
             boxShadow: [
               BoxShadow(
-                color: AppColors.orange.withOpacity(0.3),
+                color: AppColors.orange.withValues(alpha: 0.3),
                 blurRadius: 8.r,
                 offset: Offset(0, 4.h),
               ),
             ],
           ),
           child: IconButton(
-            onPressed: () {},
+            tooltip: 'Add lead',
+            onPressed: () => Navigator.of(context).pushNamed(AppRouter.addLead),
             icon: Icon(Icons.add, color: AppColors.white, size: 24.sp),
           ),
         ),
@@ -416,10 +420,7 @@ class _SummaryCard extends StatelessWidget {
 }
 
 class _TaskFilters extends StatelessWidget {
-  const _TaskFilters({
-    required this.selectedFilter,
-    required this.onChanged,
-  });
+  const _TaskFilters({required this.selectedFilter, required this.onChanged});
 
   final String selectedFilter;
   final ValueChanged<String> onChanged;
@@ -431,11 +432,31 @@ class _TaskFilters extends StatelessWidget {
       clipBehavior: Clip.none,
       child: Row(
         children: [
-          _FilterChip(label: 'All', active: selectedFilter == 'All', onTap: () => onChanged('All')),
-          _FilterChip(label: 'Calls', active: selectedFilter == 'Calls', onTap: () => onChanged('Calls')),
-          _FilterChip(label: 'Visits', active: selectedFilter == 'Visits', onTap: () => onChanged('Visits')),
-          _FilterChip(label: 'Meetings', active: selectedFilter == 'Meetings', onTap: () => onChanged('Meetings')),
-          _FilterChip(label: 'Overdue', active: selectedFilter == 'Overdue', onTap: () => onChanged('Overdue')),
+          _FilterChip(
+            label: 'All',
+            active: selectedFilter == 'All',
+            onTap: () => onChanged('All'),
+          ),
+          _FilterChip(
+            label: 'Calls',
+            active: selectedFilter == 'Calls',
+            onTap: () => onChanged('Calls'),
+          ),
+          _FilterChip(
+            label: 'Visits',
+            active: selectedFilter == 'Visits',
+            onTap: () => onChanged('Visits'),
+          ),
+          _FilterChip(
+            label: 'Meetings',
+            active: selectedFilter == 'Meetings',
+            onTap: () => onChanged('Meetings'),
+          ),
+          _FilterChip(
+            label: 'Overdue',
+            active: selectedFilter == 'Overdue',
+            onTap: () => onChanged('Overdue'),
+          ),
         ],
       ),
     );
@@ -465,7 +486,9 @@ class _FilterChip extends StatelessWidget {
           decoration: BoxDecoration(
             color: active ? AppColors.navy : AppColors.white,
             borderRadius: BorderRadius.circular(20.r),
-            border: Border.all(color: active ? AppColors.navy : const Color(0xFFD0D5DD)),
+            border: Border.all(
+              color: active ? AppColors.navy : const Color(0xFFD0D5DD),
+            ),
           ),
           child: Text(
             label,
@@ -491,7 +514,6 @@ class _TaskData {
     required this.priority,
     required this.color,
     required this.bg,
-    this.completed = false,
   });
 
   final String type;
@@ -502,7 +524,6 @@ class _TaskData {
   final String priority;
   final Color color;
   final Color bg;
-  final bool completed;
 }
 
 class _TaskCard extends StatelessWidget {
@@ -514,7 +535,6 @@ class _TaskCard extends StatelessWidget {
     required this.priority,
     required this.color,
     required this.bg,
-    this.completed = false,
   });
 
   final IconData icon;
@@ -524,7 +544,6 @@ class _TaskCard extends StatelessWidget {
   final String priority;
   final Color color;
   final Color bg;
-  final bool completed;
 
   @override
   Widget build(BuildContext context) {
@@ -580,7 +599,11 @@ class _TaskCard extends StatelessWidget {
                 SizedBox(height: 12.h),
                 Row(
                   children: [
-                    Icon(Icons.access_time, color: const Color(0xFF667085), size: 14.sp),
+                    Icon(
+                      Icons.access_time,
+                      color: const Color(0xFF667085),
+                      size: 14.sp,
+                    ),
                     SizedBox(width: 6.w),
                     Expanded(
                       child: Text(
@@ -593,21 +616,6 @@ class _TaskCard extends StatelessWidget {
                           fontWeight: FontWeight.w500,
                         ),
                       ),
-                    ),
-                    Container(
-                      height: 20.h,
-                      width: 20.w,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: completed ? AppColors.green : const Color(0xFFD0D5DD),
-                          width: 1.5,
-                        ),
-                        color: completed ? AppColors.green.withOpacity(0.1) : Colors.transparent,
-                      ),
-                      child: completed
-                          ? Icon(Icons.check, color: AppColors.green, size: 12.sp)
-                          : null,
                     ),
                   ],
                 ),
@@ -632,13 +640,13 @@ class _PriorityBadge extends StatelessWidget {
     final color = isHigh
         ? AppColors.orange
         : isMedium
-            ? AppColors.vividBlue
-            : AppColors.green;
+        ? AppColors.vividBlue
+        : AppColors.green;
     final bg = isHigh
         ? const Color(0xFFFFF4E9)
         : isMedium
-            ? const Color(0xFFEAF2FF)
-            : const Color(0xFFEAF8F0);
+        ? const Color(0xFFEAF2FF)
+        : const Color(0xFFEAF8F0);
 
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 4.h),
@@ -662,13 +670,10 @@ BoxDecoration _cardDecoration({double? borderRadius}) {
   return BoxDecoration(
     color: AppColors.white,
     borderRadius: BorderRadius.circular(borderRadius ?? 16.r),
-    border: Border.all(
-      color: const Color(0xFFF1F4F9),
-      width: 1.2,
-    ),
+    border: Border.all(color: const Color(0xFFF1F4F9), width: 1.2),
     boxShadow: [
       BoxShadow(
-        color: const Color(0xFF061B69).withOpacity(0.05),
+        color: const Color(0xFF061B69).withValues(alpha: 0.05),
         blurRadius: 20.r,
         offset: const Offset(0, 8),
       ),

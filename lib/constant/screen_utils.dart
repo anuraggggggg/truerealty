@@ -6,63 +6,62 @@ import 'package:truerealtycrm/constant/colors_screen.dart';
 class AppStyles {
   const AppStyles._();
 
-
   static TextStyle get brandPrimary => GoogleFonts.inter(
-        color: AppColors.orange,
-        fontSize: 48.sp,
-        fontWeight: FontWeight.w900,
-        height: 0.9,
-      );
+    color: AppColors.orange,
+    fontSize: 48.sp,
+    fontWeight: FontWeight.w900,
+    height: 0.9,
+  );
 
   static TextStyle get brandSecondary => GoogleFonts.inter(
-        color: AppColors.navy,
-        fontSize: 48.sp,
-        fontWeight: FontWeight.w900,
-        height: 0.9,
-      );
+    color: AppColors.navy,
+    fontSize: 48.sp,
+    fontWeight: FontWeight.w900,
+    height: 0.9,
+  );
 
   static TextStyle get brandTagline => GoogleFonts.inter(
-        color: AppColors.navy,
-        fontSize: 22.sp,
-        fontWeight: FontWeight.w800,
-      );
+    color: AppColors.navy,
+    fontSize: 22.sp,
+    fontWeight: FontWeight.w800,
+  );
 
   static TextStyle get brandMotto => GoogleFonts.inter(
-        color: AppColors.orange,
-        fontSize: 17.sp,
-        fontWeight: FontWeight.w800,
-      );
+    color: AppColors.orange,
+    fontSize: 17.sp,
+    fontWeight: FontWeight.w800,
+  );
 
   static TextStyle get h1 => GoogleFonts.inter(
-        color: AppColors.navy,
-        fontSize: 36.sp,
-        fontWeight: FontWeight.w800,
-      );
+    color: AppColors.navy,
+    fontSize: 36.sp,
+    fontWeight: FontWeight.w800,
+  );
 
   static TextStyle get h2 => GoogleFonts.inter(
-        color: AppColors.navy,
-        fontSize: 32.sp,
-        fontWeight: FontWeight.w900,
-      );
+    color: AppColors.navy,
+    fontSize: 32.sp,
+    fontWeight: FontWeight.w900,
+  );
 
   static TextStyle get bodyLarge => GoogleFonts.inter(
-        color: AppColors.mutedNavy,
-        fontSize: 20.sp,
-        height: 1.45,
-        fontWeight: FontWeight.w500,
-      );
+    color: AppColors.mutedNavy,
+    fontSize: 20.sp,
+    height: 1.45,
+    fontWeight: FontWeight.w500,
+  );
 
   static TextStyle get bodyMedium => GoogleFonts.inter(
-        color: AppColors.mutedNavy,
-        fontSize: 18.sp,
-        fontWeight: FontWeight.w600,
-      );
+    color: AppColors.mutedNavy,
+    fontSize: 18.sp,
+    fontWeight: FontWeight.w600,
+  );
 
   static TextStyle get labelLarge => GoogleFonts.inter(
-        color: AppColors.navy,
-        fontSize: 20.sp,
-        fontWeight: FontWeight.w800,
-      );
+    color: AppColors.navy,
+    fontSize: 20.sp,
+    fontWeight: FontWeight.w800,
+  );
   static TextStyle get inputHint => const TextStyle(
     fontFamily: 'Inter',
     fontSize: 16,
@@ -71,10 +70,10 @@ class AppStyles {
     color: Color(0xFF747781),
   );
   static TextStyle get inputText => GoogleFonts.inter(
-        color: AppColors.navy,
-        fontWeight: FontWeight.w600,
-        fontSize: 18.sp,
-      );
+    color: AppColors.navy,
+    fontWeight: FontWeight.w600,
+    fontSize: 18.sp,
+  );
   static TextStyle customSize(double size, {Color? color, FontWeight? weight}) {
     return GoogleFonts.inter(
       fontSize: size.sp,
@@ -104,17 +103,17 @@ class AppSpacing {
   static double get screenPaddingVertical => 28.h;
 
   static EdgeInsets get screenPadding => EdgeInsets.symmetric(
-        horizontal: screenPaddingHorizontal,
-        vertical: screenPaddingVertical,
-      );
+    horizontal: screenPaddingHorizontal,
+    vertical: screenPaddingVertical,
+  );
 
   static double get cardPaddingHorizontal => 28.w;
   static double get cardPaddingVertical => 32.h;
 
   static EdgeInsets get cardPadding => EdgeInsets.symmetric(
-        horizontal: cardPaddingHorizontal,
-        vertical: cardPaddingVertical,
-      );
+    horizontal: cardPaddingHorizontal,
+    vertical: cardPaddingVertical,
+  );
 }
 
 class CommonWidgets {
@@ -122,8 +121,8 @@ class CommonWidgets {
 
   static Widget backButton(BuildContext context) {
     return SizedBox(
-      height: 30.h,
-      width: 30.w,
+      height: 44,
+      width: 44,
       child: OutlinedButton(
         onPressed: () => Navigator.of(context).maybePop(),
         style: OutlinedButton.styleFrom(
@@ -146,15 +145,15 @@ class CommonWidgets {
   static Widget fieldLabel(String text) {
     return Text(
       text,
-      style:  TextStyle(
+      style: TextStyle(
         fontFamily: 'Inter',
         fontSize: 14,
         fontWeight: FontWeight.w600,
         height: 1.33,
         letterSpacing: 0.6,
         color: Color(0xFF002149),
-      ));
-
+      ),
+    );
   }
 
   static Widget fieldLabelScaled(String text, {double fontSize = 14}) {
@@ -197,10 +196,7 @@ class CommonWidgets {
         suffixIcon: suffix,
         filled: true,
         fillColor: AppColors.white,
-        contentPadding: EdgeInsets.symmetric(
-          horizontal: 18.w,
-          vertical: 20.h,
-        ),
+        contentPadding: EdgeInsets.symmetric(horizontal: 18.w, vertical: 20.h),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10.r),
           borderSide: const BorderSide(color: AppColors.border),
@@ -222,16 +218,16 @@ class CommonWidgets {
     );
   }
 
-  static Widget screenHeader(BuildContext context, {bool showBackButton = true}) {
+  static Widget screenHeader(
+    BuildContext context, {
+    bool showBackButton = true,
+  }) {
     return Column(
       children: [
         headerImage(),
         if (showBackButton) ...[
           SizedBox(height: 16.h),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: backButton(context),
-          ),
+          Align(alignment: Alignment.centerLeft, child: backButton(context)),
         ],
         SizedBox(height: 24.h),
       ],

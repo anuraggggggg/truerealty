@@ -138,7 +138,13 @@ class SiteVisitModel {
             .trim(),
       ], fallback: 'Unassigned'),
       executiveId: _text(
-        json['fieldExecutiveId'] ?? executive['id'] ?? executive['_id'],
+        json['fieldExecutiveId'] ??
+            json['executiveId'] ??
+            json['assignedExecutiveId'] ??
+            executive['employeeId'] ??
+            executive['userId'] ??
+            executive['id'] ??
+            executive['_id'],
       ),
       scheduledAt: _date(dateValue),
       durationMinutes: _integer(
@@ -254,13 +260,26 @@ class SiteVisitProvider extends ApiProviderBase {
       ),
     );
     if (response != null) {
+      final parsedVisits = _extractList(
+        response.data,
+      ).map(SiteVisitModel.fromJson).where((visit) => visit.id.isNotEmpty);
+      final selectedExecutive = fieldExecutiveId?.trim() ?? '';
+      final visits = parsedVisits.toList();
+      final hasExecutiveIds = visits.any(
+        (visit) => visit.executiveId.trim().isNotEmpty,
+      );
+      final visibleVisits = selectedExecutive.isEmpty || !hasExecutiveIds
+          ? visits
+          : visits
+                .where(
+                  (visit) =>
+                      visit.executiveId.trim().toLowerCase() ==
+                      selectedExecutive.toLowerCase(),
+                )
+                .toList();
       _siteVisits
         ..clear()
-        ..addAll(
-          _extractList(
-            response.data,
-          ).map(SiteVisitModel.fromJson).where((visit) => visit.id.isNotEmpty),
-        );
+        ..addAll(visibleVisits);
       notifyListeners();
     }
     return response;

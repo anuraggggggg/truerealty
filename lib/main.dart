@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:truerealtycrm/constant/colors_screen.dart';
+import 'package:truerealtycrm/data/api/api_client.dart';
 import 'package:truerealtycrm/provider/dashboard_provider.dart';
 import 'package:truerealtycrm/provider/access_control_provider.dart';
 import 'package:truerealtycrm/provider/attendance_provider.dart';
@@ -24,6 +25,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:truerealtycrm/router/app_router.dart';
 import 'package:truerealtycrm/screen/dashboard_screen.dart';
 import 'package:truerealtycrm/screen/login_screen.dart';
+import 'package:truerealtycrm/widget/app_loading.dart';
 
 void main() {
   runApp(const MyApp());
@@ -99,11 +101,32 @@ class _SessionGate extends StatefulWidget {
 
 class _SessionGateState extends State<_SessionGate> {
   Future<void>? _loadSession;
+  bool _listeningForSessionExpiry = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _loadSession ??= context.read<AuthProvider>().loadSavedSession();
+    if (!_listeningForSessionExpiry) {
+      ApiClient.sessionExpiredNotifier.addListener(_handleSessionExpired);
+      _listeningForSessionExpiry = true;
+    }
+  }
+
+  Future<void> _handleSessionExpired() async {
+    if (!mounted) return;
+    final authProvider = context.read<AuthProvider>();
+    if (authProvider.isAuthenticated) {
+      await authProvider.clearSession();
+    }
+  }
+
+  @override
+  void dispose() {
+    if (_listeningForSessionExpiry) {
+      ApiClient.sessionExpiredNotifier.removeListener(_handleSessionExpired);
+    }
+    super.dispose();
   }
 
   @override
@@ -113,7 +136,7 @@ class _SessionGateState extends State<_SessionGate> {
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
           return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
+            body: AppPageLoader(message: 'Restoring your session'),
           );
         }
         return context.watch<AuthProvider>().isAuthenticated

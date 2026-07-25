@@ -3,8 +3,10 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
 import 'package:truerealtycrm/constant/colors_screen.dart';
 import 'package:truerealtycrm/constant/screen_utils.dart';
+import 'package:truerealtycrm/provider/auth_provider.dart';
 import 'package:truerealtycrm/provider/employee_provider.dart';
 import 'package:truerealtycrm/provider/leads_provider.dart';
+import 'package:truerealtycrm/widget/app_loading.dart';
 
 class AssignLeadsScreen extends StatefulWidget {
   const AssignLeadsScreen({super.key});
@@ -30,6 +32,15 @@ class _AssignLeadsScreenState extends State<AssignLeadsScreen> {
   }
 
   Future<void> _load() async {
+    if (!context.read<AuthProvider>().canViewModule('employees')) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = null;
+        });
+      }
+      return;
+    }
     if (mounted) {
       setState(() {
         _loading = true;
@@ -105,6 +116,9 @@ class _AssignLeadsScreenState extends State<AssignLeadsScreen> {
   @override
   Widget build(BuildContext context) {
     final leadProvider = context.watch<LeadProvider>();
+    final hasAssignmentAccess = context.watch<AuthProvider>().canViewModule(
+      'employees',
+    );
     final unassignedLeads = leadProvider.leads
         .where(_isLeadUnassigned)
         .toList();
@@ -138,30 +152,31 @@ class _AssignLeadsScreenState extends State<AssignLeadsScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const _AssignHeaderArt(),
-              Transform.translate(
-                offset: Offset(0, -48.h),
-                child: Container(
-                  width: double.infinity,
-                  padding: EdgeInsets.fromLTRB(20.w, 40.h, 20.w, 28.h),
-                  decoration: BoxDecoration(
-                    color: AppColors.white,
-                    borderRadius: BorderRadius.only(
-                      topLeft: Radius.circular(18.r),
-                      topRight: Radius.circular(18.r),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.shadowBlue10,
-                        blurRadius: 18.r,
-                        offset: Offset(0, -4.h),
-                      ),
-                    ],
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.fromLTRB(16.w, 24.h, 16.w, 28.h),
+                decoration: BoxDecoration(
+                  color: AppColors.white,
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(22.r),
+                    topRight: Radius.circular(22.r),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const _AssignHeader(),
-                      SizedBox(height: 18.h),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.shadowBlue10,
+                      blurRadius: 18.r,
+                      offset: Offset(0, -4.h),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const _AssignHeader(),
+                    SizedBox(height: 18.h),
+                    if (!hasAssignmentAccess)
+                      const _AssignmentAccessRestricted()
+                    else if (_loading) ...[
                       _MetricStrip(
                         unassigned: unassignedCount,
                         telecallers: telecallerCount,
@@ -169,52 +184,57 @@ class _AssignLeadsScreenState extends State<AssignLeadsScreen> {
                         selected: _selectedLeadIds.length,
                       ),
                       SizedBox(height: 16.h),
-                      if (_loading)
-                        const Center(child: CircularProgressIndicator())
-                      else if (_error != null && leadProvider.leads.isEmpty)
-                        _AssignError(message: _error!, onRetry: _load)
-                      else ...[
-                        _SelectLeadsCard(
-                          leads: leads,
-                          selectedIds: _selectedLeadIds,
-                          unassignedCount: unassignedCount,
-                          onSearch: (value) =>
-                              setState(() => _leadSearch = value),
-                          onSelected: (leadId, selected) {
-                            setState(() {
-                              selected
-                                  ? _selectedLeadIds.add(leadId)
-                                  : _selectedLeadIds.remove(leadId);
-                            });
-                          },
+                      const AppListSkeleton(itemCount: 2, itemHeight: 220),
+                    ] else if (_error != null && leadProvider.leads.isEmpty)
+                      _AssignError(message: _error!, onRetry: _load)
+                    else ...[
+                      _MetricStrip(
+                        unassigned: unassignedCount,
+                        telecallers: telecallerCount,
+                        executives: executiveCount,
+                        selected: _selectedLeadIds.length,
+                      ),
+                      SizedBox(height: 16.h),
+                      _SelectLeadsCard(
+                        leads: leads,
+                        selectedIds: _selectedLeadIds,
+                        unassignedCount: unassignedCount,
+                        onSearch: (value) =>
+                            setState(() => _leadSearch = value),
+                        onSelected: (leadId, selected) {
+                          setState(() {
+                            selected
+                                ? _selectedLeadIds.add(leadId)
+                                : _selectedLeadIds.remove(leadId);
+                          });
+                        },
+                      ),
+                      SizedBox(height: 16.h),
+                      _AssignToCard(
+                        employees: employees,
+                        selectedId: _selectedEmployeeId,
+                        onSearch: (value) =>
+                            setState(() => _employeeSearch = value),
+                        onSelected: (value) =>
+                            setState(() => _selectedEmployeeId = value),
+                      ),
+                      SizedBox(height: 16.h),
+                      if (_error != null) ...[
+                        Text(
+                          _error!,
+                          style: const TextStyle(color: Colors.red),
                         ),
-                        SizedBox(height: 16.h),
-                        _AssignToCard(
-                          employees: employees,
-                          selectedId: _selectedEmployeeId,
-                          onSearch: (value) =>
-                              setState(() => _employeeSearch = value),
-                          onSelected: (value) =>
-                              setState(() => _selectedEmployeeId = value),
-                        ),
-                        SizedBox(height: 16.h),
-                        if (_error != null) ...[
-                          Text(
-                            _error!,
-                            style: const TextStyle(color: Colors.red),
-                          ),
-                          SizedBox(height: 12.h),
-                        ],
-                        _BottomActions(
-                          assigning: _assigning,
-                          enabled:
-                              _selectedLeadIds.isNotEmpty &&
-                              _selectedEmployeeId != null,
-                          onAssign: _assign,
-                        ),
+                        SizedBox(height: 12.h),
                       ],
+                      _BottomActions(
+                        assigning: _assigning,
+                        enabled:
+                            _selectedLeadIds.isNotEmpty &&
+                            _selectedEmployeeId != null,
+                        onAssign: _assign,
+                      ),
                     ],
-                  ),
+                  ],
                 ),
               ),
             ],
@@ -230,18 +250,19 @@ class _AssignHeaderArt extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final headerHeight = (MediaQuery.sizeOf(context).width * .52).clamp(
+      180.0,
+      235.0,
+    );
     return SizedBox(
-      height: 340.h,
+      height: headerHeight,
       child: Stack(
         children: [
-          Positioned(
-            left: 0,
-            right: 0,
-            top: 0,
+          Positioned.fill(
             child: Image.asset(
               'assets/top_heades.png',
-              width: double.infinity,
-              fit: BoxFit.fitWidth,
+              fit: BoxFit.cover,
+              alignment: Alignment.topCenter,
             ),
           ),
           Positioned(
@@ -300,50 +321,59 @@ class _MetricStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          _MetricTile(
-            icon: Icons.assignment_outlined,
-            label: 'Unassigned',
-            value: '$unassigned',
-            detail: 'Requires assignment',
-            color: AppColors.vividBlue,
-            bg: AppColors.windowBlue,
-          ),
-          _MetricTile(
-            icon: Icons.support_agent,
-            label: 'Telecallers',
-            value: '$telecallers',
-            detail: 'Active users',
-            color: AppColors.green,
-            bg: AppColors.greenBg,
-          ),
-          _MetricTile(
-            icon: Icons.badge_outlined,
-            label: 'Executives',
-            value: '$executives',
-            detail: 'Active users',
-            color: AppColors.purple,
-            bg: AppColors.purpleBg,
-          ),
-          _MetricTile(
-            icon: Icons.assignment_turned_in_outlined,
-            label: 'Selected',
-            value: '$selected',
-            detail: 'Ready to assign',
-            color: AppColors.orange,
-            bg: AppColors.orangeBg,
-          ),
-        ],
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final tileWidth = (constraints.maxWidth - 12) / 2;
+        return Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            _MetricTile(
+              width: tileWidth,
+              icon: Icons.assignment_outlined,
+              label: 'Unassigned',
+              value: '$unassigned',
+              detail: 'Requires assignment',
+              color: AppColors.vividBlue,
+              bg: AppColors.windowBlue,
+            ),
+            _MetricTile(
+              width: tileWidth,
+              icon: Icons.support_agent,
+              label: 'Telecallers',
+              value: '$telecallers',
+              detail: 'Active users',
+              color: AppColors.green,
+              bg: AppColors.greenBg,
+            ),
+            _MetricTile(
+              width: tileWidth,
+              icon: Icons.badge_outlined,
+              label: 'Executives',
+              value: '$executives',
+              detail: 'Active users',
+              color: AppColors.purple,
+              bg: AppColors.purpleBg,
+            ),
+            _MetricTile(
+              width: tileWidth,
+              icon: Icons.assignment_turned_in_outlined,
+              label: 'Selected',
+              value: '$selected',
+              detail: 'Ready to assign',
+              color: AppColors.orange,
+              bg: AppColors.orangeBg,
+            ),
+          ],
+        );
+      },
     );
   }
 }
 
 class _MetricTile extends StatelessWidget {
   const _MetricTile({
+    required this.width,
     required this.icon,
     required this.label,
     required this.value,
@@ -353,6 +383,7 @@ class _MetricTile extends StatelessWidget {
   });
 
   final IconData icon;
+  final double width;
   final String label;
   final String value;
   final String detail;
@@ -362,16 +393,15 @@ class _MetricTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 154,
-      margin: const EdgeInsets.only(right: 12),
-      padding: const EdgeInsets.all(14),
+      width: width,
+      padding: const EdgeInsets.all(12),
       decoration: _cardDecoration(),
       child: Row(
         children: [
           CircleAvatar(
-            radius: 23,
+            radius: 20,
             backgroundColor: bg,
-            child: Icon(icon, color: color, size: 24),
+            child: Icon(icon, color: color, size: 21),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -485,13 +515,22 @@ class _SelectLeadsCard extends StatelessWidget {
           if (leads.isEmpty)
             const _EmptyAssignmentRow(label: 'No leads found')
           else
-            ...leads.map(
-              (lead) => _LeadAssignRow(
-                lead: lead,
-                selected: selectedIds.contains(lead.id),
-                onChanged: lead.id == null
-                    ? null
-                    : (selected) => onSelected(lead.id!, selected),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 340),
+              child: ListView.builder(
+                shrinkWrap: true,
+                primary: false,
+                itemCount: leads.length,
+                itemBuilder: (context, index) {
+                  final lead = leads[index];
+                  return _LeadAssignRow(
+                    lead: lead,
+                    selected: selectedIds.contains(lead.id),
+                    onChanged: lead.id == null
+                        ? null
+                        : (selected) => onSelected(lead.id!, selected),
+                  );
+                },
               ),
             ),
         ],
@@ -526,11 +565,20 @@ class _AssignToCard extends StatelessWidget {
           if (employees.isEmpty)
             const _EmptyAssignmentRow(label: 'No active employees found')
           else
-            ...employees.map(
-              (employee) => _AssigneeRow(
-                employee: employee,
-                selected: selectedId == employee.id,
-                onChanged: (_) => onSelected(employee.id),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 340),
+              child: ListView.builder(
+                shrinkWrap: true,
+                primary: false,
+                itemCount: employees.length,
+                itemBuilder: (context, index) {
+                  final employee = employees[index];
+                  return _AssigneeRow(
+                    employee: employee,
+                    selected: selectedId == employee.id,
+                    onChanged: (_) => onSelected(employee.id),
+                  );
+                },
               ),
             ),
         ],
@@ -576,7 +624,12 @@ class _SectionCard extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               Expanded(child: Text(title, style: _sectionTitleStyle())),
-              _SoftBadge(label: action),
+              Flexible(
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: _SoftBadge(label: action),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 14),
@@ -722,7 +775,9 @@ class _ListRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          trailing,
+          Flexible(
+            child: Align(alignment: Alignment.centerRight, child: trailing),
+          ),
         ],
       ),
     );
@@ -986,20 +1041,23 @@ class _SoftBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-      decoration: BoxDecoration(
-        color: AppColors.orangeBg,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(
-          color: AppColors.orange,
-          fontSize: 11,
-          fontWeight: FontWeight.w900,
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 118),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        decoration: BoxDecoration(
+          color: AppColors.orangeBg,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: AppColors.orange,
+            fontSize: 11,
+            fontWeight: FontWeight.w900,
+          ),
         ),
       ),
     );
@@ -1046,6 +1104,55 @@ class _AssignError extends StatelessWidget {
             style: const TextStyle(color: Color(0xFFB42318)),
           ),
           TextButton(onPressed: onRetry, child: const Text('Try again')),
+        ],
+      ),
+    );
+  }
+}
+
+class _AssignmentAccessRestricted extends StatelessWidget {
+  const _AssignmentAccessRestricted();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
+      decoration: BoxDecoration(
+        color: AppColors.scaffoldBg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        children: [
+          const CircleAvatar(
+            radius: 25,
+            backgroundColor: AppColors.orangeBg,
+            child: Icon(Icons.lock_outline, color: AppColors.orange, size: 25),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            'Assignment access restricted',
+            textAlign: TextAlign.center,
+            style: _sectionTitleStyle(),
+          ),
+          const SizedBox(height: 7),
+          const Text(
+            'Your role does not have permission to view employees or assign leads.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: AppColors.mutedNavy,
+              fontSize: 13,
+              height: 1.45,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 16),
+          OutlinedButton.icon(
+            onPressed: () => Navigator.of(context).maybePop(),
+            icon: const Icon(Icons.arrow_back),
+            label: const Text('Go back'),
+          ),
         ],
       ),
     );

@@ -30,6 +30,17 @@ class AttendanceRepository {
     return _apiClient.get('/attendance/today');
   }
 
+  Future<ApiResponse<dynamic>> monthlyAttendance({
+    required String employeeId,
+    required int month,
+    required int year,
+  }) {
+    return _apiClient.get(
+      '/attendance',
+      queryParameters: {'employeeId': employeeId, 'month': month, 'year': year},
+    );
+  }
+
   Future<ApiResponse<dynamic>> attendanceReportPdf({
     String? employeeId,
     required int month,

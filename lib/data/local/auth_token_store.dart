@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class AuthTokenStore {
   static const String _accessTokenKey = 'truroot_access_token';
   static const String _refreshTokenKey = 'truroot_refresh_token';
+  static const String _roleKey = 'truroot_user_role';
 
   Future<String?> getAccessToken() async {
     final preferences = await SharedPreferences.getInstance();
@@ -39,9 +40,20 @@ class AuthTokenStore {
     }
   }
 
+  Future<void> saveRole(String role) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(_roleKey, role);
+  }
+
+  Future<String?> getRole() async {
+    final preferences = await SharedPreferences.getInstance();
+    return preferences.getString(_roleKey);
+  }
+
   Future<void> clear() async {
     final preferences = await SharedPreferences.getInstance();
     await preferences.remove(_accessTokenKey);
     await preferences.remove(_refreshTokenKey);
+    await preferences.remove(_roleKey);
   }
 }

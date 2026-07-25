@@ -1,11 +1,18 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:truerealtycrm/provider/employee_provider.dart';
+import 'package:truerealtycrm/provider/auth_provider.dart';
 import 'package:truerealtycrm/provider/leads_provider.dart';
 import 'package:truerealtycrm/provider/project_provider.dart';
 import 'package:truerealtycrm/provider/site_visits_provider.dart';
+import 'package:truerealtycrm/widget/app_loading.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class SiteVisitDetailsScreen extends StatefulWidget {
   const SiteVisitDetailsScreen({super.key});
@@ -60,7 +67,9 @@ class _SiteVisitDetailsScreenState extends State<SiteVisitDetailsScreen> {
       'fieldExecutives',
       'employees',
     ]);
-    if (options.isEmpty && mounted) {
+    if (options.isEmpty &&
+        mounted &&
+        context.read<AuthProvider>().canViewModule('employees')) {
       final employeeResponse = await context
           .read<EmployeeProvider>()
           .fetchEmployees(role: 'fieldExecutive', status: 'Active', limit: 100);
@@ -97,7 +106,7 @@ class _SiteVisitDetailsScreenState extends State<SiteVisitDetailsScreen> {
                 _buildCreateButton(context),
                 SizedBox(height: 24.h),
                 if (provider.isLoading && provider.siteVisits.isEmpty)
-                  const Center(child: CircularProgressIndicator())
+                  const AppListSkeleton(itemCount: 4, itemHeight: 154)
                 else if (provider.error != null && provider.siteVisits.isEmpty)
                   _ApiErrorCard(message: provider.error!, onRetry: _load)
                 else ...[
@@ -555,14 +564,20 @@ class _CreateSiteVisitSheetState extends State<_CreateSiteVisitSheet> {
   }
 
   Future<void> _loadOptions() async {
+    final canViewEmployees = context.read<AuthProvider>().canViewModule(
+      'employees',
+    );
     final results = await Future.wait([
       context.read<LeadProvider>().fetchLeads(page: 1, limit: 100),
       context.read<ProjectProvider>().fetchProjects(),
-      context.read<EmployeeProvider>().fetchEmployees(
-        role: 'fieldExecutive',
-        status: 'Active',
-        limit: 100,
-      ),
+      if (canViewEmployees)
+        context.read<EmployeeProvider>().fetchEmployees(
+          role: 'fieldExecutive',
+          status: 'Active',
+          limit: 100,
+        )
+      else
+        Future.value(null),
       context.read<SiteVisitProvider>().fetchSiteVisitOptions(),
     ]);
     if (!mounted) return;
@@ -1391,14 +1406,119 @@ class _SheetInput extends StatelessWidget {
   }
 }
 
-class _VisitsListCard extends StatelessWidget {
+class _VisitsListCard extends StatefulWidget {
   const _VisitsListCard({required this.visits, required this.onRefresh});
 
   final List<SiteVisitModel> visits;
   final Future<void> Function() onRefresh;
 
   @override
+  State<_VisitsListCard> createState() => _VisitsListCardState();
+}
+
+class _VisitsListCardState extends State<_VisitsListCard> {
+  String _selectedTab = 'All';
+  bool _tableView = false;
+  bool _exporting = false;
+
+  List<SiteVisitModel> get _filteredVisits {
+    final now = DateTime.now();
+    switch (_selectedTab) {
+      case 'Upcoming':
+        return widget.visits
+            .where(
+              (visit) =>
+                  visit.scheduledAt?.isAfter(now) == true &&
+                  !visit.status.toLowerCase().contains('completed') &&
+                  !visit.status.toLowerCase().contains('cancel'),
+            )
+            .toList();
+      case 'Scheduled':
+        return widget.visits
+            .where((visit) => visit.status.toLowerCase().contains('scheduled'))
+            .toList();
+      case 'Completed':
+        return widget.visits
+            .where((visit) => visit.status.toLowerCase().contains('completed'))
+            .toList();
+      default:
+        return widget.visits;
+    }
+  }
+
+  int _count(String tab) {
+    final now = DateTime.now();
+    return widget.visits.where((visit) {
+      final status = visit.status.toLowerCase();
+      return switch (tab) {
+        'Upcoming' =>
+          visit.scheduledAt?.isAfter(now) == true &&
+              !status.contains('completed') &&
+              !status.contains('cancel'),
+        'Scheduled' => status.contains('scheduled'),
+        'Completed' => status.contains('completed'),
+        _ => true,
+      };
+    }).length;
+  }
+
+  Future<void> _exportVisits() async {
+    final visits = _filteredVisits;
+    if (_exporting || visits.isEmpty) return;
+    setState(() => _exporting = true);
+    try {
+      final rows = <List<String>>[
+        const [
+          'Lead ID',
+          'Lead Name',
+          'Phone',
+          'Project',
+          'Location',
+          'Visit Type',
+          'Status',
+          'Executive',
+          'Scheduled At',
+        ],
+        ...visits.map(
+          (visit) => [
+            visit.leadId,
+            visit.leadName,
+            visit.phone,
+            visit.project,
+            visit.location,
+            visit.type,
+            visit.status,
+            visit.executiveName,
+            visit.scheduledAt?.toIso8601String() ?? '',
+          ],
+        ),
+      ];
+      final csv = rows.map((row) => row.map(_csvCell).join(',')).join('\r\n');
+      final directory = await getTemporaryDirectory();
+      final date = DateTime.now().toIso8601String().split('T').first;
+      final file = File('${directory.path}/site-visits-$date.csv');
+      await file.writeAsString('\uFEFF$csv');
+      await Share.shareXFiles(
+        [XFile(file.path, mimeType: 'text/csv')],
+        subject: 'TrueRoot Realty site visits',
+        text: '${visits.length} site visits exported.',
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Unable to export site visits: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  String _csvCell(String value) => '"${value.replaceAll('"', '""')}"';
+
+  @override
   Widget build(BuildContext context) {
+    final visits = _filteredVisits;
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -1415,20 +1535,24 @@ class _VisitsListCard extends StatelessWidget {
               child: Row(
                 children: [
                   _VisitTab(
-                    label: 'All Visits (${visits.length})',
-                    selected: true,
+                    label: 'All Visits (${widget.visits.length})',
+                    selected: _selectedTab == 'All',
+                    onTap: () => setState(() => _selectedTab = 'All'),
                   ),
                   _VisitTab(
-                    label:
-                        'Upcoming (${visits.where((v) => v.scheduledAt?.isAfter(DateTime.now()) ?? false).length})',
+                    label: 'Upcoming (${_count('Upcoming')})',
+                    selected: _selectedTab == 'Upcoming',
+                    onTap: () => setState(() => _selectedTab = 'Upcoming'),
                   ),
                   _VisitTab(
-                    label:
-                        'Scheduled (${visits.where((v) => v.status.toLowerCase().contains('scheduled')).length})',
+                    label: 'Scheduled (${_count('Scheduled')})',
+                    selected: _selectedTab == 'Scheduled',
+                    onTap: () => setState(() => _selectedTab = 'Scheduled'),
                   ),
                   _VisitTab(
-                    label:
-                        'Completed (${visits.where((v) => v.status.toLowerCase().contains('completed')).length})',
+                    label: 'Completed (${_count('Completed')})',
+                    selected: _selectedTab == 'Completed',
+                    onTap: () => setState(() => _selectedTab = 'Completed'),
                   ),
                 ],
               ),
@@ -1440,66 +1564,48 @@ class _VisitsListCard extends StatelessWidget {
             child: Row(
               children: [
                 Expanded(
-                  child: Container(
-                    height: 34.h,
-                    padding: EdgeInsets.symmetric(horizontal: 14.w),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(8.r),
-                      border: Border.all(
+                  child: OutlinedButton.icon(
+                    onPressed: () => setState(() => _tableView = !_tableView),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: Size.fromHeight(44.h),
+                      alignment: Alignment.centerLeft,
+                      side: const BorderSide(
                         color: SiteVisitDetailsScreen._cardBorder,
                       ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8.r),
+                      ),
                     ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            'View: Table',
-                            style: GoogleFonts.inter(
-                              fontSize: 16.sp,
-                              fontWeight: FontWeight.w500,
-                              color: const Color(0xFF667085),
-                            ),
-                          ),
-                        ),
-                        Icon(
-                          Icons.keyboard_arrow_down,
-                          size: 18.sp,
-                          color: const Color(0xFF667085),
-                        ),
-                      ],
+                    icon: Icon(
+                      _tableView
+                          ? Icons.view_agenda_outlined
+                          : Icons.table_rows_outlined,
+                      size: 18.sp,
                     ),
+                    label: Text(_tableView ? 'View: Cards' : 'View: Table'),
                   ),
                 ),
                 SizedBox(width: 10.w),
-                Container(
-                  height: 34.h,
-                  padding: EdgeInsets.symmetric(horizontal: 14.w),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(8.r),
-                    border: Border.all(
+                OutlinedButton.icon(
+                  onPressed: visits.isEmpty || _exporting
+                      ? null
+                      : _exportVisits,
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: Size(0, 44.h),
+                    side: const BorderSide(
                       color: SiteVisitDetailsScreen._cardBorder,
                     ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8.r),
+                    ),
                   ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.download_outlined,
-                        size: 16.sp,
-                        color: const Color(0xFF667085),
-                      ),
-                      SizedBox(width: 6.w),
-                      Text(
-                        'Export',
-                        style: GoogleFonts.inter(
-                          fontSize: 16.sp,
-                          fontWeight: FontWeight.w500,
-                          color: const Color(0xFF667085),
-                        ),
-                      ),
-                    ],
-                  ),
+                  icon: _exporting
+                      ? const SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Icon(Icons.download_outlined, size: 16.sp),
+                  label: Text(_exporting ? 'Exporting' : 'Export'),
                 ),
               ],
             ),
@@ -1527,6 +1633,8 @@ class _VisitsListCard extends StatelessWidget {
                 ],
               ),
             )
+          else if (_tableView)
+            _SiteVisitsTable(visits: visits)
           else
             ...visits.map(
               (visit) => Column(
@@ -1556,66 +1664,7 @@ class _VisitsListCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                    Row(
-                      children: const [
-                        _PagerIcon(icon: Icons.chevron_left),
-                        _PagerNumber(label: '1', selected: true),
-                        _PagerNumber(label: '2'),
-                        _PagerNumber(label: '3'),
-                        _PagerIcon(icon: Icons.chevron_right),
-                      ],
-                    ),
                   ],
-                ),
-                SizedBox(height: 12.h),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'Rows per page',
-                        style: GoogleFonts.inter(
-                          fontSize: 16.sp,
-                          fontWeight: FontWeight.w400,
-                          color: const Color(0xFF667085),
-                        ),
-                      ),
-                      SizedBox(width: 8.w),
-                      Container(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 8.w,
-                          vertical: 4.h,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(8.r),
-                          border: Border.all(
-                            color: SiteVisitDetailsScreen._cardBorder,
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              '10',
-                              style: GoogleFonts.inter(
-                                fontSize: 16.sp,
-                                fontWeight: FontWeight.w500,
-                                color: const Color(0xFF667085),
-                              ),
-                            ),
-                            SizedBox(width: 2.w),
-                            Icon(
-                              Icons.keyboard_arrow_down,
-                              size: 16.sp,
-                              color: const Color(0xFF667085),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
                 ),
               ],
             ),
@@ -1626,10 +1675,123 @@ class _VisitsListCard extends StatelessWidget {
   }
 }
 
+class _SiteVisitsTable extends StatelessWidget {
+  const _SiteVisitsTable({required this.visits});
+
+  final List<SiteVisitModel> visits;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: EdgeInsets.symmetric(horizontal: 8.w),
+      child: DataTable(
+        headingTextStyle: GoogleFonts.inter(
+          fontSize: 12.sp,
+          fontWeight: FontWeight.w700,
+          color: const Color(0xFF173A6D),
+        ),
+        dataTextStyle: GoogleFonts.inter(
+          fontSize: 12.sp,
+          fontWeight: FontWeight.w500,
+          color: const Color(0xFF475467),
+        ),
+        columns: const [
+          DataColumn(label: Text('Lead')),
+          DataColumn(label: Text('Project')),
+          DataColumn(label: Text('Schedule')),
+          DataColumn(label: Text('Executive')),
+          DataColumn(label: Text('Status')),
+        ],
+        rows: visits
+            .map(
+              (visit) => DataRow(
+                cells: [
+                  DataCell(
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 150),
+                      child: Text(
+                        visit.leadName,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                  DataCell(
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 150),
+                      child: Text(
+                        visit.project,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                  DataCell(Text('${visit.date}\n${visit.time}')),
+                  DataCell(Text(visit.executiveName)),
+                  DataCell(Text(visit.status)),
+                ],
+              ),
+            )
+            .toList(),
+      ),
+    );
+  }
+}
+
 class _SiteVisitListItem extends StatelessWidget {
   const _SiteVisitListItem({required this.visit});
 
   final SiteVisitModel visit;
+
+  String get _callNumber {
+    final raw = visit.phone.trim();
+    final digits = raw.replaceAll(RegExp(r'[^0-9]'), '');
+    return raw.startsWith('+') ? '+$digits' : digits;
+  }
+
+  bool get _canCall => _callNumber.replaceAll('+', '').length >= 7;
+
+  Future<void> _callLead(BuildContext context) async {
+    final uri = Uri(scheme: 'tel', path: _callNumber);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final supported = await canLaunchUrl(uri);
+      if (!supported) {
+        if (context.mounted) {
+          messenger.showSnackBar(
+            const SnackBar(
+              content: Text('No phone dialer is available on this device.'),
+            ),
+          );
+        }
+        return;
+      }
+
+      final launched = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+      if (!launched && context.mounted) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Unable to open the phone dialer.')),
+        );
+      }
+    } catch (error) {
+      if (context.mounted) {
+        final needsRestart = error.toString().contains(
+          'MissingPluginException',
+        );
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              needsRestart
+                  ? 'Please fully restart the app to enable phone calls.'
+                  : 'Unable to call this lead: $error',
+            ),
+          ),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1792,66 +1954,38 @@ class _SiteVisitListItem extends StatelessWidget {
             ],
           ),
         ),
-        Divider(height: 1, color: const Color(0xFFDCE6F3)),
-        Padding(
-          padding: EdgeInsets.fromLTRB(16.w, 16.h, 16.w, 16.h),
-          child: Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () {},
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: Size.fromHeight(42.h),
-                    side: const BorderSide(color: Color(0xFFB8C5D9)),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10.r),
-                    ),
+        if (_canCall) ...[
+          Divider(height: 1, color: const Color(0xFFDCE6F3)),
+          Padding(
+            padding: EdgeInsets.fromLTRB(16.w, 16.h, 16.w, 16.h),
+            child: SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => _callLead(context),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: Size.fromHeight(44.h),
+                  side: const BorderSide(color: Color(0xFFB8C5D9)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10.r),
                   ),
-                  icon: Icon(
-                    Icons.call_outlined,
-                    size: 18.sp,
+                ),
+                icon: Icon(
+                  Icons.call_outlined,
+                  size: 18.sp,
+                  color: const Color(0xFF173A6D),
+                ),
+                label: Text(
+                  'Call Lead',
+                  style: GoogleFonts.inter(
+                    fontSize: 15.sp,
+                    fontWeight: FontWeight.w600,
                     color: const Color(0xFF173A6D),
                   ),
-                  label: Text(
-                    'Call Lead',
-                    style: GoogleFonts.inter(
-                      fontSize: 15.sp,
-                      fontWeight: FontWeight.w600,
-                      color: const Color(0xFF173A6D),
-                    ),
-                  ),
                 ),
               ),
-              SizedBox(width: 12.w),
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: () {},
-                  style: ElevatedButton.styleFrom(
-                    elevation: 0,
-                    backgroundColor: SiteVisitDetailsScreen._orange,
-                    minimumSize: Size.fromHeight(42.h),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10.r),
-                    ),
-                  ),
-                  icon: Icon(
-                    Icons.event_outlined,
-                    size: 18.sp,
-                    color: Colors.white,
-                  ),
-                  label: Text(
-                    'Reschedule',
-                    style: GoogleFonts.inter(
-                      fontSize: 15.sp,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
-        ),
+        ],
       ],
     );
   }
@@ -2179,84 +2313,39 @@ class _MiniInfoBlock extends StatelessWidget {
 }
 
 class _VisitTab extends StatelessWidget {
-  const _VisitTab({required this.label, this.selected = false});
+  const _VisitTab({
+    required this.label,
+    required this.onTap,
+    this.selected = false,
+  });
 
   final String label;
   final bool selected;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: EdgeInsets.only(right: 28.w),
-      padding: EdgeInsets.only(bottom: 12.h),
-      decoration: BoxDecoration(
-        border: selected
-            ? const Border(
-                bottom: BorderSide(color: Color(0xFF0F2B57), width: 2),
-              )
-            : null,
-      ),
-      child: Text(
-        label,
-        style: GoogleFonts.inter(
-          fontSize: 14.sp,
-          fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-          color: selected ? const Color(0xFF0F2B57) : const Color(0xFF667085),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(6.r),
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 44),
+        margin: EdgeInsets.only(right: 20.w),
+        padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 12.h),
+        decoration: BoxDecoration(
+          border: selected
+              ? const Border(
+                  bottom: BorderSide(color: Color(0xFF0F2B57), width: 2),
+                )
+              : null,
         ),
-      ),
-    );
-  }
-}
-
-class _PagerIcon extends StatelessWidget {
-  const _PagerIcon({required this.icon});
-
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 28.w,
-      height: 28.w,
-      margin: EdgeInsets.only(left: 6.w),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(5.r),
-        border: Border.all(color: SiteVisitDetailsScreen._cardBorder),
-      ),
-      child: Icon(icon, size: 16.sp, color: const Color(0xFF98A2B3)),
-    );
-  }
-}
-
-class _PagerNumber extends StatelessWidget {
-  const _PagerNumber({required this.label, this.selected = false});
-
-  final String label;
-  final bool selected;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 28.w,
-      height: 28.w,
-      margin: EdgeInsets.only(left: 6.w),
-      decoration: BoxDecoration(
-        color: selected ? const Color(0xFF0F2B57) : Colors.white,
-        borderRadius: BorderRadius.circular(5.r),
-        border: Border.all(
-          color: selected
-              ? const Color(0xFF0F2B57)
-              : SiteVisitDetailsScreen._cardBorder,
-        ),
-      ),
-      alignment: Alignment.center,
-      child: Text(
-        label,
-        style: GoogleFonts.inter(
-          fontSize: 13.sp,
-          fontWeight: FontWeight.w600,
-          color: selected ? Colors.white : const Color(0xFF667085),
+        child: Text(
+          label,
+          style: GoogleFonts.inter(
+            fontSize: 14.sp,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+            color: selected ? const Color(0xFF0F2B57) : const Color(0xFF667085),
+          ),
         ),
       ),
     );
