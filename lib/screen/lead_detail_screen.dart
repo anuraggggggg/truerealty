@@ -1,1683 +1,855 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 import 'package:truerealtycrm/constant/colors_screen.dart';
-import 'package:truerealtycrm/router/app_router.dart';
-import 'documents_screen.dart';
+import 'package:truerealtycrm/provider/employee_provider.dart';
+import 'package:truerealtycrm/provider/leads_provider.dart';
+import 'package:truerealtycrm/provider/site_visits_provider.dart';
+import 'package:truerealtycrm/screen/site_visits_screen.dart';
 
 class LeadDetailScreenArgs {
-  const LeadDetailScreenArgs({this.initialTabIndex = 0});
+  const LeadDetailScreenArgs({this.initialTabIndex = 0, this.lead});
 
   final int initialTabIndex;
+  final LeadModel? lead;
 }
 
 class LeadDetailScreen extends StatefulWidget {
-  const LeadDetailScreen({super.key, this.initialTabIndex = 0});
+  const LeadDetailScreen({super.key, this.initialTabIndex = 0, this.lead});
 
   final int initialTabIndex;
+  final LeadModel? lead;
 
   @override
   State<LeadDetailScreen> createState() => _LeadDetailScreenState();
 }
 
 class _LeadDetailScreenState extends State<LeadDetailScreen> {
-  late int _selectedTabIndex;
+  late int _selectedTab;
+  Map<String, dynamic>? _lead;
+  bool _loading = false;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
-    _selectedTabIndex = widget.initialTabIndex;
+    _selectedTab = widget.initialTabIndex.clamp(0, 2);
+    _lead = widget.lead?.raw;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadLead());
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.scaffoldLight,
-      body: SafeArea(
-        child: Column(
-          children: [
-            const _LeadDetailHeader(),
-            _DetailTabs(
-              selectedIndex: _selectedTabIndex,
-              onTabSelected: _handleTabSelection,
-            ),
-// ...
-            Expanded(
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 180),
-                child: _selectedTabIndex == 4
-                    ? DocumentsTabContent(key: ValueKey('documents'))
-                    : _selectedTabIndex == 5
-                        ? const SingleChildScrollView(
-                            child: _NotesFeedTabContent(key: ValueKey('notes')),
-                          )
-                        : _selectedTabIndex == 1
-                        ? const SingleChildScrollView(child: _TimelineTabContent(key: ValueKey('timeline')))
-                        : const SingleChildScrollView(child: _OverviewTabContent(key: ValueKey('overview'))),
-              ),
-            ),
-// ...
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _handleTabSelection(int index) {
-    if (index == 2) {
-      Navigator.pushNamed(context, AppRouter.addActivity);
-      return;
-    }
-    if (index == 3) {
-      Navigator.pushNamed(context, AppRouter.siteVisits);
+  Future<void> _loadLead() async {
+    final id = widget.lead?.id ?? _string(_lead?['id']);
+    if (id == null || id.isEmpty) {
+      if (_lead == null && mounted) {
+        setState(() => _error = 'Lead details are not available.');
+      }
       return;
     }
     setState(() {
-      _selectedTabIndex = index;
+      _loading = true;
+      _error = null;
+    });
+    final response = await context.read<LeadProvider>().fetchLead(id);
+    if (!mounted) return;
+    final data = response?.data;
+    final map = data is Map
+        ? Map<String, dynamic>.from(data)
+        : <String, dynamic>{};
+    final nested = map['data'];
+    setState(() {
+      if (nested is Map) {
+        _lead = Map<String, dynamic>.from(nested);
+      } else if (map.isNotEmpty) {
+        _lead = map;
+      }
+      _loading = false;
+      if (_lead == null) _error = 'Unable to load this lead.';
     });
   }
-}
-
-class _LeadDetailHeader extends StatelessWidget {
-  const _LeadDetailHeader();
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: AppColors.scaffoldLight,
-      padding: EdgeInsets.fromLTRB(12.w, 18.h, 12.w, 10.h),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Icon(
-                Icons.arrow_back_ios_new,
-                size: 19.sp,
-                color: AppColors.textSecondary,
-              ),
-              SizedBox(width: 10.w),
-              Text(
-                'Lead Detail',
-                style: TextStyle(
-                  color: AppColors.textHeading,
-                  fontSize: 22.sp,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 16.h),
-          Container(
-            padding: EdgeInsets.fromLTRB(16.w, 18.h, 16.w, 18.h),
-            decoration: BoxDecoration(
-              color: AppColors.leadDetailHeaderBg,
-              borderRadius: BorderRadius.circular(12.r),
-              boxShadow: const [
-                BoxShadow(
-                  color: AppColors.shadowBlack05,
-                  offset: Offset(0, 4),
-                  blurRadius: 12,
-                  spreadRadius: -4,
-                ),
-                BoxShadow(
-                  color: AppColors.shadowBlack05,
-                  offset: Offset(0, 2),
-                  blurRadius: 8,
-                  spreadRadius: -2,
-                ),
-              ],
-            ),
-            child: Column(
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    CircleAvatar(
-                      radius: 22.r,
-                      backgroundColor: AppColors.leadDetailAvatarBg,
-                      child: Text(
-                        'RS',
-                        style: TextStyle(
-                          color: AppColors.white,
-                          fontSize: 14.sp,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    SizedBox(width: 14.w),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  'Rahul Sharma',
-                                  style: TextStyle(
-                                    fontFamily: 'Inter',
-                                    fontSize: 21.5.sp,
-                                    fontWeight: FontWeight.bold,
-                                    height: 1.3,
-                                    letterSpacing: 0,
-                                    color: AppColors.white,
-                                  ),
+    final fallback = widget.lead == null
+        ? null
+        : <String, dynamic>{
+            'id': widget.lead!.id,
+            'displayId': widget.lead!.displayId,
+            'name': widget.lead!.name,
+            'email': widget.lead!.email,
+            'mobile': widget.lead!.phone,
+            'statusName': widget.lead!.status,
+            'stageName': widget.lead!.stage,
+            'sourceName': widget.lead!.source,
+            'preferredProjectName': widget.lead!.project,
+            'preferredLocation': widget.lead!.location,
+            'fieldExecutiveName': widget.lead!.assignedTo,
+          };
+    final data = _LeadData(_lead ?? fallback ?? const {});
 
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              Container(
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: 10.w,
-                                  vertical: 5.h,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: AppColors.leadChipBg,
-                                  border: Border.all(
-                                    color: AppColors.leadChipBorder,
-                                    width: 1,
-                                  ),
-                                  borderRadius: BorderRadius.circular(9999),
-                                ),
-                                // decoration: BoxDecoration(
-                                //   color: const Color(0xFF4F2A0A),
-                                //   borderRadius: BorderRadius.circular(16.r),
-                                // ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      Icons.local_fire_department_outlined,
-                                      size: 10.sp,
-                                      color: AppColors.orangeStrong,
-                                    ),
-                                    SizedBox(width: 3.w),
-                                    Text(
-                                      'Hot Lead',
-                                      style: GoogleFonts.inter(
-                                        fontSize: 14.sp,
-                                        fontWeight: FontWeight.w600,
-                                        color: AppColors.orangeDeep,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                          SizedBox(height: 12.h),
-                          _miniInfo(
-                            Image.asset(
-                              'assets/email.png',
-                              width: 18.w,
-                              height: 18.h,
-                              color: AppColors.leadDetailIconTint,
-                            ),
-                            'rahul.sharma@gmail.co',
-                          ),
-                          SizedBox(height: 10.h),
-                          _miniInfo(
-                            Image.asset(
-                              'assets/calling.png',
-                              width: 18.w,
-                              height: 18.h,
-                              color: AppColors.leadDetailIconTint,
-                            ),
-                            '+919876543210',
-                          ),
-                          SizedBox(height: 10.h),
-                          _miniInfo(
-                            Image.asset(
-                              'assets/locations.png',
-                              width: 18.w,
-                              height: 18.h,
-                              color: AppColors.leadDetailIconTint,
-                            ),
-                            'Andheri East, Mumbai, Maharashtra',
-                          ),
-                        ],
-                      ),
-                    ),
-                    SizedBox(width: 12.w),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          'Lead ID',
-                          style: GoogleFonts.inter(
-                            fontSize: 13.5.sp,
-                            fontWeight: FontWeight.w400,
-                            height: 1.5,
-                            color: AppColors.mailBorder,
-                          ),
-                        ),
-                        SizedBox(height: 3.h),
-                        Text(
-                          'LD-2025-\n001248',
-                          textAlign: TextAlign.right,
-                          style: GoogleFonts.inter(
-                            fontSize: 14.sp,
-                            fontWeight: FontWeight.w700,
-                            height: 1.45,
-                            color: AppColors.white,
-                          ),
-                        ),
-                        SizedBox(height: 12.h),
-                        Text(
-                          'Source',
-                          style: GoogleFonts.inter(
-                            fontSize: 13.5.sp,
-                            fontWeight: FontWeight.w400,
-                            height: 1.5,
-                            color: AppColors.mailBorder,
-                          ),
-                        ),
-                        SizedBox(height: 3.h),
-                        Text(
-                          '99acres',
-                          style: GoogleFonts.inter(
-                            fontSize: 14.sp,
-                            fontWeight: FontWeight.w600,
-                            height: 1.45,
-                            color: AppColors.white,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                SizedBox(height: 20.h),
-                Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 14.w,
-                    vertical: 14.h,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.white,
-                    borderRadius: BorderRadius.circular(12.r),
-                  ),
-                  child: Row(
-                    children: const [
-                      Expanded(
-                        child: _HeaderStat(
-                          title: 'Lead Stage',
-                          value: 'Contacted',
-                          accent: AppColors.windowBlue,
-                          valueColor: AppColors.blueBright,
-                          isPill: true,
-                        ),
-                      ),
-                      Expanded(
-                        child: _HeaderStat(
-                          title: 'Lead Score',
-                          value: '85',
-                          valueColor: AppColors.greenStrong,
-                        ),
-                      ),
-                      Expanded(child: _AssignedStat()),
-                      Expanded(
-                        child: _HeaderStat(
-                          title: 'Created On',
-                          value: '20 May\n2025',
-                          valueColor: AppColors.textBody,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _miniInfo(Widget icon, String text) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        icon,
-        SizedBox(width: 10.w),
-        Expanded(
-          child: Text(
-            text,
-            style: TextStyle(
-              color: AppColors.leadDetailTextTint,
-              fontSize: 17.5.sp,
-              height: 1.35,
-              fontWeight: FontWeight.w500,
-            ),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _HeaderStat extends StatelessWidget {
-  const _HeaderStat({
-    required this.title,
-    required this.value,
-    required this.valueColor,
-    this.accent,
-    this.isPill = false,
-  });
-
-  final String title;
-  final String value;
-  final Color valueColor;
-  final Color? accent;
-  final bool isPill;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Text(
-          title,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 14.5.sp,
-            color: AppColors.textTertiary,
-            fontWeight: FontWeight.w500,
-            height: 1.3,
-          ),
-        ),
-        SizedBox(height: 7.h),
-        if (isPill)
-          Container(
-            padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 5.h),
-            decoration: BoxDecoration(
-              color: accent,
-              borderRadius: BorderRadius.circular(6.r),
-            ),
-            child: Text(
-              value,
-              style: TextStyle(
-                fontSize: 14.sp,
-                color: valueColor,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          )
-        else
-          Text(
-            value,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 15.5.sp,
-              height: 1.35,
-              color: valueColor,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-class _AssignedStat extends StatelessWidget {
-  const _AssignedStat();
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Text(
-          'Assigned To',
-          style: TextStyle(
-            fontSize: 14.5.sp,
-            color: AppColors.textTertiary,
-            fontWeight: FontWeight.w500,
-            height: 1.3,
-          ),
-        ),
-        SizedBox(height: 7.h),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F6F8),
+      body: SafeArea(
+        child: Column(
           children: [
-            CircleAvatar(
-              radius: 12.r,
-              backgroundColor: AppColors.leadDetailMetaBg,
-              child: Icon(
-                Icons.person,
-                size: 14.sp,
-                color: AppColors.textTertiary,
-              ),
+            _TopBar(
+              onSiteVisit: _openCreateSiteVisit,
+              onFollowUp: _openScheduleFollowUp,
             ),
-            SizedBox(width: 6.w),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Amit\nSingh',
-                  style: TextStyle(
-                    fontSize: 14.sp,
-                    height: 1.25,
-                    color: AppColors.slate900,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                Text(
-                  'Telecaller',
-                  style: TextStyle(
-                    fontSize: 10.8.sp,
-                    height: 1.25,
-                    color: AppColors.textTertiary,
-                  ),
-                ),
-              ],
+            if (_loading) const LinearProgressIndicator(minHeight: 2),
+            Expanded(
+              child: _error != null && _lead == null && fallback == null
+                  ? _ErrorState(message: _error!, onRetry: _loadLead)
+                  : RefreshIndicator(
+                      onRefresh: _loadLead,
+                      color: AppColors.orangeDeep,
+                      child: SingleChildScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: EdgeInsets.fromLTRB(12.w, 12.h, 12.w, 30.h),
+                        child: Column(
+                          children: [
+                            _SummaryCard(data: data),
+                            SizedBox(height: 10.h),
+                            _ScoreCard(data: data),
+                            SizedBox(height: 10.h),
+                            _MetricsCard(data: data),
+                            if (data.hasSla) ...[
+                              SizedBox(height: 10.h),
+                              _SlaCard(data: data),
+                            ],
+                            SizedBox(height: 12.h),
+                            _Tabs(
+                              selected: _selectedTab,
+                              onChanged: (value) =>
+                                  setState(() => _selectedTab = value),
+                            ),
+                            SizedBox(height: 10.h),
+                            if (_selectedTab == 0) ...[
+                              _AboutCard(data: data),
+                              SizedBox(height: 10.h),
+                              _RequirementsCard(data: data),
+                              SizedBox(height: 10.h),
+                              _TimelineCard(data: data, previewOnly: true),
+                              SizedBox(height: 10.h),
+                              _FollowUpCard(data: data),
+                              SizedBox(height: 10.h),
+                              _NotesCard(data: data),
+                              SizedBox(height: 10.h),
+                              _CommunicationCard(data: data),
+                              SizedBox(height: 10.h),
+                              _BookingCard(data: data),
+                            ] else if (_selectedTab == 1)
+                              _TimelineCard(data: data)
+                            else
+                              _RequirementsCard(data: data),
+                          ],
+                        ),
+                      ),
+                    ),
             ),
           ],
         ),
-      ],
-    );
-  }
-}
-
-class _DetailTabs extends StatelessWidget {
-  const _DetailTabs({required this.selectedIndex, required this.onTabSelected});
-
-  final int selectedIndex;
-  final ValueChanged<int> onTabSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    final items = [
-      (Icons.apps_rounded, 'Overview'),
-      (Icons.timeline, 'Timeline'),
-      (Icons.assignment_outlined, 'Activities'),
-      (Icons.apartment_outlined, 'Site Visits'),
-      (Icons.description_outlined, 'Documents'),
-      (Icons.edit_note_outlined, 'Notes'),
-    ];
-
-    return Container(
-      color: AppColors.white,
-      padding: EdgeInsets.fromLTRB(4.w, 12.h, 4.w, 8.h),
-      child: Row(
-        children: List.generate(
-          items.length,
-              (index) => Expanded(
-            child: _tabItem(
-              items[index].$1,
-              items[index].$2,
-              selectedIndex == index,
-              onTap: () => onTabSelected(index),
-            ),
-          ),
-        ),
       ),
     );
   }
 
-  Widget _tabItem(
-      IconData icon,
-      String label,
-      bool active, {
-        required VoidCallback onTap,
-      }) {
-    return GestureDetector(
-      onTap: onTap,
+  Future<void> _openCreateSiteVisit() async {
+    final created = await showCreateSiteVisitSheet(
+      context,
+      initialLead: widget.lead,
+    );
+    if (!mounted || created != true) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Site visit scheduled successfully.')),
+    );
+    await _loadLead();
+  }
+
+  Future<void> _openScheduleFollowUp() async {
+    final leadId = widget.lead?.id ?? _string(_lead?['id']);
+    if (leadId == null || leadId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Lead ID is not available.')),
+      );
+      return;
+    }
+    final created = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _ScheduleFollowUpSheet(
+        leadId: leadId,
+        lead: _LeadData(_lead ?? widget.lead?.raw ?? const {}),
+      ),
+    );
+    if (!mounted || created != true) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Follow-up scheduled successfully.')),
+    );
+    await _loadLead();
+  }
+}
+
+class _ScheduleFollowUpSheet extends StatefulWidget {
+  const _ScheduleFollowUpSheet({required this.leadId, required this.lead});
+
+  final String leadId;
+  final _LeadData lead;
+
+  @override
+  State<_ScheduleFollowUpSheet> createState() => _ScheduleFollowUpSheetState();
+}
+
+class _ScheduleFollowUpSheetState extends State<_ScheduleFollowUpSheet> {
+  final _formKey = GlobalKey<FormState>();
+  final _nextActionController = TextEditingController();
+  final _notesController = TextEditingController();
+  final _remarksController = TextEditingController();
+  final _types = const ['Call', 'WhatsApp', 'Email', 'SMS'];
+  List<_AssigneeOption> _assignees = const [];
+  String _type = 'Call';
+  String? _assigneeId;
+  DateTime _date = DateTime.now().add(const Duration(days: 1));
+  TimeOfDay _time = const TimeOfDay(hour: 10, minute: 0);
+  bool _reminder = true;
+  bool _loading = true;
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadAssignees());
+  }
+
+  @override
+  void dispose() {
+    _nextActionController.dispose();
+    _notesController.dispose();
+    _remarksController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadAssignees() async {
+    final responses = await Future.wait([
+      context.read<EmployeeProvider>().fetchEmployees(
+        role: 'all',
+        status: null,
+        limit: 100,
+      ),
+      context.read<SiteVisitProvider>().fetchSiteVisitOptions(),
+    ]);
+    if (!mounted) return;
+    final employeeMaps = _extractMaps(responses[0]?.data);
+    final optionMaps = _extractNamedMaps(responses[1]?.data, const [
+      'fieldExecutives',
+      'executives',
+      'employees',
+      'users',
+    ]);
+    final byId = <String, _AssigneeOption>{};
+    for (final item
+        in [...employeeMaps, ...optionMaps]
+            .map(_AssigneeOption.fromMap)
+            .where((item) => item.id.isNotEmpty && item.name.isNotEmpty)) {
+      byId[item.id] = item;
+    }
+    final preferredId = _from(widget.lead.raw, [
+      'fieldExecutiveId',
+      'telecallerId',
+      'ownerId',
+      'assignedToId',
+    ], '');
+    if (preferredId.isNotEmpty && !byId.containsKey(preferredId)) {
+      final preferredName = _from(widget.lead.raw, [
+        'fieldExecutiveName',
+        'telecallerName',
+        'ownerName',
+        'assignedToName',
+      ], '');
+      if (preferredName.isNotEmpty) {
+        byId[preferredId] = _AssigneeOption(
+          id: preferredId,
+          name: preferredName,
+        );
+      }
+    }
+    final assignees = byId.values.toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+    debugPrint(
+      '[ScheduleFollowUp] Assignees loaded: employees=${employeeMaps.length}, '
+      'options=${optionMaps.length}, usable=${assignees.length}',
+    );
+    setState(() {
+      _assignees = assignees;
+      _assigneeId = assignees.any((item) => item.id == preferredId)
+          ? preferredId
+          : (assignees.isNotEmpty ? assignees.first.id : null);
+      _loading = false;
+      if (assignees.isEmpty) {
+        _error =
+            context.read<EmployeeProvider>().error ??
+            'Unable to load active assignees.';
+      }
+    });
+  }
+
+  Future<void> _pickDate() async {
+    final value = await showDatePicker(
+      context: context,
+      initialDate: _date,
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 730)),
+    );
+    if (value != null && mounted) setState(() => _date = value);
+  }
+
+  Future<void> _pickTime() async {
+    final value = await showTimePicker(context: context, initialTime: _time);
+    if (value != null && mounted) setState(() => _time = value);
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    final assignedToId = _assigneeId;
+    if (assignedToId == null) {
+      setState(() => _error = 'Please select an assignee.');
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    final scheduledAt = DateTime(
+      _date.year,
+      _date.month,
+      _date.day,
+      _time.hour,
+      _time.minute,
+    );
+    final notes = _notesController.text.trim();
+    final remarks = _remarksController.text.trim();
+    final body = <String, dynamic>{
+      'scheduledAt': scheduledAt.toIso8601String(),
+      'followUpType': _type,
+      'assignedToId': assignedToId,
+      'nextAction': _nextActionController.text.trim(),
+      'notes': notes,
+      'remarks': remarks.isEmpty ? notes : remarks,
+      'status': 'Scheduled',
+      'setReminder': _reminder,
+    };
+    debugPrint(
+      '[ScheduleFollowUp] POST /leads/${widget.leadId}/follow-ups '
+      'payload=$body',
+    );
+    final response = await context.read<LeadProvider>().createFollowUp(
+      leadId: widget.leadId,
+      body: body,
+    );
+    if (!mounted) return;
+    if (response == null) {
+      final message =
+          context.read<LeadProvider>().error ?? 'Unable to schedule follow-up.';
+      debugPrint('[ScheduleFollowUp] Failed: $message');
+      setState(() {
+        _saving = false;
+        _error = message;
+      });
+      return;
+    }
+    debugPrint('[ScheduleFollowUp] Created successfully: ${response.data}');
+    Navigator.pop(context, true);
+  }
+
+  InputDecoration _decoration(String label, {String? hint}) {
+    return InputDecoration(
+      labelText: label,
+      hintText: hint,
+      filled: true,
+      fillColor: Colors.white,
+      contentPadding: EdgeInsets.symmetric(horizontal: 13.w, vertical: 13.h),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10.r)),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10.r),
+        borderSide: const BorderSide(color: Color(0xFFD8E0EC)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10.r),
+        borderSide: const BorderSide(color: AppColors.orangeDeep, width: 1.4),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    final navigationInset = MediaQuery.viewPaddingOf(context).bottom;
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottomInset),
+      child: Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * .9,
+        ),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF8F9FB),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22.r)),
+        ),
+        child: Column(
+          children: [
+            Padding(
+              padding: EdgeInsets.fromLTRB(18.w, 16.h, 8.w, 12.h),
+              child: Row(
+                children: [
+                  Icon(Icons.event_note_outlined, color: AppColors.orangeDeep),
+                  SizedBox(width: 9.w),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Schedule Follow-Up',
+                          style: _text(16, FontWeight.w800),
+                        ),
+                        Text(
+                          widget.lead.name,
+                          style: _text(10, FontWeight.w500, Colors.grey[700]),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : Form(
+                      key: _formKey,
+                      child: SingleChildScrollView(
+                        padding: EdgeInsets.all(16.w),
+                        child: Column(
+                          children: [
+                            DropdownButtonFormField<String>(
+                              initialValue: _type,
+                              decoration: _decoration('Follow-Up Type *'),
+                              items: _types
+                                  .map(
+                                    (type) => DropdownMenuItem(
+                                      value: type,
+                                      child: Text(type),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (value) =>
+                                  setState(() => _type = value ?? 'Call'),
+                            ),
+                            SizedBox(height: 13.h),
+                            DropdownButtonFormField<String>(
+                              initialValue: _assigneeId,
+                              isExpanded: true,
+                              decoration: _decoration('Assigned To *'),
+                              items: _assignees
+                                  .map(
+                                    (item) => DropdownMenuItem(
+                                      value: item.id,
+                                      child: Text(
+                                        item.name,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (value) =>
+                                  setState(() => _assigneeId = value),
+                              validator: (value) =>
+                                  value == null ? 'Required' : null,
+                            ),
+                            SizedBox(height: 13.h),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: InkWell(
+                                    onTap: _pickDate,
+                                    child: InputDecorator(
+                                      decoration: _decoration('Date *'),
+                                      child: Text(_formatFollowUpDate(_date)),
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(width: 10.w),
+                                Expanded(
+                                  child: InkWell(
+                                    onTap: _pickTime,
+                                    child: InputDecorator(
+                                      decoration: _decoration('Time *'),
+                                      child: Text(_time.format(context)),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            SizedBox(height: 13.h),
+                            TextFormField(
+                              controller: _nextActionController,
+                              decoration: _decoration(
+                                'Next Action *',
+                                hint: 'e.g. Meet at the property',
+                              ),
+                              validator: (value) =>
+                                  value == null || value.trim().isEmpty
+                                  ? 'Required'
+                                  : null,
+                            ),
+                            SizedBox(height: 13.h),
+                            TextFormField(
+                              controller: _notesController,
+                              maxLines: 3,
+                              decoration: _decoration('Notes'),
+                            ),
+                            SizedBox(height: 13.h),
+                            TextFormField(
+                              controller: _remarksController,
+                              maxLines: 2,
+                              decoration: _decoration('Remarks'),
+                            ),
+                            SwitchListTile.adaptive(
+                              contentPadding: EdgeInsets.zero,
+                              title: const Text('Set reminder'),
+                              value: _reminder,
+                              activeThumbColor: AppColors.orangeDeep,
+                              onChanged: (value) =>
+                                  setState(() => _reminder = value),
+                            ),
+                            if (_error != null)
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  _error!,
+                                  style: const TextStyle(
+                                    color: Color(0xFFD92D20),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+            ),
+            Container(
+              padding: EdgeInsets.fromLTRB(
+                16.w,
+                11.h,
+                16.w,
+                14.h + navigationInset,
+              ),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                border: Border(top: BorderSide(color: Color(0xFFDCE1E8))),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _saving ? null : () => Navigator.pop(context),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                  SizedBox(width: 10.w),
+                  Expanded(
+                    flex: 2,
+                    child: ElevatedButton.icon(
+                      onPressed: _saving ? null : _submit,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.orangeDeep,
+                        foregroundColor: Colors.white,
+                      ),
+                      icon: _saving
+                          ? const SizedBox.square(
+                              dimension: 17,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.event_available_outlined),
+                      label: Text(
+                        _saving ? 'Scheduling...' : 'Schedule Follow-Up',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AssigneeOption {
+  const _AssigneeOption({required this.id, required this.name});
+  final String id;
+  final String name;
+
+  factory _AssigneeOption.fromMap(Map<String, dynamic> map) {
+    final first = _from(map, ['firstName'], '');
+    final last = _from(map, ['lastName'], '');
+    return _AssigneeOption(
+      id: _from(map, ['id', '_id', 'employeeId', 'userId'], ''),
+      name: _from(map, [
+        'name',
+        'fullName',
+        'displayName',
+      ], '$first $last'.trim()),
+    );
+  }
+}
+
+List<Map<String, dynamic>> _extractMaps(Object? source) {
+  if (source is List) {
+    return source.whereType<Map>().map(Map<String, dynamic>.from).toList();
+  }
+  if (source is Map) {
+    for (final key in const [
+      'data',
+      'items',
+      'results',
+      'rows',
+      'employees',
+      'users',
+    ]) {
+      final result = _extractMaps(source[key]);
+      if (result.isNotEmpty) return result;
+    }
+  }
+  return const [];
+}
+
+List<Map<String, dynamic>> _extractNamedMaps(
+  Object? source,
+  List<String> keys,
+) {
+  if (source is! Map) return const [];
+  for (final key in keys) {
+    final result = _extractMaps(source[key]);
+    if (result.isNotEmpty) return result;
+  }
+  for (final value in source.values) {
+    final result = _extractNamedMaps(value, keys);
+    if (result.isNotEmpty) return result;
+  }
+  return const [];
+}
+
+class _TopBar extends StatelessWidget {
+  const _TopBar({required this.onSiteVisit, required this.onFollowUp});
+
+  final VoidCallback onSiteVisit;
+  final VoidCallback onFollowUp;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.fromLTRB(10.w, 8.h, 10.w, 10.h),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: Color(0xFFE4E7EC))),
+      ),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            icon,
-            size: 20.sp,
-            color: active ? AppColors.orangeStrong : AppColors.textSecondary,
+          Align(
+            alignment: Alignment.centerLeft,
+            child: IconButton(
+              visualDensity: VisualDensity.compact,
+              onPressed: () => Navigator.maybePop(context),
+              icon: const Icon(Icons.arrow_back_rounded),
+            ),
           ),
           SizedBox(height: 4.h),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 13.5.sp,
-              color: active ? AppColors.orangeStrong : AppColors.textSecondary,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          SizedBox(height: 7.h),
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            width: 42.w,
-            height: 3.h,
-            decoration: BoxDecoration(
-              color: active
-                  ? AppColors.orangeStrong
-                  : AppColors.transparentOrange,
-              borderRadius: BorderRadius.circular(4.r),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _OverviewTabContent extends StatelessWidget {
-  const _OverviewTabContent({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      key: key,
-      children: const [
-        _LeadInformationCard(),
-        SizedBox(height: 10),
-        _LeadStatusCard(),
-        SizedBox(height: 10),
-        _LeadSummaryCard(),
-      ],
-    );
-  }
-}
-
-class _TimelineTabContent extends StatelessWidget {
-  const _TimelineTabContent({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      key: key,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: EdgeInsets.fromLTRB(4.w, 8.h, 4.w, 8.h),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
+          Row(
             children: [
               Expanded(
-                child: Text(
-                  'Lead Timeline',
-                  style: TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 19.sp,
-                    fontWeight: FontWeight.bold,
-                    fontStyle: FontStyle.normal,
-                    height: 1.35,
-                    color: Color(0xFF1E3A8A),
-                  ),
+                child: OutlinedButton(
+                  onPressed: onSiteVisit,
+                  style: _buttonStyle(false),
+                  child: const FittedBox(child: Text('Create Site Visit')),
                 ),
               ),
-              SizedBox(width: 10.w),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    _filterChip(Icons.filter_alt_outlined, 'Filters'),
-                    SizedBox(width: 8.w),
-                    _filterChip(
-                      Icons.keyboard_arrow_down_rounded,
-                      'All Time',
-                      trailingFirst: false,
-                    ),
-                  ],
+              SizedBox(width: 8.w),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: onFollowUp,
+                  style: _buttonStyle(true),
+                  child: const FittedBox(child: Text('Schedule Follow-Up')),
                 ),
               ),
             ],
           ),
-        ),
-        SizedBox(height: 10.h),
-        const _TimelineItem(
-          icon: Icons.call_rounded,
-          iconBg: AppColors.leadDetailSuccessBg,
-          iconColor: AppColors.greenStrong,
-          title: 'Follow-up Call',
-          badgeText: 'Completed',
-          badgeBg: AppColors.leadDetailSuccessBg,
-          badgeColor: AppColors.greenStrong,
-          trailingTop: 'Today, 10:30 AM',
-          description: 'Spoke with Rahul regarding 2 BHK apartments in Noida.',
-          owner: 'Amit Singh',
-          role: 'Telecaller',
-          avatarBg: AppColors.gray900,
-        ),
-        const _TimelineItem(
-          icon: Icons.chat_bubble_outline_rounded,
-          iconBg: AppColors.leadDetailPurpleBg,
-          iconColor: AppColors.purpleDeep,
-          title: 'WhatsApp Message',
-          badgeText: 'Completed',
-          badgeBg: AppColors.leadDetailSuccessBg,
-          badgeColor: AppColors.greenStrong,
-          trailingTop: 'Today, 09:15 AM',
-          description: 'Sent property details and brochure on WhatsApp.',
-          owner: 'Amit Singh',
-          role: 'Telecaller',
-          avatarBg: AppColors.leadDetailPurpleAvatar,
-        ),
-        const _TimelineItem(
-          icon: Icons.calendar_month_outlined,
-          iconBg: AppColors.leadDetailOrangeBg,
-          iconColor: AppColors.orangeStrong,
-          title: 'Site Visit Scheduled',
-          badgeText: 'Upcoming',
-          badgeBg: AppColors.windowBlue,
-          badgeColor: AppColors.blueBright,
-          trailingTop: '21 May 2025\n11:30 AM',
-          description: 'Green Valley Residency - 2 BHK Unit',
-          owner: 'Amit Singh',
-          role: 'Telecaller',
-          avatarBg: AppColors.gray900,
-        ),
-        const _TimelineItem(
-          icon: Icons.note_alt_outlined,
-          iconBg: AppColors.leadDetailYellowBg,
-          iconColor: AppColors.leadDetailYellow,
-          title: 'Note Added',
-          badgeText: 'Note',
-          badgeBg: AppColors.leadDetailPinkBg,
-          badgeColor: AppColors.purpleDeep,
-          trailingTop: '20 May 2025\n04:45 PM',
-          description:
-          'Rahul is interested in ready to move properties. Budget: 50-70 Lakhs.',
-          owner: 'Neha Verma',
-          role: 'Manager',
-          avatarBg: AppColors.leadDetailBrownAvatar,
-        ),
-        const _TimelineItem(
-          icon: Icons.call_made_rounded,
-          iconBg: AppColors.leadDetailOrangeBg,
-          iconColor: AppColors.orangeStrong,
-          title: 'Follow-up Call',
-          badgeText: 'Completed',
-          badgeBg: AppColors.leadDetailSuccessBg,
-          badgeColor: AppColors.greenStrong,
-          trailingTop: '19 May 2025\n02:30 PM',
-          description:
-          'Discussed budget and requirement. He is open for site visit.',
-          owner: 'Amit Singh',
-          role: 'Telecaller',
-          avatarBg: AppColors.gray900,
-        ),
-        const _TimelineItem(
-          icon: Icons.person_add_alt_1_outlined,
-          iconBg: AppColors.leadDetailPurpleBg,
-          iconColor: AppColors.purpleDeep,
-          title: 'Lead Created',
-          badgeText: 'New',
-          badgeBg: AppColors.windowBlue,
-          badgeColor: AppColors.blueBright,
-          trailingTop: '19 May 2025\n11:20 AM',
-          description: 'Lead created via Website Enquiry',
-          owner: 'System',
-          role: '',
-          avatarBg: AppColors.leadDetailPurpleAvatar,
-        ),
-      ],
-    );
-  }
-
-  Widget _filterChip(IconData icon, String label, {bool trailingFirst = true}) {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(8.r),
-        border: Border.all(color: AppColors.borderSoft),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: trailingFirst
-            ? [
-          Icon(icon, size: 14.sp, color: AppColors.iconMuted),
-          SizedBox(width: 6.w),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 14.5.sp,
-              color: AppColors.textSecondary,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ]
-            : [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 14.5.sp,
-              color: AppColors.textSecondary,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          SizedBox(width: 4.w),
-          Icon(icon, size: 15.sp, color: AppColors.iconMuted),
         ],
       ),
     );
+  }
+
+  ButtonStyle _buttonStyle(bool filled) {
+    return (filled ? ElevatedButton.styleFrom() : OutlinedButton.styleFrom())
+        .copyWith(
+          minimumSize: WidgetStatePropertyAll(Size(0, 40.h)),
+          elevation: const WidgetStatePropertyAll(0),
+          backgroundColor: WidgetStatePropertyAll(
+            filled ? AppColors.orangeDeep : Colors.white,
+          ),
+          foregroundColor: WidgetStatePropertyAll(
+            filled ? Colors.white : const Color(0xFF1F2A44),
+          ),
+          side: const WidgetStatePropertyAll(
+            BorderSide(color: Color(0xFF9AA8C0)),
+          ),
+          shape: WidgetStatePropertyAll(
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(7.r)),
+          ),
+          textStyle: WidgetStatePropertyAll(
+            GoogleFonts.inter(fontSize: 13.sp, fontWeight: FontWeight.w700),
+          ),
+        );
   }
 }
 
-class _NotesTabContent extends StatelessWidget {
-  const _NotesTabContent({super.key});
+class _SummaryCard extends StatelessWidget {
+  const _SummaryCard({required this.data});
+  final _LeadData data;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(12.w, 12.h, 12.w, 20.h),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _leadSummaryCard(),
-          SizedBox(height: 16.h),
-          Row(
-            children: [
-              Expanded(
-                child: Container(
-                  padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
-                  decoration: BoxDecoration(
-                    color: AppColors.white,
-                    borderRadius: BorderRadius.circular(14.r),
-                    border: Border.all(color: AppColors.leadDetailCardBorder),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.search, size: 18.sp, color: AppColors.textMuted),
-                      SizedBox(width: 10.w),
-                      Text(
-                        'Search notes...',
-                        style: GoogleFonts.inter(
-                          fontSize: 14.sp,
-                          fontWeight: FontWeight.w400,
-                          color: AppColors.textMuted,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              SizedBox(width: 10.w),
-              Container(
-                width: 44.w,
-                height: 44.w,
-                decoration: BoxDecoration(
-                  color: AppColors.white,
-                  borderRadius: BorderRadius.circular(12.r),
-                  border: Border.all(color: AppColors.leadDetailCardBorder),
-                ),
-                child: Icon(
-                  Icons.filter_alt_outlined,
-                  size: 20.sp,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-              SizedBox(width: 10.w),
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 18.w, vertical: 12.h),
-                decoration: BoxDecoration(
-                  color: AppColors.navy,
-                  borderRadius: BorderRadius.circular(12.r),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.upload_outlined, size: 18.sp, color: AppColors.white),
-                    SizedBox(width: 8.w),
-                    Text(
-                      'Upload',
-                      style: GoogleFonts.inter(
-                        fontSize: 15.sp,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.white,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 16.h),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _notesChip('All', true),
-                SizedBox(width: 10.w),
-                _notesChip('General', false),
-                SizedBox(width: 10.w),
-                _notesChip('Call Notes', false),
-                SizedBox(width: 10.w),
-                _notesChip('Site Visit', false),
-                SizedBox(width: 10.w),
-                _notesChip('Follow-up', false),
-              ],
-            ),
-          ),
-          SizedBox(height: 18.h),
-          Container(
-            width: double.infinity,
-            padding: EdgeInsets.all(14.r),
-            decoration: BoxDecoration(
-              color: AppColors.white,
-              borderRadius: BorderRadius.circular(16.r),
-              border: Border.all(color: const Color(0xFFBFDBFE)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 30.w,
-                      height: 30.w,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFF1E7),
-                        borderRadius: BorderRadius.circular(10.r),
-                      ),
-                      child: Icon(
-                        Icons.description_outlined,
-                        size: 16.sp,
-                        color: AppColors.orangeDeep,
-                      ),
-                    ),
-                    SizedBox(width: 10.w),
-                    Container(
-                      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 5.h),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFF1E7),
-                        borderRadius: BorderRadius.circular(999.r),
-                        border: Border.all(color: const Color(0xFFFFC89B)),
-                      ),
-                      child: Text(
-                        'FOLLOW-UP',
-                        style: GoogleFonts.inter(
-                          fontSize: 11.sp,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.orangeDeep,
-                        ),
-                      ),
-                    ),
-                    const Spacer(),
-                    Icon(
-                      Icons.push_pin_outlined,
-                      size: 18.sp,
-                      color: AppColors.textSecondary,
-                    ),
-                    SizedBox(width: 8.w),
-                    Icon(
-                      Icons.more_vert,
-                      size: 18.sp,
-                      color: AppColors.textSecondary,
-                    ),
-                  ],
-                ),
-                SizedBox(height: 16.h),
-                Text(
-                  'Rahul liked the location but is concerned about the maintenance charges. Need to send a detailed breakdown of the costs by tomorrow.',
-                  style: GoogleFonts.inter(
-                    fontSize: 14.5.sp,
-                    fontWeight: FontWeight.w500,
-                    height: 1.65,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                SizedBox(height: 18.h),
-                Container(height: 1, color: AppColors.leadDetailDivider),
-                SizedBox(height: 10.h),
-                Text(
-                  'Added by Amit Singh • 21 May 2025, 12:30 PM',
-                  style: GoogleFonts.inter(
-                    fontSize: 11.5.sp,
-                    fontWeight: FontWeight.w500,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _notesChip(String label, bool active) {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-      decoration: BoxDecoration(
-        color: active ? const Color(0xFFE6F0FF) : AppColors.white,
-        borderRadius: BorderRadius.circular(999.r),
-        border: Border.all(
-          color: active ? const Color(0xFFBED8FF) : AppColors.leadDetailCardBorder,
-        ),
-      ),
-      child: Text(
-        label,
-        style: GoogleFonts.inter(
-          fontSize: 13.sp,
-          fontWeight: FontWeight.w500,
-          color: active ? AppColors.blueBright : AppColors.textSecondary,
-        ),
-      ),
-    );
-  }
-
-  Widget _leadSummaryCard() {
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.all(14.r),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(20.r),
-        border: Border.all(color: AppColors.leadDetailCardBorder),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 20.r,
-                      backgroundColor: const Color(0xFFE8F0FF),
-                      child: Text(
-                        'RS',
-                        style: GoogleFonts.inter(
-                          fontSize: 16.sp,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.navy,
-                        ),
-                      ),
-                    ),
-                    SizedBox(width: 10.w),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Rahul\nSharma',
-                            style: GoogleFonts.inter(
-                              fontSize: 14.5.sp,
-                              fontWeight: FontWeight.w700,
-                              height: 1.25,
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                          SizedBox(height: 6.h),
-                          Container(
-                            padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFE8F0FF),
-                              borderRadius: BorderRadius.circular(999.r),
-                            ),
-                            child: Text(
-                              'Contacted',
-                              style: GoogleFonts.inter(
-                                fontSize: 10.sp,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.blueBright,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 14.h),
-                Text(
-                  '# LD-2025-001248',
-                  style: GoogleFonts.inter(
-                    fontSize: 13.sp,
-                    fontWeight: FontWeight.w500,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-                SizedBox(height: 8.h),
-                _miniLeadLine(Icons.phone_outlined, '+91 98765 43210'),
-                SizedBox(height: 8.h),
-                _miniLeadLine(Icons.location_on_outlined, 'Noida, UP'),
-              ],
-            ),
-          ),
-          SizedBox(width: 12.w),
-          Container(
-            width: 148.w,
-            padding: EdgeInsets.all(8.r),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(14.r),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12.r),
-                  child: Image.network(
-                    'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab',
-                    width: double.infinity,
-                    height: 86.h,
-                    fit: BoxFit.cover,
-                  ),
-                ),
-                SizedBox(height: 10.h),
-                Text(
-                  'Green Valley Residency',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.inter(
-                    fontSize: 14.sp,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                SizedBox(height: 4.h),
-                Text(
-                  '2 BHK Apartment',
-                  style: GoogleFonts.inter(
-                    fontSize: 12.5.sp,
-                    fontWeight: FontWeight.w500,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-                SizedBox(height: 8.h),
-                Row(
-                  children: [
-                    Icon(
-                      Icons.location_on_outlined,
-                      size: 14.sp,
-                      color: AppColors.textSecondary,
-                    ),
-                    SizedBox(width: 4.w),
-                    Expanded(
-                      child: Text(
-                        'Sector 62',
-                        style: GoogleFonts.inter(
-                          fontSize: 12.sp,
-                          fontWeight: FontWeight.w500,
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ),
-                    Text(
-                      'View',
-                      style: GoogleFonts.inter(
-                        fontSize: 12.sp,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.orangeDeep,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _miniLeadLine(IconData icon, String text) {
-    return Row(
-      children: [
-        Icon(
-          icon,
-          size: 14.sp,
-          color: AppColors.textSecondary,
-        ),
-        SizedBox(width: 6.w),
-        Expanded(
-          child: Text(
-            text,
-            style: GoogleFonts.inter(
-              fontSize: 13.sp,
-              fontWeight: FontWeight.w500,
-              color: AppColors.textSecondary,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _NotesFeedTabContent extends StatelessWidget {
-  const _NotesFeedTabContent({super.key});
-
-  static const double _sectionGap = 16;
-  static const double _cardGap = 14;
-
-  @override
-  Widget build(BuildContext context) {
-    final isNarrow = MediaQuery.sizeOf(context).width < 410;
-
-    return Padding(
-      padding: EdgeInsets.fromLTRB(12.w, 12.h, 12.w, 20.h),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _leadSummaryCard(),
-          SizedBox(height: _sectionGap.h),
-          if (isNarrow) ...[
-            _notesSearchField(),
-            SizedBox(height: 10.h),
-            Row(
-              children: [
-                _notesFilterButton(),
-                SizedBox(width: 10.w),
-                Expanded(child: _notesUploadButton()),
-              ],
-            ),
-          ] else
-            Row(
-              children: [
-                Expanded(child: _notesSearchField()),
-                SizedBox(width: 10.w),
-                _notesFilterButton(),
-                SizedBox(width: 10.w),
-                _notesUploadButton(),
-              ],
-            ),
-          SizedBox(height: _sectionGap.h),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _notesChip('All', true),
-                SizedBox(width: 10.w),
-                _notesChip('General', false),
-                SizedBox(width: 10.w),
-                _notesChip('Call Notes', false),
-                SizedBox(width: 10.w),
-                _notesChip('Site Visit', false),
-                SizedBox(width: 10.w),
-                _notesChip('Follow-up', false),
-              ],
-            ),
-          ),
-          SizedBox(height: 18.h),
-          _noteCard(
-            icon: Icons.description_outlined,
-            iconBg: const Color(0xFFEAF1FF),
-            iconColor: AppColors.blueBright,
-            tag: 'GENERAL',
-            tagBg: const Color(0xFFF3F7FF),
-            tagBorder: const Color(0xFFCFE0FF),
-            tagColor: AppColors.blueBright,
-            note:
-                'Customer is looking for 2 BHK ready-to-move properties under 80L budget in Noida Extension.',
-            footer: 'Added by Amit Singh • 20 May 2025, 10:45 AM',
-          ),
-          SizedBox(height: _cardGap.h),
-          _noteCard(
-            icon: Icons.call_outlined,
-            iconBg: const Color(0xFFE9FBEE),
-            iconColor: AppColors.greenStrong,
-            tag: 'CALL NOTES',
-            tagBg: const Color(0xFFF1FDF4),
-            tagBorder: const Color(0xFFB9EDC7),
-            tagColor: AppColors.greenStrong,
-            note:
-                'Spoke with Rahul regarding pricing flexibility. He is willing to close if we offer a 5% discount on the base price.',
-            footer: 'Added by Amit Singh • 19 May 2025, 04:15 PM',
-          ),
-          SizedBox(height: _cardGap.h),
-          _noteCard(
-            icon: Icons.lock_outline,
-            iconBg: const Color(0xFFF4EAFF),
-            iconColor: AppColors.purpleDeep,
-            tag: 'INTERNAL',
-            tagBg: const Color(0xFFF9F1FF),
-            tagBorder: const Color(0xFFE5CCFF),
-            tagColor: AppColors.purpleDeep,
-            note:
-                'Lead appears serious. Has pre-approved loan from HDFC. Prioritize for weekend site visit.',
-            footer: 'Added by Neha Verma • 19 May 2025, 01:10 PM',
-            italicNote: true,
-          ),
-          SizedBox(height: _sectionGap.h),
-          _notesPrivacyCard(),
-          SizedBox(height: 24.h),
-          _addNewNoteButton(),
-        ],
-      ),
-    );
-  }
-
-  Widget _notesSearchField() {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(14.r),
-        border: Border.all(color: AppColors.leadDetailCardBorder),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.search, size: 18.sp, color: AppColors.textMuted),
-          SizedBox(width: 10.w),
-          Expanded(
-            child: Text(
-              'Search notes...',
-              style: GoogleFonts.inter(
-                fontSize: 15.sp,
-                fontWeight: FontWeight.w400,
-                color: AppColors.textMuted,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _notesFilterButton() {
-    return Container(
-      width: 44.w,
-      height: 44.w,
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(12.r),
-        border: Border.all(color: AppColors.leadDetailCardBorder),
-      ),
-      child: Icon(
-        Icons.filter_alt_outlined,
-        size: 20.sp,
-        color: AppColors.textSecondary,
-      ),
-    );
-  }
-
-  Widget _notesUploadButton() {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 18.w, vertical: 12.h),
-      decoration: BoxDecoration(
-        color: AppColors.navy,
-        borderRadius: BorderRadius.circular(12.r),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.upload_outlined, size: 18.sp, color: AppColors.white),
-          SizedBox(width: 8.w),
-          Text(
-            'Upload',
-            style: GoogleFonts.inter(
-              fontSize: 16.sp,
-              fontWeight: FontWeight.w600,
-              color: AppColors.white,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _notesChip(String label, bool active) {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-      decoration: BoxDecoration(
-        color: active ? const Color(0xFFE6F0FF) : AppColors.white,
-        borderRadius: BorderRadius.circular(999.r),
-        border: Border.all(
-          color: active ? const Color(0xFFBED8FF) : AppColors.leadDetailCardBorder,
-        ),
-      ),
-      child: Text(
-        label,
-        style: GoogleFonts.inter(
-          fontSize: 14.sp,
-          fontWeight: FontWeight.w500,
-          color: active ? AppColors.blueBright : AppColors.textSecondary,
-        ),
-      ),
-    );
-  }
-
-  Widget _leadSummaryCard() {
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.all(14.r),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(20.r),
-        border: Border.all(color: AppColors.leadDetailCardBorder),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 20.r,
-                      backgroundColor: const Color(0xFFE8F0FF),
-                      child: Text(
-                        'RS',
-                        style: GoogleFonts.inter(
-                          fontSize: 17.sp,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.navy,
-                        ),
-                      ),
-                    ),
-                    SizedBox(width: 10.w),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Rahul\nSharma',
-                            style: GoogleFonts.inter(
-                              fontSize: 15.5.sp,
-                              fontWeight: FontWeight.w700,
-                              height: 1.25,
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                          SizedBox(height: 6.h),
-                          Container(
-                            padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFE8F0FF),
-                              borderRadius: BorderRadius.circular(999.r),
-                            ),
-                            child: Text(
-                              'Contacted',
-                              style: GoogleFonts.inter(
-                                fontSize: 11.sp,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.blueBright,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 14.h),
-                Text(
-                  '# LD-2025-001248',
-                  style: GoogleFonts.inter(
-                    fontSize: 14.sp,
-                    fontWeight: FontWeight.w500,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-                SizedBox(height: 8.h),
-                _miniLeadLine(Icons.phone_outlined, '+91 98765 43210'),
-                SizedBox(height: 8.h),
-                _miniLeadLine(Icons.location_on_outlined, 'Noida, UP'),
-              ],
-            ),
-          ),
-          SizedBox(width: 12.w),
-          Container(
-            width: 148.w,
-            padding: EdgeInsets.all(8.r),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(14.r),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12.r),
-                  child: Image.network(
-                    'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab',
-                    width: double.infinity,
-                    height: 86.h,
-                    fit: BoxFit.cover,
-                  ),
-                ),
-                SizedBox(height: 10.h),
-                Text(
-                  'Green Valley Residency',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.inter(
-                    fontSize: 15.sp,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                SizedBox(height: 4.h),
-                Text(
-                  '2 BHK Apartment',
-                  style: GoogleFonts.inter(
-                    fontSize: 13.5.sp,
-                    fontWeight: FontWeight.w500,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-                SizedBox(height: 8.h),
-                Row(
-                  children: [
-                    Icon(
-                      Icons.location_on_outlined,
-                      size: 14.sp,
-                      color: AppColors.textSecondary,
-                    ),
-                    SizedBox(width: 4.w),
-                    Expanded(
-                      child: Text(
-                        'Sector 62',
-                        style: GoogleFonts.inter(
-                          fontSize: 13.sp,
-                          fontWeight: FontWeight.w500,
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ),
-                    Text(
-                      'View',
-                      style: GoogleFonts.inter(
-                        fontSize: 13.sp,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.orangeDeep,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _miniLeadLine(IconData icon, String text) {
-    return Row(
-      children: [
-        Icon(
-          icon,
-          size: 14.sp,
-          color: AppColors.textSecondary,
-        ),
-        SizedBox(width: 6.w),
-        Expanded(
-          child: Text(
-            text,
-            style: GoogleFonts.inter(
-              fontSize: 14.sp,
-              fontWeight: FontWeight.w500,
-              color: AppColors.textSecondary,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _noteCard({
-    required IconData icon,
-    required Color iconBg,
-    required Color iconColor,
-    required String tag,
-    required Color tagBg,
-    required Color tagBorder,
-    required Color tagColor,
-    required String note,
-    required String footer,
-    bool italicNote = false,
-  }) {
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.fromLTRB(14.w, 14.h, 14.w, 12.h),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(16.r),
-        border: Border.all(color: const Color(0xFFBFDBFE)),
-      ),
+    return _Card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 30.w,
-                height: 30.w,
-                decoration: BoxDecoration(
-                  color: iconBg,
-                  borderRadius: BorderRadius.circular(10.r),
-                ),
-                child: Icon(icon, size: 16.sp, color: iconColor),
+              CircleAvatar(
+                radius: 24.r,
+                backgroundColor: const Color(0xFFF8FAFC),
+                child: Text(data.initials, style: _text(14, FontWeight.w600)),
               ),
-              SizedBox(width: 10.w),
+              SizedBox(width: 12.w),
               Expanded(
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Container(
-                    padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 5.h),
-                    decoration: BoxDecoration(
-                      color: tagBg,
-                      borderRadius: BorderRadius.circular(999.r),
-                      border: Border.all(color: tagBorder),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _Chip(text: data.stage.toUpperCase()),
+                    SizedBox(height: 5.h),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            data.name,
+                            style: _text(17, FontWeight.w800),
+                          ),
+                        ),
+                        SizedBox(width: 4.w),
+                        Icon(Icons.verified, color: Colors.green, size: 15.sp),
+                      ],
                     ),
-                    child: Text(
-                      tag,
-                      style: GoogleFonts.inter(
-                        fontSize: 11.sp,
-                        fontWeight: FontWeight.w700,
-                        color: tagColor,
+                    Text(
+                      '#${data.displayId}',
+                      style: _text(
+                        12,
+                        FontWeight.w600,
+                        const Color(0xFF586A91),
                       ),
                     ),
-                  ),
+                  ],
                 ),
-              ),
-              Icon(
-                Icons.more_vert,
-                size: 18.sp,
-                color: AppColors.textSecondary,
               ),
             ],
           ),
           SizedBox(height: 14.h),
-          Text(
-            note,
-            style: GoogleFonts.inter(
-              fontSize: 14.5.sp,
-              fontWeight: FontWeight.w500,
-              fontStyle: italicNote ? FontStyle.italic : FontStyle.normal,
-              height: 1.65,
-              color: AppColors.textPrimary,
-            ),
-          ),
-          SizedBox(height: 16.h),
-          Container(height: 1, color: AppColors.leadDetailDivider),
-          SizedBox(height: 10.h),
-          Text(
-            footer,
-            style: GoogleFonts.inter(
-              fontSize: 11.5.sp,
-              fontWeight: FontWeight.w500,
-              color: AppColors.textSecondary,
-            ),
+          _InfoLine(Icons.phone_outlined, data.phone),
+          _InfoLine(Icons.mail_outline, data.email),
+          _InfoLine(Icons.location_on_outlined, data.location),
+          _InfoLine(Icons.campaign_outlined, data.source),
+          Divider(height: 24.h, color: const Color(0xFFE4E7EC)),
+          _TwoColumns(
+            left: [
+              ('Stage', data.stage),
+              ('Assigned To', data.assignedTo),
+              ('Created On', data.createdOn),
+            ],
+            right: [
+              ('Status', data.status),
+              ('Manager', data.manager),
+              ('Last Updated', data.updatedOn),
+            ],
           ),
         ],
       ),
     );
   }
+}
 
-  Widget _notesPrivacyCard() {
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.all(16.r),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(16.r),
-        border: Border.all(color: const Color(0xFFD8E7FF)),
-      ),
-      child: Row(
+class _ScoreCard extends StatelessWidget {
+  const _ScoreCard({required this.data});
+  final _LeadData data;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Card(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 32.w,
-            height: 32.w,
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFF),
-              borderRadius: BorderRadius.circular(10.r),
-            ),
-            child: Icon(
-              Icons.shield_outlined,
-              size: 17.sp,
-              color: const Color(0xFFC5D6F7),
+          _Title(Icons.auto_awesome_outlined, 'ALL Lead Score'),
+          SizedBox(height: 10.h),
+          Center(
+            child: SizedBox(
+              width: 105.w,
+              height: 105.w,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  SizedBox.expand(
+                    child: CircularProgressIndicator(
+                      value: (data.score / 100).clamp(0, 1),
+                      strokeWidth: 13.w,
+                      backgroundColor: const Color(0xFFECEEF1),
+                      color: AppColors.orangeDeep,
+                    ),
+                  ),
+                  Text.rich(
+                    TextSpan(
+                      text: '${data.score}\n',
+                      style: _text(18, FontWeight.w800),
+                      children: [
+                        TextSpan(
+                          text: '/100',
+                          style: _text(9, FontWeight.w500, Colors.grey),
+                        ),
+                      ],
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
             ),
           ),
-          SizedBox(width: 12.w),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Notes are private',
-                  style: GoogleFonts.inter(
-                    fontSize: 15.sp,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                SizedBox(height: 4.h),
-                Text(
-                  'Notes help the team track discussions internally. They are never shared with clients or external portals.',
-                  style: GoogleFonts.inter(
-                    fontSize: 13.5.sp,
-                    fontWeight: FontWeight.w400,
-                    height: 1.45,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
+          SizedBox(height: 8.h),
+          Center(
+            child: Text(data.scoreLabel, style: _text(13, FontWeight.w800)),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _addNewNoteButton() {
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.symmetric(vertical: 15.h),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFF7410),
-        borderRadius: BorderRadius.circular(16.r),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.note_add_outlined, size: 18.sp, color: AppColors.white),
-          SizedBox(width: 10.w),
-          Text(
-            'Add New Note',
-            style: GoogleFonts.inter(
-              fontSize: 16.sp,
-              fontWeight: FontWeight.w700,
-              color: AppColors.white,
+          SizedBox(height: 4.h),
+          Center(
+            child: Text(
+              'View Scoring Logic',
+              style: _text(11, FontWeight.w600, const Color(0xFF385487)),
             ),
           ),
         ],
@@ -1686,412 +858,362 @@ class _NotesFeedTabContent extends StatelessWidget {
   }
 }
 
-class _TimelineItem extends StatelessWidget {
-  const _TimelineItem({
-    required this.icon,
-    required this.iconBg,
-    required this.iconColor,
-    required this.title,
-    required this.badgeText,
-    required this.badgeBg,
-    required this.badgeColor,
-    required this.trailingTop,
-    required this.description,
-    required this.owner,
-    required this.role,
-    required this.avatarBg,
-  });
-
-  final IconData icon;
-  final Color iconBg;
-  final Color iconColor;
-  final String title;
-  final String badgeText;
-  final Color badgeBg;
-  final Color badgeColor;
-  final String trailingTop;
-  final String description;
-  final String owner;
-  final String role;
-  final Color avatarBg;
+class _MetricsCard extends StatelessWidget {
+  const _MetricsCard({required this.data});
+  final _LeadData data;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: 14.h),
-      child: Row(
+    return _Card(
+      child: _TwoColumns(
+        left: [
+          ('Est. Conversion', data.conversion),
+          ('Temperature', data.temperature),
+        ],
+        right: [
+          ('Est. Revenue', data.revenue),
+          ('Engagement', data.engagement),
+        ],
+      ),
+    );
+  }
+}
+
+class _SlaCard extends StatelessWidget {
+  const _SlaCard({required this.data});
+  final _LeadData data;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Card(
+      borderColor: data.slaBreached ? const Color(0xFFF4B4AE) : null,
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 30.w,
-            padding: EdgeInsets.only(top: 12.h),
-            alignment: Alignment.topCenter,
+          Row(
+            children: [
+              Expanded(
+                child: Text('SLA Summary', style: _text(14, FontWeight.w800)),
+              ),
+              _Chip(
+                text: data.slaBreached
+                    ? 'BREACHED'
+                    : data.slaStatus.toUpperCase(),
+                danger: data.slaBreached,
+              ),
+            ],
+          ),
+          SizedBox(height: 6.h),
+          Text(
+            data.slaMessage,
+            style: _text(11, FontWeight.w400, Colors.grey[700]),
+          ),
+          Divider(height: 20.h),
+          _TwoColumns(
+            left: [('Breach Date', data.slaDate), ('Owner', data.slaOwner)],
+            right: [
+              ('Response Time', data.responseTime),
+              ('Status', data.slaStatus),
+            ],
+          ),
+          SizedBox(height: 12.h),
+          _LabelValue('Activity', data.slaActivity),
+        ],
+      ),
+    );
+  }
+}
+
+class _Tabs extends StatelessWidget {
+  const _Tabs({required this.selected, required this.onChanged});
+  final int selected;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    const labels = ['Overview', 'Activities Timeline', 'Property Preferences'];
+    return Row(
+      children: List.generate(
+        labels.length,
+        (index) => Expanded(
+          child: InkWell(
+            onTap: () => onChanged(index),
             child: Container(
-              width: 34.w,
-              height: 34.w,
-              decoration: BoxDecoration(color: iconBg, shape: BoxShape.circle),
-              child: Icon(icon, size: 18.sp, color: iconColor),
+              padding: EdgeInsets.only(bottom: 9.h),
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(
+                    color: selected == index
+                        ? AppColors.orangeDeep
+                        : const Color(0xFFDDE1E8),
+                    width: selected == index ? 2 : 1,
+                  ),
+                ),
+              ),
+              child: Text(
+                labels[index],
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: _text(
+                  10,
+                  selected == index ? FontWeight.w800 : FontWeight.w600,
+                  selected == index ? AppColors.orangeDeep : Colors.grey[700],
+                ),
+              ),
             ),
           ),
-          SizedBox(width: 10.w),
-          Expanded(
-            child: Container(
-              padding: EdgeInsets.fromLTRB(14.w, 14.h, 14.w, 12.h),
-              decoration: BoxDecoration(
-                color: AppColors.white,
-                borderRadius: BorderRadius.circular(12.r),
-                border: Border.all(color: AppColors.borderCard),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Wrap(
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          spacing: 6.w,
-                          runSpacing: 6.h,
-                          children: [
-                            Text(
-                              title,
-                              style: GoogleFonts.inter(
-                                fontSize: 18.sp,
-                                fontWeight: FontWeight.w600,
-                                height: 1.35,
-                                letterSpacing: 0.2,
-                                color: AppColors.textPrimary,
-                              ),
-                            ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AboutCard extends StatelessWidget {
+  const _AboutCard({required this.data});
+  final _LeadData data;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Card(
+      child: Column(
+        children: [
+          const _Title(Icons.person_outline, 'About Lead'),
+          _DetailRow('Full Name', data.name),
+          _DetailRow('Mobile', data.phone),
+          _DetailRow('Alternate Number', data.alternatePhone),
+          _DetailRow('Email Address', data.email),
+          _DetailRow('Occupation', data.occupation),
+          _DetailRow('Address', data.location, divider: false),
+        ],
+      ),
+    );
+  }
+}
+
+class _RequirementsCard extends StatelessWidget {
+  const _RequirementsCard({required this.data});
+  final _LeadData data;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _Title(Icons.home_work_outlined, 'Property Requirements'),
+          SizedBox(height: 12.h),
+          Row(
+            children: [
+              Expanded(child: _Requirement('Property Type', data.propertyType)),
+              SizedBox(width: 8.w),
+              Expanded(child: _Requirement('Budget Range', data.budget)),
+            ],
+          ),
+          SizedBox(height: 8.h),
+          Row(
+            children: [
+              Expanded(child: _Requirement('Location', data.location)),
+              SizedBox(width: 8.w),
+              Expanded(child: _Requirement('Project', data.project)),
+            ],
+          ),
+          Divider(height: 22.h),
+          _ThreeValues(
+            values: [
+              ('Carpet Area', data.carpetArea),
+              ('Possession', data.possession),
+              ('Floor Pref.', data.floor),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TimelineCard extends StatelessWidget {
+  const _TimelineCard({required this.data, this.previewOnly = false});
+  final _LeadData data;
+  final bool previewOnly;
+
+  @override
+  Widget build(BuildContext context) {
+    final activities = previewOnly
+        ? data.activities.take(1).toList()
+        : data.activities;
+    return _Card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _Title(Icons.access_time_rounded, 'Activity Timeline'),
+          SizedBox(height: 12.h),
+          if (activities.isEmpty)
+            const _EmptyText('No activity recorded yet')
+          else
+            ...activities.map(
+              (item) => Padding(
+                padding: EdgeInsets.only(bottom: 12.h),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.flag_outlined,
+                      size: 18.sp,
+                      color: AppColors.orangeDeep,
+                    ),
+                    SizedBox(width: 8.w),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(item.title, style: _text(12, FontWeight.w800)),
+                          Text(
+                            item.date,
+                            style: _text(10, FontWeight.w400, Colors.grey),
+                          ),
+                          if (item.note != '-') ...[
+                            SizedBox(height: 6.h),
                             Container(
-                              padding: EdgeInsets.symmetric(
-                                horizontal: 8.w,
-                                vertical: 4.h,
-                              ),
+                              width: double.infinity,
+                              padding: EdgeInsets.all(9.w),
                               decoration: BoxDecoration(
-                                color: badgeBg,
-                                borderRadius: BorderRadius.circular(6.r),
+                                border: Border.all(
+                                  color: const Color(0xFFE1E5EB),
+                                ),
+                                borderRadius: BorderRadius.circular(7.r),
                               ),
                               child: Text(
-                                badgeText,
-                                style: TextStyle(
-                                  fontSize: 11.sp,
-                                  fontWeight: FontWeight.w700,
-                                  color: badgeColor,
-                                ),
+                                item.note,
+                                style: _text(11, FontWeight.w400),
                               ),
                             ),
                           ],
-                        ),
-                      ),
-                      SizedBox(width: 10.w),
-                      ConstrainedBox(
-                        constraints: BoxConstraints(minWidth: 72.w, maxWidth: 92.w),
-                        child: Text(
-                          trailingTop,
-                          textAlign: TextAlign.right,
-                          style: TextStyle(
-                            fontSize: 11.5.sp,
-                            color: AppColors.textMuted,
-                            height: 1.3,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 10.h),
-                  Text(
-                    description,
-                    style: TextStyle(
-                      fontSize: 14.5.sp,
-                      color: AppColors.textBody,
-                      height: 1.45,
-                    ),
-                  ),
-                  SizedBox(height: 12.h),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      CircleAvatar(
-                        radius: 11.r,
-                        backgroundColor: avatarBg,
-                        child: Text(
-                          owner.substring(0, 1),
-                          style: TextStyle(
-                            fontSize: 12.sp,
-                            color: AppColors.white,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      SizedBox(width: 8.w),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            owner,
-                            style: TextStyle(
-                              fontSize: 14.sp,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                          if (role.isNotEmpty)
-                            Text(
-                              role,
-                              style: TextStyle(
-                                fontSize: 10.5.sp,
-                                color: AppColors.textMuted,
-                              ),
-                            ),
                         ],
                       ),
-                    ],
-                  ),
-                ],
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
         ],
       ),
     );
   }
 }
 
-class _LeadInformationCard extends StatelessWidget {
-  const _LeadInformationCard();
+class _FollowUpCard extends StatelessWidget {
+  const _FollowUpCard({required this.data});
+  final _LeadData data;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.all(16.r),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(14.r),
-        border: Border.all(color: AppColors.leadDetailCardBorder),
-      ),
+    final followUp = data.nextFollowUp;
+    return _Card(
+      borderColor: followUp?.overdue == true ? const Color(0xFFF3B1AC) : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Lead Information',
-                style: TextStyle(
-                  fontSize: 21.sp,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary,
-                ),
+              const Expanded(
+                child: _Title(Icons.event_outlined, 'Next Follow-up'),
               ),
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
-                decoration: BoxDecoration(
-                  color: Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: const Color(0xFFE2E8F0),
-                    width: 1,
-                  ),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color.fromRGBO(0, 0, 0, 0.05),
-                      offset: Offset(0, 1),
-                      blurRadius: 2,
-                    ),
-                  ],
+              if (followUp != null)
+                _Chip(
+                  text: followUp.overdue
+                      ? 'OVERDUE'
+                      : followUp.status.toUpperCase(),
+                  danger: followUp.overdue,
                 ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.edit_outlined,
-                      size: 16.sp,
-                      color: AppColors.textTertiary,
-                    ),
-                    SizedBox(width: 6.w),
-                    Text(
-                      'Edit',
-                      style: TextStyle(
-                        fontSize: 14.5.sp,
-                        color: AppColors.textBody,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
             ],
           ),
           SizedBox(height: 12.h),
-          _InfoRow(
-            icon: Image.asset(
-              'assets/admin.png',
-              width: 18.w,
-              height: 18.h,
-              color: AppColors.iconMuted,
-            ),
-            label: 'Full Name',
-            value: 'Rahul Sharma',
-          ),
-          _InfoRow(
-            icon: Image.asset(
-              'assets/email.png',
-              width: 18.w,
-              height: 18.h,
-              color: AppColors.iconMuted,
-            ),
-            label: 'Email',
-            value: 'rahul.sharma@gmail.co',
-          ),
-          _InfoRow(
-            icon: Image.asset(
-              'assets/calling.png',
-              width: 18.w,
-              height: 18.h,
-              color: AppColors.iconMuted,
-            ),
-            label: 'Phone',
-            value: '+919876543210',
-            trailingIcon: Icons.verified,
-            trailingColor: AppColors.greenStrong,
-          ),
-          const _InfoRow(
-            icon: Icon(
-              Icons.phone_android_outlined,
-              color: AppColors.iconMuted,
-            ),
-            label: 'Alternate Phone',
-            value: '+91 91234 56789',
-          ),
-          _InfoRow(
-            icon: Image.asset(
-              'assets/locations.png',
-              width: 18.w,
-              height: 18.h,
-              color: AppColors.iconMuted,
-            ),
-            label: 'Location',
-            value: 'Andheri East, Mumbai, Maharashtra',
-          ),
-          const _InfoRow(
-            icon: Icon(Icons.work_outline, color: AppColors.iconMuted),
-            label: 'Occupation',
-            value: 'IT Professional',
-          ),
-          const _InfoRow(
-            icon: Icon(Icons.business_outlined, color: AppColors.iconMuted),
-            label: 'Company',
-            value: 'TCS',
-          ),
-          const _InfoRow(
-            icon: Icon(Icons.currency_rupee, color: AppColors.iconMuted),
-            label: 'Budget',
-            value: 'Rs 50 Lakhs - Rs 70 Lakhs',
-          ),
-          const _InfoRow(
-            icon: Icon(Icons.pin_drop_outlined, color: AppColors.iconMuted),
-            label: 'Preferred Location',
-            value: 'Noida, Greater Noida',
-          ),
-          const _InfoRow(
-            icon: Icon(Icons.home_outlined, color: AppColors.iconMuted),
-            label: 'Property Type',
-            value: '2 BHK Apartment',
-          ),
-          const _InfoRow(
-            icon: Icon(Icons.check_box_outlined, color: AppColors.iconMuted),
-            label: 'Requirement',
-            value: 'Ready to Move',
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _InfoRow extends StatelessWidget {
-  const _InfoRow({
-    required this.icon,
-    required this.label,
-    required this.value,
-    this.trailingIcon,
-    this.trailingColor,
-  });
-
-  final Widget icon;
-  final String label;
-  final String value;
-  final IconData? trailingIcon;
-  final Color? trailingColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.symmetric(vertical: 9.h),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Padding(
-            padding: EdgeInsets.only(top: 1.h),
-            child: SizedBox(
-              width: 18.w,
-              height: 18.h,
-              child: FittedBox(
-                fit: BoxFit.contain,
-                child: ColorFiltered(
-                  colorFilter: const ColorFilter.mode(
-                    Color(0xFF475569),
-                    BlendMode.srcIn,
-                  ),
-                  child: icon,
-                ),
-              ),
-            ),
-          ),
-          SizedBox(width: 10.w),
-          SizedBox(
-            width: 96.w,
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 13.5.sp,
-                color: const Color(0xFF475569), // Darker than AppColors.iconMuted
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          if (followUp == null)
+            const _EmptyText('No follow-up scheduled')
+          else ...[
+            Row(
               children: [
-                Expanded(
-                  child: Text(
-                    value,
-                    style: const TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 14.5,
-                      fontWeight: FontWeight.normal,
-                      fontStyle: FontStyle.normal,
-                      height: 1.5,
-                      letterSpacing: 0,
-                      color: Color(0xFF475569),
-                    ),
-                  ),
-                ),
-                if (trailingIcon != null) ...[
-                  SizedBox(width: 6.w),
-                  Padding(
-                    padding: EdgeInsets.only(top: 1.h),
-                    child: Icon(
-                      trailingIcon,
-                      size: 16.sp,
-                      color: trailingColor ?? AppColors.iconMuted,
-                    ),
-                  ),
-                ],
+                Icon(Icons.calendar_today_outlined, size: 13.sp),
+                SizedBox(width: 5.w),
+                Text(followUp.date, style: _text(11, FontWeight.w800)),
               ],
             ),
+            SizedBox(height: 12.h),
+            _TwoColumns(
+              left: [
+                ('Follow-up Type', followUp.type),
+                ('Assigned To', followUp.owner),
+              ],
+              right: [
+                ('Status', followUp.status),
+                ('Next Action', followUp.action),
+              ],
+            ),
+            SizedBox(height: 10.h),
+            _LabelValue('Notes', followUp.notes),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _NotesCard extends StatelessWidget {
+  const _NotesCard({required this.data});
+  final _LeadData data;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _Title(Icons.note_alt_outlined, 'Notes'),
+          SizedBox(height: 14.h),
+          if (data.notes.isEmpty)
+            const _EmptyText('No internal notes yet')
+          else
+            ...data.notes.map(
+              (note) => Padding(
+                padding: EdgeInsets.only(bottom: 8.h),
+                child: Text('• $note', style: _text(11, FontWeight.w400)),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CommunicationCard extends StatelessWidget {
+  const _CommunicationCard({required this.data});
+  final _LeadData data;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Communication Quick View', style: _text(13, FontWeight.w800)),
+          SizedBox(height: 12.h),
+          Row(
+            children: [
+              _CountTile('TOTAL CALLS', data.callCount, Icons.phone_outlined),
+              _CountTile('WHATSAPP', data.whatsappCount, Icons.chat_outlined),
+            ],
+          ),
+          SizedBox(height: 8.h),
+          Row(
+            children: [
+              _CountTile(
+                'SITE VISITS',
+                data.siteVisitCount,
+                Icons.home_outlined,
+              ),
+              _CountTile('TASKS', data.taskCount, Icons.task_alt_outlined),
+            ],
           ),
         ],
       ),
@@ -2099,221 +1221,28 @@ class _InfoRow extends StatelessWidget {
   }
 }
 
-class _LeadStatusCard extends StatelessWidget {
-  const _LeadStatusCard();
+class _BookingCard extends StatelessWidget {
+  const _BookingCard({required this.data});
+  final _LeadData data;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.all(16.r),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(14.r),
-        border: Border.all(color: AppColors.leadDetailCardBorder),
-      ),
+    return _Card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _SectionTitle('Lead Status'),
-          const SizedBox(height: 12),
-          _StatusRow(
-            icon: Image.asset(
-              'assets/circle_contracted.png',
-              width: 42.w,
-              height: 42.h,
-              fit: BoxFit.contain,
-            ),
-            label: 'Current Stage',
-            value: 'Contacted',
-            valueColor: AppColors.blueBright,
-          ),
-          _StatusRow(
-            icon: Image.asset(
-              'assets/circle_priority.png',
-              width: 42.w,
-              height: 42.h,
-              fit: BoxFit.contain,
-            ),
-            label: 'Priority',
-            value: 'High',
-            valueColor: AppColors.leadTimelineAlert,
-          ),
-          const _StatusRow(
-            icon: Icon(
-              Icons.thermostat_outlined,
-              color: AppColors.leadDetailRed,
-            ),
-            iconColor: AppColors.leadDetailRed,
-            label: 'Temperature',
-            value: 'Hot',
-            valueColor: AppColors.leadDetailRed,
-          ),
-          const _StatusRow(
-            icon: Icon(Icons.language, color: AppColors.purpleStrong),
-            iconColor: AppColors.purpleStrong,
-            label: 'Source',
-            value: '99acres',
-            valueColor: AppColors.textBody,
-          ),
-          const _StatusRow(
-            icon: Icon(
-              Icons.track_changes_outlined,
-              color: AppColors.leadDetailAmber,
-            ),
-            iconColor: AppColors.leadDetailAmber,
-            label: 'Sub Source',
-            value: 'Website',
-            valueColor: AppColors.textBody,
-          ),
-          _OwnerRow(),
-        ],
-      ),
-    );
-  }
-}
-
-class _LeadSummaryCard extends StatelessWidget {
-  const _LeadSummaryCard();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.symmetric(horizontal: 18.w, vertical: 22.h),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(14.r),
-        border: Border.all(color: AppColors.leadDetailCardBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const _SectionTitle('Lead Summary'),
-          SizedBox(height: 12.h),
-          Text(
-            'Rahul is looking for a 2 BHK apartment in Noida or Greater Noida. His budget is between Rs 50-70 Lakhs and he is interested in ready to move properties. He showed interest in our Green Valley project.',
-            style: GoogleFonts.inter(
-              fontSize: 14.sp,
-              fontWeight: FontWeight.w400,
-              height: 1.6,
-              color: AppColors.textPrimary, // Changed from textBody to textPrimary
-            ),
-          ),
+          const _Title(Icons.sell_outlined, 'Latest Booking'),
           SizedBox(height: 20.h),
-          Container(height: 1, color: AppColors.leadDetailDivider),
-          SizedBox(height: 20.h),
-          Row(
-            children: [
-              Expanded(
-                child: _SummaryMetric(
-                  icon: Image.asset(
-                    'assets/circle_calling.png',
-                    width: 50.w,
-                    height: 50.h,
-                    fit: BoxFit.cover,
-                    // color: AppColors.greenStrong,
-                  ),
-                  title: 'Total Calls',
-                  value: '34',
-                  subtitle: 'Last call: 19 May 2025',
-                ),
-              ),
-              SizedBox(width: 8.w),
-              Expanded(
-                child: _SummaryMetric(
-                  icon: Image.asset(
-                    'assets/circle_message.png',
-                    width: 50.w,
-                    height: 50.h,
-                    fit: BoxFit.cover,
-                  ),
-                  title: 'Total Messages',
-                  value: '12',
-                  subtitle: 'Last msg: 18 May 2025',
-                ),
-              ),
-              SizedBox(width: 8.w),
-              Expanded(
-                child: _SummaryMetric(
-                  icon: Image.asset(
-                    'assets/circle_timer.png',
-                    width: 50.w,
-                    height: 50.h,
-                    fit: BoxFit.cover,
-                  ),
-                  title: 'Total Activities',
-                  value: '8',
-                  subtitle: 'Last activity: 20 May 2025',
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 24.h),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () {},
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: AppColors.navy),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(6.r),
-                    ),
-                    padding: EdgeInsets.symmetric(vertical: 14.h),
-                  ),
-                  child: Text(
-                    'REASSIGN LEAD',
-                    style: TextStyle(
-                      fontSize: 12.5.sp,
-                      color: AppColors.slate900,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ),
-              SizedBox(width: 12.w),
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () {},
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: AppColors.navy),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(6.r),
-                    ),
-                    padding: EdgeInsets.symmetric(vertical: 14.h),
-                  ),
-                  child: Text(
-                    'CONVERT LEAD',
-                    style: TextStyle(
-                      fontSize: 12.5.sp,
-                      color: AppColors.slate900,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ),
-            ],
+          Center(
+            child: data.latestBooking == null
+                ? const _EmptyText('No bookings recorded yet')
+                : Text(data.latestBooking!, style: _text(12, FontWeight.w700)),
           ),
           SizedBox(height: 12.h),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
+          Center(
+            child: OutlinedButton(
               onPressed: () {},
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.orangeDeep,
-                foregroundColor: AppColors.white,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8.r),
-                ),
-                padding: EdgeInsets.symmetric(vertical: 16.h),
-              ),
-              icon: Icon(Icons.call, size: 18.sp),
-              label: Text(
-                'FOLLOW UP NOW',
-                style: TextStyle(fontSize: 14.5.sp, fontWeight: FontWeight.w700),
-              ),
+              child: const Text('Create New Booking'),
             ),
           ),
         ],
@@ -2322,263 +1251,544 @@ class _LeadSummaryCard extends StatelessWidget {
   }
 }
 
-class _SectionTitle extends StatelessWidget {
-  const _SectionTitle(this.title);
-
-  final String title;
+class _Card extends StatelessWidget {
+  const _Card({required this.child, this.borderColor});
+  final Widget child;
+  final Color? borderColor;
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      title,
-      style: GoogleFonts.inter(
-        fontSize: 17.sp,
-        fontWeight: FontWeight.w700,
-        height: 1.3,
-        color: AppColors.textPrimary,
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(12.w),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12.r),
+        border: Border.all(color: borderColor ?? const Color(0xFFE0E4EA)),
       ),
+      child: child,
     );
   }
 }
 
-class _StatusRow extends StatelessWidget {
-  const _StatusRow({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.valueColor,
-    this.iconColor,
-  });
-
-  final Widget icon;
-  final Color? iconColor;
-  final String label;
-  final String value;
-  final Color valueColor;
+class _Title extends StatelessWidget {
+  const _Title(this.icon, this.text);
+  final IconData icon;
+  final String text;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.symmetric(vertical: 9.h),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Container(
-            width: iconColor == null ? 42.w : 36.w,
-            height: iconColor == null ? 42.h : 36.w,
-            decoration: BoxDecoration(
-              color: iconColor?.withOpacity(0.12) ?? Colors.transparent,
-              shape: BoxShape.circle,
-            ),
-            child: Center(
-              child: iconColor == null
-                  ? icon
-                  : SizedBox(
-                width: 24.w,
-                height: 24.h,
-                child: FittedBox(fit: BoxFit.contain, child: icon),
-              ),
-            ),
-          ),
-          SizedBox(width: 12.w),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 13.5.sp,
-                    color: const Color(0xFF475569), // Darker than AppColors.iconMuted
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                SizedBox(height: 3.h),
-                Text(
-                  value,
-                  style: TextStyle(
-                    fontSize: 14.5.sp,
-                    color: valueColor == AppColors.textBody ? const Color(0xFF1E293B) : valueColor,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _OwnerRow extends StatelessWidget {
-  const _OwnerRow();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.symmetric(vertical: 9.h),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          CircleAvatar(
-            radius: 18.r,
-            backgroundColor: AppColors.gray900,
-            child: Icon(Icons.person, size: 18.sp, color: AppColors.white),
-          ),
-          SizedBox(width: 12.w),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Lead Owner',
-                  style: TextStyle(
-                    fontSize: 13.5.sp,
-                    color: const Color(0xFF475569), // Darker label
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                SizedBox(height: 3.h),
-                Text(
-                  'Amit Singh',
-                  style: TextStyle(
-                    fontSize: 14.5.sp,
-                    color: const Color(0xFF1E293B), // Darker value
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                Text(
-                  'Telecaller',
-                  style: TextStyle(
-                    fontSize: 10.5.sp,
-                    color: const Color(0xFF64748B), // Slightly darker than original iconMuted
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SummaryMetric extends StatelessWidget {
-  const _SummaryMetric({
-    required this.icon,
-    required this.title,
-    required this.value,
-    required this.subtitle,
-  });
-
-  final Widget icon;
-  final String title;
-  final String value;
-  final String subtitle;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
+    return Row(
       children: [
-        SizedBox(
-          width: 46.w,
-          height: 46.h,
-          child: FittedBox(fit: BoxFit.contain, child: icon),
-        ),
-        SizedBox(height: 12.h),
-        Text(
-          title,
-          textAlign: TextAlign.center,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: 11.5.sp,
-            color: const Color(0xFF475569),
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        SizedBox(height: 5.h),
-        Text(
-          value,
-          style: GoogleFonts.inter(
-            fontSize: 17.sp,
-            fontWeight: FontWeight.w800,
-            height: 1.2,
-            color: const Color(0xFF0A1B4A),
-          ),
-        ),
-        SizedBox(height: 5.h),
-        Text(
-          subtitle,
-          textAlign: TextAlign.center,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: 10.sp,
-            color: const Color(0xFF64748B),
-            height: 1.3,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
+        Icon(icon, size: 17.sp, color: const Color(0xFF1F3159)),
+        SizedBox(width: 6.w),
+        Text(text, style: _text(13, FontWeight.w800)),
       ],
     );
   }
 }
 
-
-
-class _DocumentItem extends StatelessWidget {
-  const _DocumentItem({
-    required this.title,
-    required this.date,
-    required this.icon,
-  });
-
-  final String title;
-  final String date;
+class _InfoLine extends StatelessWidget {
+  const _InfoLine(this.icon, this.value);
   final IconData icon;
+  final String value;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: EdgeInsets.only(bottom: 12.h),
-      padding: EdgeInsets.all(12.r),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(10.r),
-        border: Border.all(color: AppColors.borderCard),
-      ),
+    return Padding(
+      padding: EdgeInsets.only(top: 8.h),
       child: Row(
         children: [
-          Icon(icon, size: 24.sp, color: AppColors.orangeStrong),
-          SizedBox(width: 12.w),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 14.sp,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                Text(
-                  date,
-                  style: TextStyle(
-                    fontSize: 12.sp,
-                    color: AppColors.textMuted,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Icon(Icons.download_outlined, size: 20.sp, color: AppColors.textSecondary),
+          Icon(icon, size: 14.sp, color: const Color(0xFF667085)),
+          SizedBox(width: 7.w),
+          Expanded(child: Text(value, style: _text(11, FontWeight.w600))),
         ],
       ),
     );
   }
+}
+
+class _TwoColumns extends StatelessWidget {
+  const _TwoColumns({required this.left, required this.right});
+  final List<(String, String)> left;
+  final List<(String, String)> right;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(child: _ValueColumn(values: left)),
+        SizedBox(width: 12.w),
+        Expanded(child: _ValueColumn(values: right)),
+      ],
+    );
+  }
+}
+
+class _ValueColumn extends StatelessWidget {
+  const _ValueColumn({required this.values});
+  final List<(String, String)> values;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < values.length; i++) ...[
+          _LabelValue(values[i].$1, values[i].$2),
+          if (i != values.length - 1) SizedBox(height: 12.h),
+        ],
+      ],
+    );
+  }
+}
+
+class _LabelValue extends StatelessWidget {
+  const _LabelValue(this.label, this.value);
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: _text(10, FontWeight.w400, Colors.grey[700])),
+        SizedBox(height: 3.h),
+        Text(value, style: _text(11, FontWeight.w700)),
+      ],
+    );
+  }
+}
+
+class _DetailRow extends StatelessWidget {
+  const _DetailRow(this.label, this.value, {this.divider = true});
+  final String label;
+  final String value;
+  final bool divider;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(vertical: 9.h),
+      decoration: divider
+          ? const BoxDecoration(
+              border: Border(bottom: BorderSide(color: Color(0xFFEDF0F3))),
+            )
+          : null,
+      child: Row(
+        children: [
+          Expanded(child: Text(label, style: _text(10, FontWeight.w400))),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: _text(10, FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Requirement extends StatelessWidget {
+  const _Requirement(this.label, this.value);
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: BoxConstraints(minHeight: 62.h),
+      padding: EdgeInsets.all(8.w),
+      decoration: BoxDecoration(
+        border: Border.all(color: const Color(0xFFE1E5EB)),
+        borderRadius: BorderRadius.circular(8.r),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: _text(9, FontWeight.w400, Colors.grey[700])),
+          SizedBox(height: 5.h),
+          Text(
+            value,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: _text(10, FontWeight.w700),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ThreeValues extends StatelessWidget {
+  const _ThreeValues({required this.values});
+  final List<(String, String)> values;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: values
+          .map((value) => Expanded(child: _LabelValue(value.$1, value.$2)))
+          .toList(),
+    );
+  }
+}
+
+class _CountTile extends StatelessWidget {
+  const _CountTile(this.label, this.count, this.icon);
+  final String label;
+  final int count;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        margin: EdgeInsets.symmetric(horizontal: 3.w),
+        padding: EdgeInsets.all(8.w),
+        decoration: BoxDecoration(
+          border: Border.all(color: const Color(0xFFE1E5EB)),
+          borderRadius: BorderRadius.circular(8.r),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 16.sp, color: AppColors.orangeDeep),
+            SizedBox(width: 7.w),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: _text(8, FontWeight.w500, Colors.grey)),
+                Text('$count', style: _text(14, FontWeight.w800)),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Chip extends StatelessWidget {
+  const _Chip({required this.text, this.danger = false});
+  final String text;
+  final bool danger;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 3.h),
+      decoration: BoxDecoration(
+        color: danger ? const Color(0xFFFFE5E2) : const Color(0xFFFFF0E5),
+        borderRadius: BorderRadius.circular(4.r),
+      ),
+      child: Text(
+        text,
+        style: _text(
+          8,
+          FontWeight.w800,
+          danger ? const Color(0xFFD92D20) : AppColors.orangeDeep,
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyText extends StatelessWidget {
+  const _EmptyText(this.text);
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.symmetric(vertical: 10.h),
+        child: Text(text, style: _text(11, FontWeight.w400, Colors.grey)),
+      ),
+    );
+  }
+}
+
+class _ErrorState extends StatelessWidget {
+  const _ErrorState({required this.message, required this.onRetry});
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(message),
+          SizedBox(height: 10.h),
+          OutlinedButton(onPressed: onRetry, child: const Text('Try again')),
+        ],
+      ),
+    );
+  }
+}
+
+class _LeadData {
+  _LeadData(this.raw);
+  final Map<String, dynamic> raw;
+
+  Map<String, dynamic> get requirement => _map(raw['requirement']);
+  String get name => value(['name'], 'Unknown Lead');
+  String get displayId => value(['displayId', 'id'], '—');
+  String get email => value(['email'], 'Not captured');
+  String get phone {
+    final mobile = value(['mobile', 'phone'], 'Not captured');
+    final code = value(['mobileCountryCode'], '');
+    return mobile == 'Not captured' || mobile.startsWith('+')
+        ? mobile
+        : '$code $mobile'.trim();
+  }
+
+  String get alternatePhone =>
+      value(['alternateMobile', 'alternateNumber'], '—');
+  String get stage => value(['stageName', 'stage'], 'Not set');
+  String get status => value(['statusName', 'status'], 'Not set');
+  String get source => value(['sourceName', 'source'], 'Not captured');
+  String get location => value([
+    'preferredProjectLocation',
+    'preferredLocation',
+    'location',
+  ], _from(requirement, ['preferredLocation', 'location'], 'Not captured'));
+  String get project => value([
+    'preferredProjectName',
+    'projectName',
+  ], _from(requirement, ['preferredProjectName'], 'Not captured'));
+  String get assignedTo => value([
+    'fieldExecutiveName',
+    'telecallerName',
+    'ownerName',
+  ], 'Unassigned');
+  String get manager => value(['managerName'], 'Unassigned');
+  String get createdOn => _date(value(['createdAt'], ''));
+  String get updatedOn => _date(value(['updatedAt'], ''));
+  String get occupation => value(['occupation'], 'Not captured');
+  String get propertyType =>
+      _from(requirement, ['propertyType', 'configuration'], 'Not captured');
+  String get budget =>
+      _from(requirement, ['budgetRange', 'budget'], 'Not captured');
+  String get carpetArea =>
+      _from(requirement, ['carpetArea', 'area'], 'Not captured');
+  String get possession =>
+      _from(requirement, ['possession', 'possessionStatus'], 'Not captured');
+  String get floor =>
+      _from(requirement, ['floorPreference', 'preferredFloor'], 'Not captured');
+  int get score => _number(raw['leadScore']).round().clamp(0, 100);
+  String get scoreLabel => value(['leadScoreLabel'], 'Not scored');
+  String get temperature =>
+      value(['temperatureName', 'temperatureId'], 'Not set');
+  String get conversion => value(['estimatedConversion', 'conversion'], '—');
+  String get revenue => value(['estimatedRevenue', 'revenue'], '—');
+  String get engagement => value(['engagement'], '—');
+
+  List<Map<String, dynamic>> get followUps => _list(raw['followUps']);
+  List<Map<String, dynamic>> get activitiesRaw => _list(raw['activities']);
+  List<Map<String, dynamic>> get siteVisits => _list(raw['siteVisits']);
+  List<Map<String, dynamic>> get tasks => _list(raw['tasks']);
+  List<Map<String, dynamic>> get bookings => _list(raw['bookings']);
+  List<Map<String, dynamic>> get callLogs => _list(raw['callLogs']);
+  List<Map<String, dynamic>> get whatsapp =>
+      _list(raw['whatsappLogs'] ?? raw['whatsAppLogs']);
+
+  List<_Activity> get activities {
+    final source = activitiesRaw.isNotEmpty ? activitiesRaw : followUps;
+    return source.map((item) {
+      return _Activity(
+        title: _from(item, [
+          'title',
+          'activityType',
+          'type',
+          'nextAction',
+        ], 'Lead activity'),
+        date: _date(
+          _from(item, ['createdAt', 'completedAt', 'scheduledAt'], ''),
+        ),
+        note: _from(item, ['notes', 'description', 'remarks'], '—'),
+      );
+    }).toList();
+  }
+
+  _FollowUp? get nextFollowUp {
+    if (followUps.isEmpty) return null;
+    final pending = followUps.where((item) {
+      final status = _from(item, ['status'], '').toLowerCase();
+      return status != 'completed' && status != 'cancelled';
+    });
+    final item = pending.isNotEmpty ? pending.first : followUps.first;
+    final rawDate = _from(item, [
+      'scheduledAt',
+      'nextFollowUpAt',
+      'followUpAt',
+    ], value(['nextFollowUpAt'], ''));
+    final parsed = DateTime.tryParse(rawDate)?.toLocal();
+    return _FollowUp(
+      date: _dateTime(rawDate),
+      type: _from(item, ['type', 'followUpType'], 'Not set'),
+      owner: _from(item, ['assignedToName', 'ownerName'], assignedTo),
+      action: _from(item, ['nextAction'], 'Not captured'),
+      notes: _from(item, ['notes', 'remarks'], 'No notes'),
+      status: _from(item, ['status'], 'Scheduled'),
+      overdue: parsed != null && parsed.isBefore(DateTime.now()),
+    );
+  }
+
+  List<String> get notes => _list(raw['notes'])
+      .map((item) => _from(item, ['note', 'content', 'text'], ''))
+      .where((item) => item.isNotEmpty)
+      .toList();
+  int get callCount => callLogs.length;
+  int get whatsappCount => whatsapp.length;
+  int get siteVisitCount => siteVisits.length;
+  int get taskCount => tasks.length;
+  String? get latestBooking => bookings.isEmpty
+      ? null
+      : _from(bookings.first, [
+          'displayId',
+          'bookingNumber',
+          'status',
+        ], 'Booking');
+  String get initials {
+    final parts = name.trim().split(RegExp(r'\s+'));
+    if (parts.isEmpty || parts.first.isEmpty) return 'L';
+    return parts.length == 1
+        ? parts.first[0].toUpperCase()
+        : '${parts.first[0]}${parts.last[0]}'.toUpperCase();
+  }
+
+  bool get hasSla =>
+      raw['sla'] is Map ||
+      raw.containsKey('slaStatus') ||
+      raw.containsKey('slaBreached');
+  Map<String, dynamic> get sla => _map(raw['sla']);
+  bool get slaBreached =>
+      raw['slaBreached'] == true ||
+      sla['breached'] == true ||
+      slaStatus.toLowerCase().contains('breach');
+  String get slaStatus =>
+      value(['slaStatus'], _from(sla, ['status'], 'Active'));
+  String get slaMessage => value([
+    'slaMessage',
+  ], _from(sla, ['message'], 'Operational response and follow-up health.'));
+  String get slaDate =>
+      _date(value(['slaBreachDate'], _from(sla, ['breachDate'], '')));
+  String get responseTime =>
+      value(['slaResponseTime'], _from(sla, ['responseTime'], '—'));
+  String get slaOwner =>
+      value(['slaOwnerName'], _from(sla, ['ownerName'], assignedTo));
+  String get slaActivity =>
+      value(['slaActivity'], _from(sla, ['activity'], 'Not captured'));
+
+  String value(List<String> keys, [String fallback = '—']) =>
+      _from(raw, keys, fallback);
+}
+
+class _Activity {
+  const _Activity({
+    required this.title,
+    required this.date,
+    required this.note,
+  });
+  final String title;
+  final String date;
+  final String note;
+}
+
+class _FollowUp {
+  const _FollowUp({
+    required this.date,
+    required this.type,
+    required this.owner,
+    required this.action,
+    required this.notes,
+    required this.status,
+    required this.overdue,
+  });
+  final String date;
+  final String type;
+  final String owner;
+  final String action;
+  final String notes;
+  final String status;
+  final bool overdue;
+}
+
+TextStyle _text(double size, FontWeight weight, [Color? color]) {
+  return GoogleFonts.inter(
+    fontSize: (size * 1.14).sp,
+    fontWeight: weight,
+    color: color ?? const Color(0xFF172033),
+  );
+}
+
+Map<String, dynamic> _map(Object? value) =>
+    value is Map ? Map<String, dynamic>.from(value) : <String, dynamic>{};
+
+List<Map<String, dynamic>> _list(Object? value) => value is List
+    ? value.whereType<Map>().map(Map<String, dynamic>.from).toList()
+    : <Map<String, dynamic>>[];
+
+String? _string(Object? value) {
+  if (value == null) return null;
+  final text = value.toString().trim();
+  return text.isEmpty || text.toLowerCase() == 'null' ? null : text;
+}
+
+String _from(
+  Map<String, dynamic> map,
+  List<String> keys, [
+  String fallback = '—',
+]) {
+  for (final key in keys) {
+    final value = _string(map[key]);
+    if (value != null) return value;
+  }
+  return fallback;
+}
+
+num _number(Object? value) =>
+    value is num ? value : num.tryParse(value?.toString() ?? '') ?? 0;
+
+String _date(String value) {
+  if (value.isEmpty) return '—';
+  final date = DateTime.tryParse(value)?.toLocal();
+  if (date == null) return value;
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  return '${date.day.toString().padLeft(2, '0')} ${months[date.month - 1]} ${date.year}';
+}
+
+String _dateTime(String value) {
+  final date = DateTime.tryParse(value)?.toLocal();
+  if (date == null) return value.isEmpty ? 'Not scheduled' : value;
+  final hour = date.hour == 0
+      ? 12
+      : (date.hour > 12 ? date.hour - 12 : date.hour);
+  final period = date.hour >= 12 ? 'pm' : 'am';
+  return '${_date(value)} • ${hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')} $period';
+}
+
+String _formatFollowUpDate(DateTime date) {
+  return '${date.day.toString().padLeft(2, '0')}/'
+      '${date.month.toString().padLeft(2, '0')}/${date.year}';
 }

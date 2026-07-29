@@ -8,7 +8,9 @@ import 'package:truerealtycrm/provider/tasks_provider.dart';
 import 'package:truerealtycrm/router/app_router.dart';
 
 class TasksScreen extends StatefulWidget {
-  const TasksScreen({super.key});
+  const TasksScreen({super.key, this.onMenuTap});
+
+  final VoidCallback? onMenuTap;
 
   @override
   State<TasksScreen> createState() => _TasksScreenState();
@@ -74,7 +76,7 @@ class _TasksScreenState extends State<TasksScreen> {
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
           children: [
-            const _TasksHeader(),
+            _TasksHeader(onMenuTap: widget.onMenuTap),
             SizedBox(height: 24.h),
             _buildRoleSummary(),
             SizedBox(height: 24.h),
@@ -163,12 +165,22 @@ class _TasksScreenState extends State<TasksScreen> {
 }
 
 class _TasksHeader extends StatelessWidget {
-  const _TasksHeader();
+  const _TasksHeader({this.onMenuTap});
+
+  final VoidCallback? onMenuTap;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
+        if (onMenuTap != null) ...[
+          IconButton(
+            tooltip: 'Open navigation',
+            onPressed: onMenuTap,
+            icon: Icon(Icons.menu_rounded, color: AppColors.navy, size: 24.sp),
+          ),
+          SizedBox(width: 6.w),
+        ],
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

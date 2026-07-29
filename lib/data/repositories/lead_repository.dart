@@ -59,7 +59,11 @@ class LeadRepository {
   }
 
   Future<ApiResponse<dynamic>> getLead(String leadId) {
-    return _apiClient.get('/leads/$leadId');
+    return _apiClient.get(
+      '/leads/$leadId',
+      queryParameters: {'_ts': DateTime.now().millisecondsSinceEpoch},
+      headers: const {'Cache-Control': 'no-cache', 'Pragma': 'no-cache'},
+    );
   }
 
   Future<ApiResponse<dynamic>> createLead(Map<String, dynamic> body) {

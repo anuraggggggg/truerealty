@@ -14,8 +14,27 @@ import 'package:truerealtycrm/provider/site_visits_provider.dart';
 import 'package:truerealtycrm/widget/app_loading.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+Future<bool?> showCreateSiteVisitSheet(
+  BuildContext context, {
+  LeadModel? initialLead,
+  Future<void> Function()? onCreated,
+}) {
+  return showModalBottomSheet<bool>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    backgroundColor: Colors.transparent,
+    builder: (sheetContext) => _CreateSiteVisitSheet(
+      initialLead: initialLead,
+      onCreated: onCreated ?? () async {},
+    ),
+  );
+}
+
 class SiteVisitDetailsScreen extends StatefulWidget {
-  const SiteVisitDetailsScreen({super.key});
+  const SiteVisitDetailsScreen({super.key, this.onMenuTap});
+
+  final VoidCallback? onMenuTap;
 
   static const Color _bg = Color(0xFFF8FAFD);
   static const Color _cardBorder = Color(0xFFDCE6F3);
@@ -150,7 +169,7 @@ class _SiteVisitDetailsScreenState extends State<SiteVisitDetailsScreen> {
   }
 
   Widget _buildHeader() {
-    return Column(
+    final content = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
@@ -174,6 +193,20 @@ class _SiteVisitDetailsScreenState extends State<SiteVisitDetailsScreen> {
             color: const Color(0xFF44474E),
           ),
         ),
+      ],
+    );
+    if (widget.onMenuTap == null) return content;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        IconButton(
+          tooltip: 'Open navigation',
+          visualDensity: VisualDensity.compact,
+          onPressed: widget.onMenuTap,
+          icon: Icon(Icons.menu_rounded, size: 24.sp, color: _title),
+        ),
+        SizedBox(width: 6.w),
+        Expanded(child: content),
       ],
     );
   }
@@ -324,12 +357,7 @@ class _SiteVisitDetailsScreenState extends State<SiteVisitDetailsScreen> {
   }
 
   void _showCreateSiteVisitSheet(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => _CreateSiteVisitSheet(onCreated: _load),
-    );
+    showCreateSiteVisitSheet(context, onCreated: _load);
   }
 
   Widget _buildMetricsGrid(SiteVisitProvider provider) {
@@ -554,9 +582,10 @@ class _FieldExecutivesCard extends StatelessWidget {
 }
 
 class _CreateSiteVisitSheet extends StatefulWidget {
-  const _CreateSiteVisitSheet({required this.onCreated});
+  const _CreateSiteVisitSheet({required this.onCreated, this.initialLead});
 
   final Future<void> Function() onCreated;
+  final LeadModel? initialLead;
 
   @override
   State<_CreateSiteVisitSheet> createState() => _CreateSiteVisitSheetState();
@@ -568,6 +597,7 @@ class _CreateSiteVisitSheetState extends State<_CreateSiteVisitSheet> {
   final _specialRequestController = TextEditingController();
   List<_VisitOption> _leads = const [];
   List<_VisitOption> _projects = const [];
+  List<_VisitOption> _units = const [];
   List<_VisitOption> _executives = const [];
   List<_VisitOption> _types = const [
     _VisitOption(id: 'SITE_VISIT', label: 'Site Visit'),
@@ -576,13 +606,16 @@ class _CreateSiteVisitSheetState extends State<_CreateSiteVisitSheet> {
   ];
   _VisitOption? _lead;
   _VisitOption? _project;
+  _VisitOption? _unit;
   _VisitOption? _executive;
   _VisitOption? _type;
+  String _transport = 'Own Vehicle';
   DateTime _date = DateTime.now().add(const Duration(days: 1));
   TimeOfDay _time = const TimeOfDay(hour: 10, minute: 0);
   int _duration = 60;
   int _visitors = 1;
   bool _loading = true;
+  bool _loadingUnits = false;
   bool _saving = false;
   String? _error;
 
@@ -590,6 +623,13 @@ class _CreateSiteVisitSheetState extends State<_CreateSiteVisitSheet> {
   void initState() {
     super.initState();
     _type = _types.first;
+    final initialLead = widget.initialLead;
+    if (initialLead?.id != null) {
+      _lead = _VisitOption(
+        id: initialLead!.id!,
+        label: '${initialLead.name} · ${initialLead.phone}',
+      );
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadOptions());
   }
 
@@ -601,20 +641,14 @@ class _CreateSiteVisitSheetState extends State<_CreateSiteVisitSheet> {
   }
 
   Future<void> _loadOptions() async {
-    final canViewEmployees = context.read<AuthProvider>().canViewModule(
-      'employees',
-    );
     final results = await Future.wait([
       context.read<LeadProvider>().fetchLeads(page: 1, limit: 100),
-      context.read<ProjectProvider>().fetchProjects(),
-      if (canViewEmployees)
-        context.read<EmployeeProvider>().fetchEmployees(
-          role: 'fieldExecutive',
-          status: 'Active',
-          limit: 100,
-        )
-      else
-        Future.value(null),
+      context.read<ProjectProvider>().fetchProjects(status: 'Active'),
+      context.read<EmployeeProvider>().fetchEmployees(
+        role: 'all',
+        status: 'Active',
+        limit: 100,
+      ),
       context.read<SiteVisitProvider>().fetchSiteVisitOptions(),
     ]);
     if (!mounted) return;
@@ -640,11 +674,27 @@ class _CreateSiteVisitSheetState extends State<_CreateSiteVisitSheet> {
     final executives = _visitOptions(results[2]?.data);
     setState(() {
       _leads = apiLeads.isNotEmpty ? apiLeads : leads;
-      _projects = apiProjects.isNotEmpty ? apiProjects : projects;
-      _executives = apiExecutives.isNotEmpty ? apiExecutives : executives;
+      _projects = projects.isNotEmpty ? projects : apiProjects;
+      _executives = executives.isNotEmpty ? executives : apiExecutives;
+      final initialId = widget.initialLead?.id;
+      if (initialId != null) {
+        final matches = _leads.where((option) => option.id == initialId);
+        if (matches.isNotEmpty) {
+          _lead = matches.first;
+        } else if (_lead != null) {
+          _leads = [_lead!, ..._leads];
+        }
+      }
       if (apiTypes.isNotEmpty) {
         _types = apiTypes;
         _type = apiTypes.first;
+      }
+      if (_projects.isEmpty || _executives.isEmpty) {
+        final missing = [
+          if (_projects.isEmpty) 'projects',
+          if (_executives.isEmpty) 'executives',
+        ].join(' and ');
+        _error = 'No active $missing were returned by the CRM.';
       }
       _loading = false;
     });
@@ -665,6 +715,30 @@ class _CreateSiteVisitSheetState extends State<_CreateSiteVisitSheet> {
     if (selected != null && mounted) setState(() => _time = selected);
   }
 
+  Future<void> _selectProject(_VisitOption? project) async {
+    setState(() {
+      _project = project;
+      _unit = null;
+      _units = const [];
+      _loadingUnits = project != null;
+      _error = null;
+    });
+    if (project == null) return;
+    final response = await context.read<ProjectProvider>().fetchUnits(
+      project.id,
+    );
+    if (!mounted) return;
+    setState(() {
+      _units = _visitOptions(response?.data);
+      _loadingUnits = false;
+      if (response == null) {
+        _error =
+            context.read<ProjectProvider>().error ??
+            'Unable to fetch units for ${project.label}.';
+      }
+    });
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() {
@@ -683,11 +757,14 @@ class _CreateSiteVisitSheetState extends State<_CreateSiteVisitSheet> {
         .createSiteVisitFromApi({
           'leadId': _lead!.id,
           'projectId': _project!.id,
-          'fieldExecutiveId': _executive!.id,
-          'visitType': _type!.id,
-          'scheduledAt': scheduledAt.toUtc().toIso8601String(),
+          if (_unit != null) 'unitId': _unit!.id,
+          'assignedExecutiveId': _executive!.id,
+          'visitType': _type!.label,
+          'scheduledAt': scheduledAt.toIso8601String(),
           'durationMinutes': _duration,
-          'visitors': _visitors,
+          'visitorCount': _visitors,
+          'status': 'Scheduled',
+          'transportMode': _transport,
           if (_meetingPointController.text.trim().isNotEmpty)
             'meetingPoint': _meetingPointController.text.trim(),
           if (_specialRequestController.text.trim().isNotEmpty)
@@ -703,7 +780,7 @@ class _CreateSiteVisitSheetState extends State<_CreateSiteVisitSheet> {
       });
       return;
     }
-    Navigator.of(context).pop();
+    Navigator.of(context).pop(true);
     await widget.onCreated();
   }
 
@@ -784,8 +861,27 @@ class _CreateSiteVisitSheetState extends State<_CreateSiteVisitSheet> {
                               hint: 'Select project',
                               value: _project,
                               items: _projects,
-                              onChanged: (value) =>
-                                  setState(() => _project = value),
+                              onChanged: _selectProject,
+                            ),
+                            SizedBox(height: 14.h),
+                            _VisitDropdown(
+                              key: ValueKey(
+                                'units-${_project?.id ?? 'no-project'}',
+                              ),
+                              label: 'Unit',
+                              required: false,
+                              hint: _loadingUnits
+                                  ? 'Loading units...'
+                                  : _project == null
+                                  ? 'Select a project first'
+                                  : _units.isEmpty
+                                  ? 'No units available'
+                                  : 'Select unit',
+                              value: _unit,
+                              items: _units,
+                              onChanged: _project == null || _loadingUnits
+                                  ? null
+                                  : (value) => setState(() => _unit = value),
                             ),
                             SizedBox(height: 14.h),
                             _VisitDropdown(
@@ -855,6 +951,32 @@ class _CreateSiteVisitSheetState extends State<_CreateSiteVisitSheet> {
                               ],
                             ),
                             SizedBox(height: 14.h),
+                            DropdownButtonFormField<String>(
+                              initialValue: _transport,
+                              decoration: _visitInputDecoration('Transport'),
+                              items: const [
+                                DropdownMenuItem(
+                                  value: 'Own Vehicle',
+                                  child: Text('Own Vehicle'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'Company Vehicle',
+                                  child: Text('Company Vehicle'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'Public Transport',
+                                  child: Text('Public Transport'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'Cab',
+                                  child: Text('Cab'),
+                                ),
+                              ],
+                              onChanged: (value) => setState(
+                                () => _transport = value ?? 'Own Vehicle',
+                              ),
+                            ),
+                            SizedBox(height: 14.h),
                             TextFormField(
                               controller: _meetingPointController,
                               decoration: _visitInputDecoration(
@@ -884,7 +1006,12 @@ class _CreateSiteVisitSheetState extends State<_CreateSiteVisitSheet> {
                     ),
             ),
             Container(
-              padding: EdgeInsets.fromLTRB(20.w, 12.h, 20.w, 16.h),
+              padding: EdgeInsets.fromLTRB(
+                20.w,
+                12.h,
+                20.w,
+                16.h + MediaQuery.viewPaddingOf(context).bottom,
+              ),
               decoration: const BoxDecoration(
                 border: Border(top: BorderSide(color: Color(0xFFDCE6F3))),
               ),
@@ -2457,18 +2584,21 @@ class _VisitOption {
 
 class _VisitDropdown extends StatelessWidget {
   const _VisitDropdown({
+    super.key,
     required this.label,
     required this.hint,
     required this.value,
     required this.items,
     required this.onChanged,
+    this.required = true,
   });
 
   final String label;
   final String hint;
   final _VisitOption? value;
   final List<_VisitOption> items;
-  final ValueChanged<_VisitOption?> onChanged;
+  final ValueChanged<_VisitOption?>? onChanged;
+  final bool required;
 
   @override
   Widget build(BuildContext context) {
@@ -2491,7 +2621,9 @@ class _VisitDropdown extends StatelessWidget {
           )
           .toList(),
       onChanged: onChanged,
-      validator: (selected) => selected == null ? 'Required' : null,
+      validator: required && onChanged != null
+          ? (selected) => selected == null ? 'Required' : null
+          : null,
     );
   }
 }
@@ -2606,6 +2738,11 @@ List<_VisitOption> _visitOptions(Object? source, {bool leadOptions = false}) {
       'fullName',
       'displayName',
       'projectName',
+      'unitName',
+      'unitNumber',
+      'unitNo',
+      'number',
+      'displayId',
       'title',
       'label',
     ]);
@@ -2671,6 +2808,9 @@ List<dynamic> _extractVisitList(Object? source) {
       'docs',
       'leads',
       'projects',
+      'units',
+      'unitOptions',
+      'inventory',
       'employees',
       'fieldExecutives',
       'options',

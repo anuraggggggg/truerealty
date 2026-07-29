@@ -38,7 +38,11 @@ class ProjectRepository {
   }
 
   Future<ApiResponse<dynamic>> listUnits(String projectId) {
-    return _apiClient.get('/projects/$projectId/units');
+    return _apiClient.get(
+      '/projects/$projectId/units',
+      queryParameters: {'_ts': DateTime.now().millisecondsSinceEpoch},
+      headers: const {'Cache-Control': 'no-cache', 'Pragma': 'no-cache'},
+    );
   }
 
   Future<ApiResponse<dynamic>> getUnit({

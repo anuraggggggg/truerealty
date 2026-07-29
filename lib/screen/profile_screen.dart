@@ -13,7 +13,9 @@ import 'package:truerealtycrm/widget/app_loading.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  const ProfileScreen({super.key, this.initialSection = 0});
+
+  final int initialSection;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -35,6 +37,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
+    _selectedSection = widget.initialSection.clamp(0, 1);
     final now = DateTime.now();
     _selectedMonth = DateTime(now.year, now.month);
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
@@ -76,6 +79,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _loading = false;
     });
     await _loadAttendance();
+    if (_selectedSection == 1 && !_payslipsLoaded) {
+      await _loadPayslips();
+    }
   }
 
   Future<void> _loadAttendance() async {
@@ -990,22 +996,20 @@ class _AttendanceHistoryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _ProfileCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const _SectionHeading(
-            icon: Icons.event_note_outlined,
-            title: 'Monthly attendance',
-            subtitle: 'Daily attendance and check-in history.',
-          ),
-          const SizedBox(height: 12),
-          if (loading)
-            const AppListSkeleton(itemCount: 4, itemHeight: 64, gap: 8)
-          else
-            _MonthlyAttendanceCalendar(month: month, records: records),
-        ],
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _SectionHeading(
+          icon: Icons.event_note_outlined,
+          title: 'Monthly attendance',
+          subtitle: 'Daily attendance and check-in history.',
+        ),
+        const SizedBox(height: 16),
+        if (loading)
+          const AppListSkeleton(itemCount: 4, itemHeight: 64, gap: 8)
+        else
+          _MonthlyAttendanceCalendar(month: month, records: records),
+      ],
     );
   }
 }
@@ -1056,13 +1060,13 @@ class _MonthlyAttendanceCalendar extends StatelessWidget {
                   children: _weekdays
                       .map(
                         (day) => SizedBox(
-                          height: 40,
+                          height: 44,
                           child: Center(
                             child: Text(
                               day,
                               style: GoogleFonts.inter(
-                                fontSize: 9,
-                                fontWeight: FontWeight.w600,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
                                 color: const Color(0xFF536783),
                               ),
                             ),
@@ -1149,8 +1153,8 @@ class _AttendanceCalendarDay extends StatelessWidget {
           ? null
           : () => _showAttendanceDetails(context, visibleRecord),
       child: Container(
-        height: 92,
-        padding: const EdgeInsets.fromLTRB(5, 7, 5, 5),
+        height: 104,
+        padding: const EdgeInsets.fromLTRB(6, 8, 6, 7),
         decoration: BoxDecoration(
           color: isCurrentMonth ? Colors.white : const Color(0xFFF3F6F9),
           border: isToday ? Border.all(color: AppColors.navy, width: 2) : null,
@@ -1161,8 +1165,8 @@ class _AttendanceCalendarDay extends StatelessWidget {
             Text(
               date.day.toString(),
               style: GoogleFonts.inter(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
                 color: isCurrentMonth
                     ? AppColors.navy
                     : const Color(0xFF94A3B8),
@@ -1175,7 +1179,7 @@ class _AttendanceCalendarDay extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: GoogleFonts.inter(
-                  fontSize: 8,
+                  fontSize: 10,
                   color: const Color(0xFF8CA0BD),
                 ),
               )
@@ -1190,7 +1194,7 @@ class _AttendanceCalendarDay extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: GoogleFonts.inter(
-                  fontSize: 8,
+                  fontSize: 10,
                   color: const Color(0xFF64748B),
                 ),
               ),
@@ -1270,42 +1274,20 @@ class _AttendanceDayChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = _attendancePalette(tone);
-    return Container(
+    return SizedBox(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-      decoration: BoxDecoration(
-        color: palette.background,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: palette.border),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 5,
-            height: 5,
-            decoration: BoxDecoration(
-              color: palette.foreground,
-              shape: BoxShape.circle,
-            ),
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: Text(
+          label,
+          maxLines: 1,
+          style: GoogleFonts.inter(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: palette.foreground,
           ),
-          const SizedBox(width: 4),
-          Expanded(
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text(
-                label,
-                maxLines: 1,
-                style: GoogleFonts.inter(
-                  fontSize: 8,
-                  fontWeight: FontWeight.w500,
-                  color: palette.foreground,
-                ),
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -1341,7 +1323,11 @@ class _AttendanceLegendItem extends StatelessWidget {
           const SizedBox(width: 5),
           Text(
             label,
-            style: GoogleFonts.inter(fontSize: 9, color: palette.foreground),
+            style: GoogleFonts.inter(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: palette.foreground,
+            ),
           ),
         ],
       ),

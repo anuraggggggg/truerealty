@@ -266,6 +266,7 @@ class _TelecallerDashboardViewState extends State<TelecallerDashboardView> {
                   child: _DashboardHeader(
                     userName: userName.isEmpty ? 'Telecaller' : userName,
                     notificationCount: _unreadNotificationCount,
+                    onMenuTap: widget.onMenuTap,
                     onNotificationTap: _openNotifications,
                     onProfileTap: _openProfile,
                     onAddLeadTap: () =>
@@ -339,7 +340,7 @@ class _TelecallerDashboardViewState extends State<TelecallerDashboardView> {
     final imagePath = await showDialog<String>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const _PunchInSelfieDialog(),
+      builder: (_) => const PunchInSelfieDialog(),
     );
     if (imagePath == null || !mounted) return;
 
@@ -1137,6 +1138,7 @@ class _DashboardHeader extends StatelessWidget {
   const _DashboardHeader({
     required this.userName,
     required this.notificationCount,
+    required this.onMenuTap,
     required this.onNotificationTap,
     required this.onProfileTap,
     required this.onAddLeadTap,
@@ -1144,6 +1146,7 @@ class _DashboardHeader extends StatelessWidget {
 
   final String userName;
   final int notificationCount;
+  final VoidCallback? onMenuTap;
   final VoidCallback onNotificationTap;
   final VoidCallback onProfileTap;
   final VoidCallback onAddLeadTap;
@@ -1170,6 +1173,8 @@ class _DashboardHeader extends StatelessWidget {
             ),
             child: Row(
               children: [
+                _HeaderMenuButton(onTap: onMenuTap),
+                SizedBox(width: 4.w),
                 SizedBox(
                   width: 112.w,
                   child: Image.asset(
@@ -1227,6 +1232,28 @@ class _DashboardHeader extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _HeaderMenuButton extends StatelessWidget {
+  const _HeaderMenuButton({required this.onTap});
+
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'Open menu',
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8.r),
+        child: SizedBox(
+          width: 38.w,
+          height: 38.h,
+          child: Icon(Icons.menu_rounded, color: AppColors.navy, size: 27.sp),
+        ),
       ),
     );
   }
@@ -3645,14 +3672,14 @@ class _AttendanceStatusChip extends StatelessWidget {
   }
 }
 
-class _PunchInSelfieDialog extends StatefulWidget {
-  const _PunchInSelfieDialog();
+class PunchInSelfieDialog extends StatefulWidget {
+  const PunchInSelfieDialog({super.key});
 
   @override
-  State<_PunchInSelfieDialog> createState() => _PunchInSelfieDialogState();
+  State<PunchInSelfieDialog> createState() => _PunchInSelfieDialogState();
 }
 
-class _PunchInSelfieDialogState extends State<_PunchInSelfieDialog>
+class _PunchInSelfieDialogState extends State<PunchInSelfieDialog>
     with WidgetsBindingObserver {
   CameraController? _cameraController;
   String? _imagePath;

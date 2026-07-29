@@ -12,8 +12,13 @@ import '../provider/leads_provider.dart';
 import 'package:truerealtycrm/widget/app_loading.dart';
 
 class LeadListWidget extends StatefulWidget {
-  const LeadListWidget({super.key, this.isInsideScrollView = false});
+  const LeadListWidget({
+    super.key,
+    this.isInsideScrollView = false,
+    this.onMenuTap,
+  });
   final bool isInsideScrollView;
+  final VoidCallback? onMenuTap;
 
   @override
   State<LeadListWidget> createState() => _LeadListWidgetState();
@@ -206,8 +211,6 @@ class _LeadListWidgetState extends State<LeadListWidget> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildHeader(context),
-        SizedBox(height: 12.h),
-        _buildBreadcrumbs(),
         SizedBox(height: _sectionGap.h),
         _buildStatsRow(leadProvider),
         SizedBox(height: _sectionGap.h),
@@ -268,12 +271,21 @@ class _LeadListWidgetState extends State<LeadListWidget> {
     final isNarrow = MediaQuery.sizeOf(context).width < 380;
     final titleRow = Row(
       children: [
-        Icon(
-          Icons.arrow_back_ios_new,
-          size: 20.sp,
-          color: AppColors.textIconDark,
+        IconButton(
+          tooltip: widget.onMenuTap == null ? 'Back' : 'Open navigation',
+          visualDensity: VisualDensity.compact,
+          padding: EdgeInsets.zero,
+          constraints: BoxConstraints.tightFor(width: 38.w, height: 38.w),
+          onPressed: widget.onMenuTap ?? () => Navigator.maybePop(context),
+          icon: Icon(
+            widget.onMenuTap == null
+                ? Icons.arrow_back_ios_new
+                : Icons.menu_rounded,
+            size: 21.sp,
+            color: AppColors.textIconDark,
+          ),
         ),
-        SizedBox(width: 8.w),
+        SizedBox(width: 5.w),
         Flexible(
           child: Text(
             'Lead List',
@@ -356,52 +368,6 @@ class _LeadListWidgetState extends State<LeadListWidget> {
     );
   }
 
-  Widget _buildBreadcrumbs() {
-    final muted = AppColors.textTertiary;
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          Text(
-            'Dashboard',
-            style: GoogleFonts.inter(
-              fontSize: 16.5.sp,
-              fontWeight: FontWeight.w400,
-              height: 1.5,
-              color: const Color(0xFF64748B),
-            ),
-          ),
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 6.w),
-            child: Icon(Icons.chevron_right, size: 16.sp, color: muted),
-          ),
-          Text(
-            'Leads',
-            style: GoogleFonts.inter(
-              fontSize: 16.5.sp,
-              fontWeight: FontWeight.w500,
-              height: 1.5,
-              color: const Color(0xFFF97316),
-            ),
-          ),
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 6.w),
-            child: Icon(Icons.chevron_right, size: 12.sp, color: muted),
-          ),
-          Text(
-            'Lead List',
-            style: GoogleFonts.inter(
-              fontSize: 16.5.sp,
-              fontWeight: FontWeight.w400,
-              height: 1.5,
-              color: const Color(0xFF64748B),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildStatsRow(LeadProvider leadProvider) {
     return Column(
       children: [
@@ -459,27 +425,51 @@ class _LeadListWidgetState extends State<LeadListWidget> {
   }
 
   Widget _buildSearchAndActions(BuildContext context) {
-    return Align(
-      alignment: Alignment.centerRight,
-      child: OutlinedButton.icon(
-        onPressed: () => setState(() => _showFilters = !_showFilters),
-        style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.navy,
-          side: BorderSide(
-            color: _showFilters
-                ? AppColors.orangeStrong
-                : const Color(0xFFCBD5E1),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final buttonWidth = constraints.maxWidth < 430
+            ? double.infinity
+            : 190.w;
+        return Align(
+          alignment: Alignment.centerRight,
+          child: SizedBox(
+            width: buttonWidth,
+            height: 50.h,
+            child: OutlinedButton.icon(
+              onPressed: () => setState(() => _showFilters = !_showFilters),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.navy,
+                backgroundColor: _showFilters
+                    ? const Color(0xFFFFF4ED)
+                    : Colors.white,
+                side: BorderSide(
+                  color: _showFilters
+                      ? AppColors.orangeStrong
+                      : const Color(0xFFCBD5E1),
+                  width: 1.2,
+                ),
+                padding: EdgeInsets.symmetric(horizontal: 16.w),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12.r),
+                ),
+              ),
+              icon: Icon(
+                _showFilters
+                    ? Icons.keyboard_arrow_up_rounded
+                    : Icons.filter_alt_rounded,
+                size: 22.sp,
+              ),
+              label: Text(
+                _showFilters ? 'Hide filters' : 'All filters',
+                style: GoogleFonts.inter(
+                  fontSize: 14.sp,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
           ),
-          padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 11.h),
-        ),
-        icon: Icon(
-          _showFilters
-              ? Icons.keyboard_arrow_up_rounded
-              : Icons.filter_alt_rounded,
-          size: 18.sp,
-        ),
-        label: Text(_showFilters ? 'Hide filters' : 'All filters'),
-      ),
+        );
+      },
     );
   }
 
@@ -764,198 +754,228 @@ class _LeadListWidgetState extends State<LeadListWidget> {
   }
 
   Widget _buildLeadCard(BuildContext context, LeadModel lead, int index) {
-    final statusThemes = <String, Map<String, dynamic>>{
-      'Hot': {
-        'bg': AppColors.orangeSoft,
-        'fg': AppColors.orangeDeep,
-        'icon': Icons.local_fire_department_outlined,
-      },
-      'Warm': {
-        'bg': AppColors.leadWarmBg,
-        'fg': AppColors.orangeStrong,
-        'icon': Icons.wb_sunny_outlined,
-      },
-      'New': {
-        'bg': AppColors.windowBlue,
-        'fg': AppColors.blueBright,
-        'icon': Icons.brightness_1,
-      },
-      'Pending': {
-        'bg': AppColors.windowBlue,
-        'fg': AppColors.blueBright,
-        'icon': Icons.pending_actions_outlined,
-      },
-      'Contacted': {
-        'bg': AppColors.purpleSoft,
-        'fg': AppColors.purpleDeep,
-        'icon': Icons.chat_bubble_outline,
-      },
-      'Booked': {
-        'bg': AppColors.greenBg,
-        'fg': AppColors.greenDeep,
-        'icon': Icons.task_alt_outlined,
-      },
-      'Interested': {
-        'bg': AppColors.purpleSoft,
-        'fg': AppColors.purpleDeep,
-        'icon': Icons.thumb_up_alt_outlined,
-      },
-    };
-
+    final raw = lead.raw ?? const <String, dynamic>{};
+    final requirement = raw['requirement'] is Map
+        ? Map<String, dynamic>.from(raw['requirement'] as Map)
+        : const <String, dynamic>{};
     final status = _normalizeStatus(lead.status);
-    final theme =
-        statusThemes[status] ??
-        {
-          'bg': AppColors.windowBlue,
-          'fg': AppColors.blueBright,
-          'icon': Icons.info_outline,
-        };
-    final timelineText = lead.dueLabel ?? lead.createdLabel ?? 'No follow-up';
-    final timelineColor = lead.dueLabel == null
-        ? AppColors.iconMuted
-        : AppColors.greenDeep;
+    final statusColors = _leadStatusColors(status);
+    final budget = _leadBudget(requirement);
+    final nextFollowUp = _leadDate(raw['nextFollowUpAt']);
+    final followUpLabel = nextFollowUp == null
+        ? lead.dueLabel ?? 'Not scheduled'
+        : _leadDateTimeLabel(nextFollowUp);
+    final sla = _leadSla(nextFollowUp);
+    final project = lead.project?.trim().isNotEmpty == true
+        ? lead.project!
+        : 'Project not assigned';
+    final location = lead.location?.trim().isNotEmpty == true
+        ? lead.location!
+        : '-';
 
-    final isNarrow = MediaQuery.sizeOf(context).width < 430;
-
-    return GestureDetector(
-      onTap: () =>
-          Navigator.pushNamed(context, AppRouter.leadDetail, arguments: lead),
-      child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 18.h),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12.r),
-          border: Border.all(color: AppColors.leadCardBorder),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                CircleAvatar(
-                  radius: 18.r,
-                  backgroundColor: AppColors.windowBlue,
-                  child: Text(
-                    lead.name.substring(0, 2).toUpperCase(),
-                    style: TextStyle(
-                      color: AppColors.blueDeep,
-                      fontSize: 14.5.sp,
-                      fontWeight: FontWeight.w700,
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(14.r),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () =>
+            Navigator.pushNamed(context, AppRouter.leadDetail, arguments: lead),
+        child: Container(
+          padding: EdgeInsets.fromLTRB(14.w, 13.h, 14.w, 12.h),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14.r),
+            border: Border.all(color: const Color(0xFFD5DDE8)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x0A0F172A),
+                blurRadius: 8,
+                offset: Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 20.r,
+                    backgroundColor: const Color(0xFF10213D),
+                    child: Text(
+                      _leadInitials(lead.name),
+                      style: GoogleFonts.inter(
+                        color: Colors.white,
+                        fontSize: 11.5.sp,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ),
-                ),
-                SizedBox(width: 14.w),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      if (isNarrow) ...[
-                        Text(
-                          lead.titleWithId,
-                          style: GoogleFonts.inter(
-                            fontSize: 17.5.sp,
-                            fontWeight: FontWeight.w700,
-                            height: 1.5,
-                            color: const Color(0xFF0F172A),
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        SizedBox(height: 6.h),
-                        _buildStatusChip(status, theme),
-                      ] else
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                lead.name,
-                                style: GoogleFonts.inter(
-                                  fontSize: 15.5,
-                                  fontWeight: FontWeight.w700,
-                                  height: 1.5,
-                                  color: const Color(0xFF0F172A),
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
+                  SizedBox(width: 10.w),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            lead.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.inter(
+                              fontSize: 15.sp,
+                              fontWeight: FontWeight.w700,
+                              color: const Color(0xFF0B1735),
                             ),
-                            SizedBox(width: 6.w),
-                            _buildStatusChip(status, theme),
-                          ],
+                          ),
                         ),
-                      SizedBox(height: 4.h),
-                      Text(
-                        lead.email,
-                        style: GoogleFonts.inter(
-                          fontSize: 14.5.sp,
-                          fontWeight: FontWeight.w600,
-                          height: 1.5,
-                          color: const Color(0xFF4F5153),
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      SizedBox(height: 6.h),
-                      Text(
-                        lead.phone,
-                        style: GoogleFonts.inter(
-                          fontSize: 14.5.sp,
-                          fontWeight: FontWeight.w600,
-                          height: 1.5,
-                          color: const Color(0xFF4F5153),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                SizedBox(width: 8.w),
-                GestureDetector(
-                  onTap: () => _showLeadActionsSheet(context, lead),
-                  child: Padding(
-                    padding: EdgeInsets.only(top: 2.h),
-                    child: Icon(
-                      Icons.more_vert,
-                      size: 16.sp,
-                      color: AppColors.textMuted,
+                        if (lead.displayId?.isNotEmpty == true) ...[
+                          SizedBox(width: 7.w),
+                          _CompactLeadBadge(
+                            text: lead.displayId!,
+                            foreground: const Color(0xFF596273),
+                            background: const Color(0xFFF0F2F6),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
+                  SizedBox(width: 7.w),
+                  _CompactLeadBadge(
+                    text: status,
+                    foreground: statusColors.$1,
+                    background: statusColors.$2,
+                    borderColor: statusColors.$3,
+                  ),
+                  SizedBox(width: 2.w),
+                  IconButton(
+                    tooltip: 'Lead actions',
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                    constraints: BoxConstraints.tight(Size(32.w, 32.h)),
+                    onPressed: () => _showLeadActionsSheet(context, lead),
+                    icon: Icon(
+                      Icons.more_horiz_rounded,
+                      size: 20.sp,
+                      color: const Color(0xFF667085),
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: 14.h),
+              Row(
+                children: [
+                  Icon(
+                    Icons.phone_outlined,
+                    size: 17.sp,
+                    color: const Color(0xFF00A86B),
+                  ),
+                  SizedBox(width: 7.w),
+                  Expanded(
+                    child: Text(
+                      lead.phone,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: _professionalLeadValueStyle,
+                    ),
+                  ),
+                  SizedBox(width: 10.w),
+                  Icon(
+                    Icons.apartment_rounded,
+                    size: 17.sp,
+                    color: const Color(0xFF475467),
+                  ),
+                  SizedBox(width: 7.w),
+                  Flexible(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          project,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: _professionalLeadValueStyle,
+                        ),
+                        if (location != '-')
+                          Text(
+                            location,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.inter(
+                              fontSize: 10.5.sp,
+                              color: const Color(0xFF667085),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: 11.h),
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 9.h),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(9.r),
+                  border: Border.all(color: const Color(0xFFE6EAF0)),
                 ),
-              ],
-            ),
-            SizedBox(height: 10.h),
-            Wrap(
-              runSpacing: 8.h,
-              spacing: 12.w,
-              children: [
-                _buildMetaItem(
-                  Icons.location_on_outlined,
-                  lead.location ?? lead.project ?? 'Project not assigned',
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _LeadCardDetail(
+                        icon: Icons.payments_outlined,
+                        label: 'Budget',
+                        value: budget,
+                      ),
+                    ),
+                    Container(
+                      width: 1,
+                      height: 34.h,
+                      color: const Color(0xFFE1E6EE),
+                    ),
+                    SizedBox(width: 10.w),
+                    Expanded(
+                      child: _LeadCardDetail(
+                        icon: Icons.event_available_outlined,
+                        label: 'Next follow-up',
+                        value: followUpLabel,
+                        alignEnd: true,
+                      ),
+                    ),
+                  ],
                 ),
-                _buildMetaItem(
-                  Icons.currency_rupee,
-                  'Source: ${lead.source ?? '-'}',
-                ),
-                _buildMetaItem(
-                  Icons.person_outline,
-                  lead.assignedTo ?? 'Unassigned',
-                  isCompact: isNarrow,
-                ),
-                _buildMetaItem(
-                  Icons.access_time,
-                  lead.stage ?? lead.status,
-                  isCompact: isNarrow,
-                ),
-                _buildMetaItem(
-                  Icons.calendar_today_outlined,
-                  timelineText,
-                  iconColor: timelineColor,
-                  textColor: timelineColor,
-                  fontWeight: FontWeight.w700,
-                  isCompact: isNarrow,
-                ),
-              ],
-            ),
-          ],
+              ),
+              SizedBox(height: 11.h),
+              Row(
+                children: [
+                  Text('Source: ', style: _professionalLeadLabelStyle),
+                  Expanded(
+                    child: Text(
+                      lead.source ?? '-',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: _professionalLeadFooterValueStyle,
+                    ),
+                  ),
+                  Text('Owner: ', style: _professionalLeadLabelStyle),
+                  Flexible(
+                    child: Text(
+                      lead.assignedTo ?? 'Unassigned',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: _professionalLeadFooterValueStyle,
+                    ),
+                  ),
+                  SizedBox(width: 8.w),
+                  _CompactLeadBadge(
+                    text: sla.$1,
+                    foreground: sla.$2,
+                    background: sla.$2.withValues(alpha: .08),
+                    borderColor: sla.$2.withValues(alpha: .3),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1463,66 +1483,93 @@ class _LeadListWidgetState extends State<LeadListWidget> {
         .toUpperCase();
   }
 
-  Widget _buildStatusChip(String status, Map<String, dynamic> theme) {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 9.w, vertical: 4.h),
-      decoration: BoxDecoration(
-        color: theme['bg'] as Color,
-        borderRadius: BorderRadius.circular(20.r),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            theme['icon'] as IconData,
-            size: 8.sp,
-            color: theme['fg'] as Color,
-          ),
-          SizedBox(width: 3.w),
-          Text(
-            status,
-            style: TextStyle(
-              fontSize: 15.5.sp,
-              color: theme['fg'] as Color,
-              fontWeight: FontWeight.w600,
-              height: 1.1,
-            ),
-          ),
-        ],
-      ),
+  (Color, Color, Color) _leadStatusColors(String status) {
+    final value = status.toLowerCase();
+    if (value.contains('hot') || value.contains('overdue')) {
+      return (
+        const Color(0xFFFF641A),
+        const Color(0xFFFFF1E8),
+        const Color(0xFFFFC8AA),
+      );
+    }
+    if (value.contains('book') || value.contains('convert')) {
+      return (
+        const Color(0xFF168553),
+        const Color(0xFFECFDF3),
+        const Color(0xFFA7F3D0),
+      );
+    }
+    if (value.contains('interest') || value.contains('qualif')) {
+      return (
+        const Color(0xFF7C3AED),
+        const Color(0xFFF5F3FF),
+        const Color(0xFFDDD6FE),
+      );
+    }
+    return (
+      const Color(0xFF2563EB),
+      const Color(0xFFEFF6FF),
+      const Color(0xFFBFDBFE),
     );
   }
 
-  Widget _buildMetaItem(
-    IconData icon,
-    String text, {
-    Color? iconColor,
-    Color? textColor,
-    FontWeight fontWeight = FontWeight.w500,
-    bool isCompact = false,
-  }) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 11.sp, color: iconColor ?? AppColors.iconMuted),
-        SizedBox(width: 5.w),
-        SizedBox(
-          width: isCompact ? 74.w : null,
-          child: Text(
-            text,
-            maxLines: isCompact ? 1 : null,
-            overflow: isCompact ? TextOverflow.ellipsis : null,
-            textAlign: isCompact ? TextAlign.right : TextAlign.left,
-            style: TextStyle(
-              fontSize: 16.5.sp,
-              color: textColor ?? AppColors.textBody,
-              fontWeight: fontWeight,
-              height: 1.2,
-            ),
-          ),
-        ),
-      ],
-    );
+  String _leadBudget(Map<String, dynamic> requirement) {
+    String text(Object? value) => value?.toString().trim() ?? '';
+    final explicit = text(requirement['budgetRange']);
+    if (explicit.isNotEmpty && explicit != '-') return explicit;
+    final min = text(requirement['minBudget']);
+    final max = text(requirement['maxBudget']);
+    final unit = text(requirement['budgetUnit']);
+    final range = [
+      min,
+      max,
+    ].where((value) => value.isNotEmpty && value != '-').join(' - ');
+    return [range, unit]
+            .where((value) => value.isNotEmpty && value != '-')
+            .join(' ')
+            .trim()
+            .isEmpty
+        ? '-'
+        : [
+            range,
+            unit,
+          ].where((value) => value.isNotEmpty && value != '-').join(' ');
+  }
+
+  DateTime? _leadDate(Object? value) {
+    if (value == null) return null;
+    return DateTime.tryParse(value.toString())?.toLocal();
+  }
+
+  String _leadDateTimeLabel(DateTime value) {
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    final hour = value.hour % 12 == 0 ? 12 : value.hour % 12;
+    final minute = value.minute.toString().padLeft(2, '0');
+    return '${value.day} ${months[value.month - 1]}, '
+        '$hour:$minute ${value.hour < 12 ? 'AM' : 'PM'}';
+  }
+
+  (String, Color) _leadSla(DateTime? nextFollowUp) {
+    if (nextFollowUp == null) {
+      return ('No SLA', const Color(0xFF667085));
+    }
+    if (nextFollowUp.isBefore(DateTime.now())) {
+      return ('Overdue', const Color(0xFFDC2626));
+    }
+    return ('Due Soon', const Color(0xFFFF641A));
   }
 
   Widget _buildBottomSection(BuildContext context, LeadProvider leadProvider) {
@@ -1874,5 +1921,114 @@ class _LeadListWidgetState extends State<LeadListWidget> {
     }
     if (lower.contains('pending')) return AppColors.windowBlue;
     return AppColors.white;
+  }
+}
+
+TextStyle get _professionalLeadValueStyle => GoogleFonts.inter(
+  fontSize: 12.sp,
+  fontWeight: FontWeight.w600,
+  color: const Color(0xFF111A32),
+);
+
+TextStyle get _professionalLeadLabelStyle =>
+    GoogleFonts.inter(fontSize: 10.5.sp, color: const Color(0xFF667085));
+
+TextStyle get _professionalLeadFooterValueStyle => GoogleFonts.inter(
+  fontSize: 10.5.sp,
+  fontWeight: FontWeight.w700,
+  color: const Color(0xFF263248),
+);
+
+class _CompactLeadBadge extends StatelessWidget {
+  const _CompactLeadBadge({
+    required this.text,
+    required this.foreground,
+    required this.background,
+    this.borderColor,
+  });
+
+  final String text;
+  final Color foreground;
+  final Color background;
+  final Color? borderColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: BoxConstraints(maxWidth: 88.w),
+      padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(999.r),
+        border: borderColor == null ? null : Border.all(color: borderColor!),
+      ),
+      child: Text(
+        text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: GoogleFonts.inter(
+          fontSize: 10.sp,
+          fontWeight: FontWeight.w600,
+          color: foreground,
+        ),
+      ),
+    );
+  }
+}
+
+class _LeadCardDetail extends StatelessWidget {
+  const _LeadCardDetail({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.alignEnd = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final bool alignEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: alignEnd
+          ? MainAxisAlignment.end
+          : MainAxisAlignment.start,
+      children: [
+        Icon(icon, size: 16.sp, color: const Color(0xFF475467)),
+        SizedBox(width: 6.w),
+        Flexible(
+          child: Column(
+            crossAxisAlignment: alignEnd
+                ? CrossAxisAlignment.end
+                : CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.inter(
+                  fontSize: 9.5.sp,
+                  color: const Color(0xFF667085),
+                ),
+              ),
+              SizedBox(height: 2.h),
+              Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: alignEnd ? TextAlign.end : TextAlign.start,
+                style: GoogleFonts.inter(
+                  fontSize: 11.5.sp,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF111A32),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 }

@@ -814,16 +814,12 @@ class _MyLeadsScreenState extends State<MyLeadsScreen> {
                     crossAxisCount: columns,
                     crossAxisSpacing: 14.w,
                     mainAxisSpacing: 14.h,
-                    // The card contains a variable number of wrapped chips and
-                    // two-line API values. Keep enough vertical room at every
-                    // ScreenUtil scale instead of clipping the card content.
-                    mainAxisExtent: 430.h,
+                    mainAxisExtent: 224.h,
                   ),
                   itemBuilder: (context, i) {
                     final lead = _leads[i];
                     return _NewLeadCard(
                       data: lead,
-                      isDarkAvatar: i == 0,
                       selected: _selectedLeadIds.contains(lead.apiId),
                       onSelected: (selected) {
                         setState(() {
@@ -1970,277 +1966,283 @@ class _LeadSummaryData {
 class _NewLeadCard extends StatelessWidget {
   const _NewLeadCard({
     required this.data,
-    required this.isDarkAvatar,
     required this.selected,
     required this.onSelected,
   });
 
   final _NewLeadData data;
-  final bool isDarkAvatar;
   final bool selected;
   final ValueChanged<bool> onSelected;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      // padding: EdgeInsets.fromLTRB(16.w, 16.h, 16.w, 0),
-      decoration: BoxDecoration(
-        color: Colors.white,
+    final temperature = _temperatureLabel(data);
+    final slaLabel = _slaLabel(data);
+    final slaColor = _slaColor(data);
+
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(12.r),
+      child: InkWell(
+        onTap: () => _showLeadActions(context),
         borderRadius: BorderRadius.circular(12.r),
-        border: Border.all(color: const Color(0xFFD9E2EE)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: EdgeInsets.fromLTRB(14.w, 12.h, 14.w, 0),
-            child: Column(
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Checkbox(
+        child: Container(
+          padding: EdgeInsets.fromLTRB(14.w, 12.h, 14.w, 11.h),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12.r),
+            border: Border.all(color: const Color(0xFFD2D9E4)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  SizedBox(
+                    width: 22.w,
+                    height: 22.w,
+                    child: Checkbox(
                       value: selected,
                       onChanged: (value) => onSelected(value ?? false),
                       activeColor: AppColors.orangeStrong,
+                      side: const BorderSide(color: Color(0xFFC7CFDB)),
                       visualDensity: VisualDensity.compact,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(4.r),
                       ),
                     ),
-                    SizedBox(width: 12.w),
-                    Container(
-                      width: 38.w,
-                      height: 38.w,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: isDarkAvatar
-                            ? const Color(0xFF252525)
-                            : const Color(0xFF2C2C2C),
-                      ),
-                      child: Icon(
-                        Icons.person,
-                        color: Colors.white70,
-                        size: MyLeadsScreen.avatarIconSize.sp,
+                  ),
+                  SizedBox(width: 10.w),
+                  Flexible(
+                    child: Text(
+                      data.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.inter(
+                        fontSize: 15.sp,
+                        fontWeight: FontWeight.w800,
+                        color: const Color(0xFF0B1735),
                       ),
                     ),
-                    SizedBox(width: 12.w),
+                  ),
+                  SizedBox(width: 7.w),
+                  _LeadCardBadge(
+                    label: data.leadId,
+                    foreground: const Color(0xFF586174),
+                    background: const Color(0xFFF0F2F6),
+                  ),
+                  const Spacer(),
+                  SizedBox(width: 6.w),
+                  _LeadCardBadge(
+                    label: temperature,
+                    foreground: const Color(0xFFFF641A),
+                    background: const Color(0xFFFFF1E8),
+                    borderColor: const Color(0xFFFFC8AA),
+                  ),
+                ],
+              ),
+              SizedBox(height: 14.h),
+              Row(
+                children: [
+                  Icon(
+                    Icons.phone_outlined,
+                    size: 17.sp,
+                    color: const Color(0xFF00B66B),
+                  ),
+                  SizedBox(width: 7.w),
+                  Expanded(
+                    child: Text(
+                      data.phone,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: _leadCardValueStyle,
+                    ),
+                  ),
+                  SizedBox(width: 10.w),
+                  Icon(
+                    Icons.apartment_rounded,
+                    size: 17.sp,
+                    color: const Color(0xFF4B5563),
+                  ),
+                  SizedBox(width: 7.w),
+                  Flexible(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          data.project,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: _leadCardValueStyle,
+                        ),
+                        if (data.location != '-' &&
+                            data.location.trim().isNotEmpty)
+                          Text(
+                            data.location,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.inter(
+                              fontSize: 11.sp,
+                              color: const Color(0xFF4B4F59),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: 11.h),
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.h),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8F9FC),
+                  borderRadius: BorderRadius.circular(8.r),
+                  border: const Border(
+                    top: BorderSide(color: Color(0xFFE0E5EC)),
+                  ),
+                ),
+                child: Row(
+                  children: [
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      child: Row(
                         children: [
-                          Text(data.name, style: MyLeadsScreen.leadNameStyle),
-                          SizedBox(height: 4.h),
-                          Container(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 10.w,
-                              vertical: 4.h,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFEAF2FF),
-                              borderRadius: BorderRadius.circular(999.r),
-                              border: Border.all(
-                                color: const Color(0xFFC5DAFF),
-                              ),
-                            ),
+                          Icon(
+                            Icons.payments_outlined,
+                            size: 16.sp,
+                            color: const Color(0xFF4B5563),
+                          ),
+                          SizedBox(width: 6.w),
+                          Expanded(
                             child: Text(
-                              data.leadId,
+                              data.budget,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                               style: GoogleFonts.inter(
-                                fontSize: 12.8.sp,
-                                fontWeight: FontWeight.w500,
-                                color: const Color(0xFF2C6BFF),
+                                fontSize: 12.sp,
+                                fontWeight: FontWeight.w700,
+                                color: const Color(0xFF111A32),
                               ),
                             ),
                           ),
                         ],
                       ),
                     ),
-                    Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: () => _showLeadActions(context),
-                        borderRadius: BorderRadius.circular(18.r),
-                        child: Container(
-                          width: 36.w,
-                          height: 36.w,
-                          alignment: Alignment.center,
-                          margin: EdgeInsets.only(top: 2.h),
-                          child: Icon(
-                            Icons.more_vert,
-                            size: (MyLeadsScreen.actionIconSize + 2).sp,
-                            color: const Color(0xFF4B4E57),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 12.h),
-                Row(
-                  children: [
-                    Icon(
-                      Icons.smartphone_outlined,
-                      size: MyLeadsScreen.inlineIconSize.sp,
-                      color: const Color(0xFF444A55),
-                    ),
                     SizedBox(width: 8.w),
                     Expanded(
-                      child: Text(
-                        data.phone,
-                        style: MyLeadsScreen.leadInfoValueStyle,
-                      ),
-                    ),
-                    Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 10.w,
-                        vertical: 5.h,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFEAF2FF),
-                        borderRadius: BorderRadius.circular(999.r),
-                        border: Border.all(color: const Color(0xFFB8D1FF)),
-                      ),
-                      child: Text(
-                        data.source,
-                        style: GoogleFonts.inter(
-                          fontSize: 12.3.sp,
-                          fontWeight: FontWeight.w500,
-                          color: const Color(0xFF2D6AFF),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 12.h),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: _LeadMetaBlock(
-                        label: 'BUDGET',
-                        value: data.budget,
-                      ),
-                    ),
-                    SizedBox(width: 18.w),
-                    Expanded(
-                      child: _LeadMetaBlock(
-                        label: 'PROPERTY TYPE',
-                        value: data.propertyType,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            'Next: ${data.nextFollowUp}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.end,
+                            style: GoogleFonts.inter(
+                              fontSize: 11.5.sp,
+                              fontWeight: FontWeight.w700,
+                              color: const Color(0xFF111A32),
+                            ),
+                          ),
+                          SizedBox(height: 2.h),
+                          Text(
+                            _followUpDueText(data.nextFollowUpDate),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.inter(
+                              fontSize: 9.5.sp,
+                              fontWeight: FontWeight.w600,
+                              color: slaColor,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
                 ),
-                SizedBox(height: 9.h),
-                Divider(color: const Color(0xFFE6EBF2), height: 1.h),
-                SizedBox(height: 9.h),
-                Wrap(
-                  spacing: 8.w,
-                  runSpacing: 8.h,
-                  children: [
-                    _buildChip(
-                      text: data.stage,
-                      textColor: const Color(0xFF1B4D9B),
-                      backgroundColor: const Color(0xFFE8F0FF),
-                    ),
-                    _buildChip(
-                      text: data.priority,
-                      textColor: const Color(0xFFFF6B00),
-                      backgroundColor: const Color(0xFFFFF1E8),
-                      icon: Icons.bolt,
-                    ),
-                    _buildChip(
-                      text: data.sla,
-                      textColor: const Color(0xFF00A86B),
-                      backgroundColor: const Color(0xFFE7F8F1),
-                      icon: Icons.check_circle_outline,
-                    ),
-                  ],
-                ),
-                SizedBox(height: 7.h),
-                Text(
-                  'Within configured SLA',
-                  style: MyLeadsScreen.slaStatusStyle,
-                ),
-                SizedBox(height: 10.h),
-              ],
-            ),
-          ),
-
-          Container(
-            width: double.infinity,
-            padding: EdgeInsets.symmetric(vertical: 10.h),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF3F6FD),
-              borderRadius: BorderRadius.only(
-                bottomLeft: Radius.circular(12.r),
-                bottomRight: Radius.circular(12.r),
               ),
-            ),
-            child: Column(
-              children: [
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16.w),
-                  child: Column(
-                    children: [
-                      _LeadInfoRow(
-                        label: 'Assigned To:',
-                        value: data.assignedTo,
-                      ),
-                      SizedBox(height: 10.h),
-                      _LeadInfoRow(
-                        label: 'Last Follow-up:',
-                        value: data.lastFollowUp,
-                      ),
-                      SizedBox(height: 10.h),
-                      _LeadInfoRow(
-                        label: 'Next Follow-up:',
-                        value: data.nextFollowUp,
-                      ),
-                    ],
+              const Spacer(),
+              Row(
+                children: [
+                  Text(
+                    'Source: ',
+                    style: GoogleFonts.inter(
+                      fontSize: 11.5.sp,
+                      color: const Color(0xFF4B4F59),
+                    ),
                   ),
-                ),
-              ],
-            ),
+                  Expanded(
+                    child: Text(
+                      data.source,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.inter(
+                        fontSize: 11.5.sp,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF111A32),
+                      ),
+                    ),
+                  ),
+                  Text(
+                    'SLA: ',
+                    style: GoogleFonts.inter(
+                      fontSize: 11.5.sp,
+                      color: const Color(0xFF4B4F59),
+                    ),
+                  ),
+                  _LeadCardBadge(
+                    label: slaLabel,
+                    foreground: slaColor,
+                    background: slaColor.withValues(alpha: 0.08),
+                    borderColor: slaColor.withValues(alpha: 0.35),
+                  ),
+                ],
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _buildChip({
-    required String text,
-    required Color textColor,
-    required Color backgroundColor,
-    IconData? icon,
-  }) {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
-      decoration: BoxDecoration(
-        color: backgroundColor,
-        borderRadius: BorderRadius.circular(999.r),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (icon != null) ...[
-            Icon(
-              icon,
-              size: (MyLeadsScreen.inlineIconSize - 2).sp,
-              color: textColor,
-            ),
-            SizedBox(width: 5.w),
-          ],
-          Text(
-            text,
-            style: GoogleFonts.inter(
-              fontSize: 12.8.sp,
-              fontWeight: FontWeight.w600,
-              color: textColor,
-            ),
-          ),
-        ],
-      ),
-    );
+  String _temperatureLabel(_NewLeadData data) {
+    final value = data.temperature == '-' || data.temperature.trim().isEmpty
+        ? data.priority
+        : data.temperature;
+    if (value == '-' || value.trim().isEmpty) return 'Lead';
+    return value.toLowerCase().contains('lead') ? value : '$value Lead';
+  }
+
+  String _slaLabel(_NewLeadData data) {
+    if (data.nextFollowUpDate?.isBefore(DateTime.now()) == true) {
+      return 'Overdue';
+    }
+    if (data.nextFollowUpDate != null) return 'Due Soon';
+    return data.sla;
+  }
+
+  Color _slaColor(_NewLeadData data) {
+    if (data.nextFollowUpDate?.isBefore(DateTime.now()) == true) {
+      return const Color(0xFFDC2626);
+    }
+    if (data.nextFollowUpDate != null) return const Color(0xFFFF641A);
+    return const Color(0xFF168553);
+  }
+
+  String _followUpDueText(DateTime? date) {
+    if (date == null) return 'Not scheduled';
+    final difference = date.difference(DateTime.now());
+    if (difference.isNegative) {
+      final overdueMinutes = difference.inMinutes.abs();
+      if (overdueMinutes < 60) return 'Overdue by $overdueMinutes min';
+      if (overdueMinutes < 1440) {
+        return 'Overdue by ${difference.inHours.abs()} hr';
+      }
+      return 'Overdue by ${difference.inDays.abs()} day';
+    }
+    if (difference.inMinutes < 60) return 'Due in ${difference.inMinutes} min';
+    if (difference.inHours < 24) return 'Due in ${difference.inHours} hr';
+    return 'Due in ${difference.inDays} day';
   }
 
   void _showLeadActions(BuildContext context) {
@@ -2254,51 +2256,45 @@ class _NewLeadCard extends StatelessWidget {
   }
 }
 
-class _LeadMetaBlock extends StatelessWidget {
-  const _LeadMetaBlock({required this.label, required this.value});
+TextStyle get _leadCardValueStyle => GoogleFonts.inter(
+  fontSize: 12.sp,
+  fontWeight: FontWeight.w600,
+  color: const Color(0xFF111A32),
+);
+
+class _LeadCardBadge extends StatelessWidget {
+  const _LeadCardBadge({
+    required this.label,
+    required this.foreground,
+    required this.background,
+    this.borderColor,
+  });
 
   final String label;
-  final String value;
+  final Color foreground;
+  final Color background;
+  final Color? borderColor;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: MyLeadsScreen.leadInfoLabelStyle),
-        SizedBox(height: 4.h),
-        Text(value, style: MyLeadsScreen.leadInfoValueStyle),
-      ],
-    );
-  }
-}
-
-class _LeadInfoRow extends StatelessWidget {
-  const _LeadInfoRow({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 105.w,
-          child: Text(label, style: MyLeadsScreen.leadInfoLabelStyle),
+    return Container(
+      constraints: BoxConstraints(maxWidth: 86.w),
+      padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(999.r),
+        border: borderColor == null ? null : Border.all(color: borderColor!),
+      ),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: GoogleFonts.inter(
+          fontSize: 10.5.sp,
+          fontWeight: FontWeight.w600,
+          color: foreground,
         ),
-        SizedBox(width: 8.w),
-        Expanded(
-          child: Text(
-            value,
-            textAlign: TextAlign.end,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: MyLeadsScreen.leadInfoValueStyle,
-          ),
-        ),
-      ],
+      ),
     );
   }
 }

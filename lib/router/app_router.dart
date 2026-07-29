@@ -27,6 +27,7 @@ import 'package:truerealtycrm/screen/telecaller_communication_screen.dart';
 import 'package:truerealtycrm/screen/notifications_screen.dart';
 import 'package:truerealtycrm/screen/personal_settings_screen.dart';
 import 'package:truerealtycrm/screen/profile_screen.dart';
+import 'package:truerealtycrm/screen/employment_records_screen.dart';
 
 import '../screen/my_leads_screen.dart';
 
@@ -57,6 +58,9 @@ class AppRouter {
   static const String notifications = '/notifications';
   static const String personalSettings = '/personal-settings';
   static const String profile = '/profile';
+  static const String myLeave = '/my-leave';
+  static const String myPayslips = '/my-payslips';
+  static const String holidays = '/holidays';
 
   static Route<dynamic> generateRoute(RouteSettings settings) {
     switch (settings.name) {
@@ -74,10 +78,11 @@ class AppRouter {
         final args = settings.arguments;
         final leadDetailArgs = args is LeadDetailScreenArgs
             ? args
-            : const LeadDetailScreenArgs();
+            : LeadDetailScreenArgs(lead: args is LeadModel ? args : null);
         return MaterialPageRoute(
           builder: (_) => _LeadDetailRouteWrapper(
             initialTabIndex: leadDetailArgs.initialTabIndex,
+            lead: leadDetailArgs.lead,
           ),
         );
       case leadProfileManagement:
@@ -148,7 +153,27 @@ class AppRouter {
           builder: (_) => const PersonalSettingsScreen(),
         );
       case profile:
-        return MaterialPageRoute(builder: (_) => const ProfileScreen());
+        final section = settings.arguments is int
+            ? settings.arguments as int
+            : 0;
+        return MaterialPageRoute(
+          builder: (_) => ProfileScreen(initialSection: section),
+        );
+      case myLeave:
+        return MaterialPageRoute(
+          builder: (_) =>
+              const EmploymentRecordsScreen(type: EmploymentRecordType.leave),
+        );
+      case myPayslips:
+        return MaterialPageRoute(
+          builder: (_) =>
+              const EmploymentRecordsScreen(type: EmploymentRecordType.payslip),
+        );
+      case holidays:
+        return MaterialPageRoute(
+          builder: (_) =>
+              const EmploymentRecordsScreen(type: EmploymentRecordType.holiday),
+        );
       default:
         return MaterialPageRoute(
           builder: (_) => Scaffold(
@@ -160,9 +185,13 @@ class AppRouter {
 }
 
 class _LeadDetailRouteWrapper extends StatelessWidget {
-  const _LeadDetailRouteWrapper({required this.initialTabIndex});
+  const _LeadDetailRouteWrapper({
+    required this.initialTabIndex,
+    required this.lead,
+  });
 
   final int initialTabIndex;
+  final LeadModel? lead;
 
   @override
   Widget build(BuildContext context) {
@@ -170,7 +199,7 @@ class _LeadDetailRouteWrapper extends StatelessWidget {
     if (role == UserRole.telecaller) {
       return const TelecallerLeadDetailsScreen();
     }
-    return LeadDetailScreen(initialTabIndex: initialTabIndex);
+    return LeadDetailScreen(initialTabIndex: initialTabIndex, lead: lead);
   }
 }
 
