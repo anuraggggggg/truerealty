@@ -101,19 +101,19 @@ class FollowUpTestScreen extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-              Expanded(
-                child: Text(
-                  'My Follow-Ups',
-                  style: TextStyle(
-                    fontFamily: 'Manrope',
-                    fontSize: 38.sp,
-                    fontWeight: FontWeight.w800,
-                    height: 1.29, // line-height
-                    letterSpacing: -0.28,
-                    color: Color(0xFF001F42), // Darker Navy
+                  Expanded(
+                    child: Text(
+                      'My Follow-Ups',
+                      style: TextStyle(
+                        fontFamily: 'Manrope',
+                        fontSize: 38.sp,
+                        fontWeight: FontWeight.w800,
+                        height: 1.29, // line-height
+                        letterSpacing: -0.28,
+                        color: Color(0xFF001F42), // Darker Navy
+                      ),
+                    ),
                   ),
-                ),
-              ),
                   SizedBox(width: 8.w),
                   Padding(
                     padding: EdgeInsets.only(top: 4.h),
@@ -187,10 +187,7 @@ class _OverdueFollowUpsSection extends StatelessWidget {
       padding: EdgeInsets.all(16.r),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: const Color(0xFFFFEDE0),
-          width: 1,
-        ),
+        border: Border.all(color: const Color(0xFFFFEDE0), width: 1),
         boxShadow: const [
           BoxShadow(
             color: Color.fromRGBO(0, 0, 0, 0.05),
@@ -211,7 +208,6 @@ class _OverdueFollowUpsSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
                 'Overdue Follow-Ups (1)',
@@ -221,17 +217,6 @@ class _OverdueFollowUpsSection extends StatelessWidget {
                   color: AppColors.navy,
                 ),
               ),
-              Text(
-                'View All',
-                style: TextStyle(
-                  fontFamily: 'Manrope',
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  height: 1.43, // line-height equivalent
-                  letterSpacing: 0,
-                  color: Color(0xFF2563EB),
-                ),
-              ),
             ],
           ),
           SizedBox(height: 16.h),
@@ -239,7 +224,9 @@ class _OverdueFollowUpsSection extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: 20.r,
-                backgroundImage: const AssetImage('assets/img.png'), // Placeholder
+                backgroundImage: const AssetImage(
+                  'assets/img.png',
+                ), // Placeholder
               ),
               SizedBox(width: 12.w),
               Expanded(
@@ -284,35 +271,6 @@ class _OverdueFollowUpsSection extends StatelessWidget {
               ),
             ],
           ),
-          SizedBox(height: 16.h),
-          Container(
-            width: double.infinity,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: const Color(0xFF002149),
-                width: 1,
-              ),
-            ),
-            child: OutlinedButton(
-              onPressed: () {},
-              style: OutlinedButton.styleFrom(
-                side: BorderSide.none, // Remove default border as it is provided by Container
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-              child: Text(
-                'View All Overdue',
-                style: const TextStyle(
-                  fontFamily: 'Manrope',
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  height: 1.43, // line-height
-                  color: Color(0xFF002149),
-                ),
-              ),
-            ),
-          ),
         ],
       ),
     );
@@ -330,10 +288,7 @@ class _QuickActionsSection extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: const Color(0xFFE6F3FF),
-          width: 1,
-        ),
+        border: Border.all(color: const Color(0xFFE6F3FF), width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -467,17 +422,21 @@ class _CalendarGrid extends StatelessWidget {
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: days.map((day) => Text(
-            day,
-            style: const TextStyle(
-              fontFamily: 'Inter',
-              fontSize: 10,
-              fontWeight: FontWeight.normal,
-              height: 1.4, // line-height equivalent
-              letterSpacing: 0.5,
-              color: Color(0xFF44474E),
-            ),
-          )).toList(),
+          children: days
+              .map(
+                (day) => Text(
+                  day,
+                  style: const TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 10,
+                    fontWeight: FontWeight.normal,
+                    height: 1.4, // line-height equivalent
+                    letterSpacing: 0.5,
+                    color: Color(0xFF44474E),
+                  ),
+                ),
+              )
+              .toList(),
         ),
         SizedBox(height: 12.h),
         GridView.builder(
@@ -505,10 +464,20 @@ class _CalendarGrid extends StatelessWidget {
                     style: GoogleFonts.inter(
                       fontSize: 17.sp,
                       color: isSelected ? Colors.white : AppColors.navy,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      fontWeight: isSelected
+                          ? FontWeight.bold
+                          : FontWeight.normal,
                     ),
                   ),
-                  if (isSelected) Container(width: 4.r, height: 4.r, decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
+                  if (isSelected)
+                    Container(
+                      width: 4.r,
+                      height: 4.r,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
                 ],
               ),
             );
@@ -530,10 +499,7 @@ class _QueueGuidanceSection extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: const Color(0xFFE6F3FF),
-          width: 1,
-        ),
+        border: Border.all(color: const Color(0xFFE6F3FF), width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -550,11 +516,20 @@ class _QueueGuidanceSection extends StatelessWidget {
             ),
           ),
           SizedBox(height: 16.h),
-          _GuidancePoint(text: 'Prioritize overdue follow-ups before starting fresh outreach.'),
+          _GuidancePoint(
+            text:
+                'Prioritize overdue follow-ups before starting fresh outreach.',
+          ),
           SizedBox(height: 12.h),
-          _GuidancePoint(text: 'Use reschedule and next-action updates to keep the queue accurate.'),
+          _GuidancePoint(
+            text:
+                'Use reschedule and next-action updates to keep the queue accurate.',
+          ),
           SizedBox(height: 12.h),
-          _GuidancePoint(text: 'Completed follow-ups move out of the live queue automatically.'),
+          _GuidancePoint(
+            text:
+                'Completed follow-ups move out of the live queue automatically.',
+          ),
         ],
       ),
     );
@@ -573,7 +548,11 @@ class _GuidancePoint extends StatelessWidget {
       children: [
         Padding(
           padding: EdgeInsets.only(top: 4.h),
-          child: Icon(Icons.circle_outlined, size: 16.sp, color: AppColors.vividBlue),
+          child: Icon(
+            Icons.circle_outlined,
+            size: 16.sp,
+            color: AppColors.vividBlue,
+          ),
         ),
         SizedBox(width: 10.w),
         Expanded(
@@ -657,22 +636,24 @@ class _BestTimeFollowUpSection extends StatelessWidget {
                         ),
                       )
                     : slot.$1 == '02 PM'
-                        ? BoxDecoration(
-                            color: const Color(0xFFF0FDF4).withValues(alpha: 0.5),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: const Color(0xFF16A34A).withValues(alpha: 0.09),
-                              width: 1,
-                            ),
-                          )
-                        : BoxDecoration(
-                            color: const Color(0xFFFEF9FF),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: const Color(0xFFFBE9FF),
-                              width: 1,
-                            ),
-                          ),
+                    ? BoxDecoration(
+                        color: const Color(0xFFF0FDF4).withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: const Color(
+                            0xFF16A34A,
+                          ).withValues(alpha: 0.09),
+                          width: 1,
+                        ),
+                      )
+                    : BoxDecoration(
+                        color: const Color(0xFFFEF9FF),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: const Color(0xFFFBE9FF),
+                          width: 1,
+                        ),
+                      ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1044,10 +1025,7 @@ class _FollowUpPerformanceCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: const Color(0xFFE6F3FF),
-          width: 1,
-        ),
+        border: Border.all(color: const Color(0xFFE6F3FF), width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1130,10 +1108,7 @@ class _PerformanceTile extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: Colors.transparent,
-          width: 1,
-        ),
+        border: Border.all(color: Colors.transparent, width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1258,18 +1233,9 @@ class _FollowUpChannelFilters extends StatelessWidget {
             icon: Icons.grid_view_rounded,
             selected: true,
           ),
-          _FilterChipButton(
-            label: 'Call',
-            icon: Icons.phone_in_talk_outlined,
-          ),
-          _FilterChipButton(
-            label: 'WhatsApp',
-            icon: Icons.chat_bubble_outline,
-          ),
-          _FilterChipButton(
-            label: 'Email',
-            icon: Icons.mail_outline,
-          ),
+          _FilterChipButton(label: 'Call', icon: Icons.phone_in_talk_outlined),
+          _FilterChipButton(label: 'WhatsApp', icon: Icons.chat_bubble_outline),
+          _FilterChipButton(label: 'Email', icon: Icons.mail_outline),
         ],
       ),
     );
@@ -1307,7 +1273,9 @@ class _FilterChipButton extends StatelessWidget {
             Icon(
               icon,
               size: 14.sp,
-              color: selected ? const Color(0xFF2563EB) : const Color(0xFF4B5563),
+              color: selected
+                  ? const Color(0xFF2563EB)
+                  : const Color(0xFF4B5563),
             ),
             SizedBox(width: 5.w),
             Text(
@@ -1316,7 +1284,9 @@ class _FilterChipButton extends StatelessWidget {
                 fontFamily: 'Inter',
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
-                color: selected ? const Color(0xFF2563EB) : const Color(0xFF4B5563),
+                color: selected
+                    ? const Color(0xFF2563EB)
+                    : const Color(0xFF4B5563),
               ),
             ),
           ],
@@ -1390,7 +1360,9 @@ class _FollowUpLeadCard extends StatelessWidget {
                                 ),
                                 decoration: BoxDecoration(
                                   color: const Color(0xFFFFDAD6),
-                                  borderRadius: BorderRadius.circular(9999), // pill shape
+                                  borderRadius: BorderRadius.circular(
+                                    9999,
+                                  ), // pill shape
                                 ),
                                 child: Text(
                                   data.status,
@@ -1402,7 +1374,11 @@ class _FollowUpLeadCard extends StatelessWidget {
                                 ),
                               ),
                               SizedBox(width: 6.w),
-                              Icon(Icons.more_vert, color: const Color(0xFF374151), size: 18.sp),
+                              Icon(
+                                Icons.more_vert,
+                                color: const Color(0xFF374151),
+                                size: 18.sp,
+                              ),
                             ],
                           ),
                         ),
@@ -1587,10 +1563,7 @@ class _FollowUpMetricCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: const Color(0x66C4C6D0),
-          width: 1,
-        ),
+        border: Border.all(color: const Color(0x66C4C6D0), width: 1),
         boxShadow: const [
           BoxShadow(
             color: Color(0x0D000000),

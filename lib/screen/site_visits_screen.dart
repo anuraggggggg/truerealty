@@ -17,11 +17,9 @@ import 'package:url_launcher/url_launcher.dart';
 class SiteVisitDetailsScreen extends StatefulWidget {
   const SiteVisitDetailsScreen({super.key});
 
-  static const Color _bg = Color(0xFFF8FAFE);
+  static const Color _bg = Color(0xFFF8FAFD);
   static const Color _cardBorder = Color(0xFFDCE6F3);
   static const Color _title = Color(0xFF0F2B57);
-  static const Color _body = Color(0xFF667085);
-  static const Color _muted = Color(0xFF98A2B3);
   static const Color _orange = Color(0xFFFF7315);
 
   @override
@@ -32,7 +30,6 @@ class _SiteVisitDetailsScreenState extends State<SiteVisitDetailsScreen> {
   static const Color _bg = SiteVisitDetailsScreen._bg;
   static const Color _cardBorder = SiteVisitDetailsScreen._cardBorder;
   static const Color _title = SiteVisitDetailsScreen._title;
-  static const Color _body = SiteVisitDetailsScreen._body;
   static const Color _orange = SiteVisitDetailsScreen._orange;
 
   String _selectedStatus = 'All';
@@ -92,39 +89,60 @@ class _SiteVisitDetailsScreenState extends State<SiteVisitDetailsScreen> {
       child: Scaffold(
         backgroundColor: _bg,
         body: SafeArea(
-          child: SingleChildScrollView(
-            padding: EdgeInsets.fromLTRB(16.w, 14.h, 16.w, 24.h),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildHeader(),
-                SizedBox(height: 26.h),
-                _buildExecutiveDropdown(),
-                SizedBox(height: 12.h),
-                _buildFiltersRow(provider),
-                SizedBox(height: 12.h),
-                _buildCreateButton(context),
-                SizedBox(height: 24.h),
-                if (provider.isLoading && provider.siteVisits.isEmpty)
-                  const AppListSkeleton(itemCount: 4, itemHeight: 154)
-                else if (provider.error != null && provider.siteVisits.isEmpty)
-                  _ApiErrorCard(message: provider.error!, onRetry: _load)
-                else ...[
-                  _buildMetricsGrid(provider),
-                  SizedBox(height: 16.h),
-                  _FieldExecutivesCard(visits: provider.siteVisits),
-                  SizedBox(height: 16.h),
-                  _VisitsListCard(
-                    visits: provider.siteVisits,
-                    onRefresh: _load,
+          child: Column(
+            children: [
+              Expanded(
+                child: RefreshIndicator(
+                  color: _orange,
+                  onRefresh: _load,
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: EdgeInsets.fromLTRB(15.w, 14.h, 15.w, 24.h),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildHeader(),
+                        SizedBox(height: 14.h),
+                        Divider(
+                          color: const Color(0xFFBCC6D6),
+                          thickness: 0.8.h,
+                          height: 1.h,
+                        ),
+                        SizedBox(height: 24.h),
+                        _buildExecutiveDropdown(),
+                        SizedBox(height: 12.h),
+                        _buildFiltersRow(provider),
+                        SizedBox(height: 12.h),
+                        _buildCreateButton(context),
+                        SizedBox(height: 24.h),
+                        if (provider.isLoading && provider.siteVisits.isEmpty)
+                          const AppListSkeleton(itemCount: 4, itemHeight: 154)
+                        else if (provider.error != null &&
+                            provider.siteVisits.isEmpty)
+                          _ApiErrorCard(
+                            message: provider.error!,
+                            onRetry: _load,
+                          )
+                        else ...[
+                          _buildMetricsGrid(provider),
+                          SizedBox(height: 16.h),
+                          _FieldExecutivesCard(visits: provider.siteVisits),
+                          SizedBox(height: 16.h),
+                          _VisitsListCard(
+                            visits: provider.siteVisits,
+                            onRefresh: _load,
+                          ),
+                          SizedBox(height: 16.h),
+                          _TodayUpcomingCard(visits: provider.siteVisits),
+                          SizedBox(height: 16.h),
+                          _OperationsSnapshotCard(provider: provider),
+                        ],
+                      ],
+                    ),
                   ),
-                  SizedBox(height: 16.h),
-                  _TodayUpcomingCard(visits: provider.siteVisits),
-                  SizedBox(height: 16.h),
-                  _OperationsSnapshotCard(provider: provider),
-                ],
-              ],
-            ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -135,28 +153,25 @@ class _SiteVisitDetailsScreenState extends State<SiteVisitDetailsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Icon(Icons.calendar_today_outlined, size: 22.sp, color: _orange),
-            SizedBox(width: 8.w),
-            Text(
-              'Site Visits',
-              style: GoogleFonts.inter(
-                fontSize: 30.sp,
-                fontWeight: FontWeight.w700,
-                color: _title,
-              ),
-            ),
-          ],
-        ),
-        SizedBox(height: 18.h),
         Text(
-          'Central visit control for scheduled property tours, re-\nvisits, virtual visits, and field execution.',
+          'Site Visits',
+          style: GoogleFonts.inter(
+            fontSize: 30.sp,
+            fontWeight: FontWeight.w700,
+            color: _title,
+          ),
+        ),
+        SizedBox(height: 8.h),
+        Text(
+          'Central visit control for scheduled property tours, revisits, virtual visits, and field execution.',
+          textAlign: TextAlign.left,
+          maxLines: 3,
+          overflow: TextOverflow.ellipsis,
           style: GoogleFonts.inter(
             fontSize: 14.sp,
-            height: 1.55,
-            fontWeight: FontWeight.w400,
-            color: _body,
+            height: 1.33,
+            fontWeight: FontWeight.w500,
+            color: const Color(0xFF44474E),
           ),
         ),
       ],
@@ -382,58 +397,80 @@ class _MetricCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 170.h,
-      padding: EdgeInsets.fromLTRB(16.w, 18.h, 16.w, 16.h),
+      height: 134.h,
+      padding: EdgeInsets.fromLTRB(12.w, 12.h, 12.w, 10.h),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18.r),
+        borderRadius: BorderRadius.circular(10.r),
         border: Border.all(color: SiteVisitDetailsScreen._cardBorder),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x080F172A),
-            blurRadius: 10,
-            offset: Offset(0, 2),
+            color: Color(0x120F172A),
+            blurRadius: 8,
+            offset: Offset(0, 3),
           ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 30.w,
-            height: 30.w,
-            decoration: BoxDecoration(
-              color: metric.iconBg,
-              borderRadius: BorderRadius.circular(15.r),
-            ),
-            child: Icon(metric.icon, size: 17.sp, color: metric.iconColor),
-          ),
-          SizedBox(height: 16.h),
-          Text(
-            metric.title,
-            style: GoogleFonts.inter(
-              fontSize: 16.sp,
-              fontWeight: FontWeight.w500,
-              color: const Color(0xFF667085),
-            ),
-          ),
-          SizedBox(height: 2.h),
-          Text(
-            metric.value,
-            style: GoogleFonts.inter(
-              fontSize: 18.sp,
-              fontWeight: FontWeight.w700,
-              color: const Color(0xFF1F2937),
-            ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  metric.title,
+                  maxLines: 2,
+                  style: GoogleFonts.inter(
+                    fontSize: 12.sp,
+                    fontWeight: FontWeight.w500,
+                    color: const Color(0xFF4B5563),
+                  ),
+                ),
+              ),
+              SizedBox(width: 8.w),
+              Container(
+                width: 32.w,
+                height: 32.w,
+                decoration: BoxDecoration(
+                  color: metric.iconBg,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(metric.icon, size: 18.sp, color: metric.iconColor),
+              ),
+            ],
           ),
           const Spacer(),
           Text(
-            metric.subtitle,
+            metric.value,
             style: GoogleFonts.inter(
-              fontSize: 14.sp,
-              fontWeight: FontWeight.w400,
-              color: SiteVisitDetailsScreen._muted,
+              fontSize: 23.sp,
+              fontWeight: FontWeight.w800,
+              color: const Color(0xFF082B63),
             ),
+          ),
+          SizedBox(height: 3.h),
+          Row(
+            children: [
+              Icon(
+                Icons.arrow_upward_rounded,
+                size: 12.sp,
+                color: metric.iconColor,
+              ),
+              SizedBox(width: 3.w),
+              Expanded(
+                child: Text(
+                  metric.subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.inter(
+                    fontSize: 10.sp,
+                    fontWeight: FontWeight.w500,
+                    color: metric.iconColor,
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),

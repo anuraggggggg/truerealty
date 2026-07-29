@@ -37,7 +37,18 @@ class AttendanceRepository {
   }) {
     return _apiClient.get(
       '/attendance',
-      queryParameters: {'employeeId': employeeId, 'month': month, 'year': year},
+      queryParameters: {
+        'employeeId': employeeId,
+        'month': month,
+        'year': year,
+        // Attendance changes throughout the day. A unique query value avoids
+        // browser/CDN 304 responses with an empty body on Flutter web.
+        '_ts': DateTime.now().millisecondsSinceEpoch,
+      },
+      headers: const {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+      },
     );
   }
 

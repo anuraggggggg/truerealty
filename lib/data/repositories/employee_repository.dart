@@ -29,11 +29,25 @@ class EmployeeRepository {
   }
 
   Future<ApiResponse<dynamic>> currentEmployee() {
-    return _apiClient.get('/employees/me');
+    return _apiClient.get(
+      '/employees/me',
+      queryParameters: {'_ts': DateTime.now().millisecondsSinceEpoch},
+      headers: const {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+      },
+    );
   }
 
   Future<ApiResponse<dynamic>> getEmployee(String employeeId) {
-    return _apiClient.get('/employees/$employeeId');
+    return _apiClient.get(
+      '/employees/$employeeId',
+      queryParameters: {'_ts': DateTime.now().millisecondsSinceEpoch},
+      headers: const {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+      },
+    );
   }
 
   Future<ApiResponse<dynamic>> createEmployee(Map<String, dynamic> body) {

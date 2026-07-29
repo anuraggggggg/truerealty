@@ -293,6 +293,10 @@ class _TelecallerDashboardViewState extends State<TelecallerDashboardView> {
                     ),
                     const _SectionGap(),
                   ],
+                  _LeadStatusDistributionSection(summary: summary),
+                  const _SectionGap(),
+                  _ConversionFunnelSection(summary: summary),
+                  const _SectionGap(),
                   _TodayTasksSection(summary: summary),
                   const _SectionGap(),
                   const _SiteVisitsSection(),
@@ -321,10 +325,6 @@ class _TelecallerDashboardViewState extends State<TelecallerDashboardView> {
                   _SlaActionQueueSection(summary: summary),
                   const _SectionGap(),
                   const _DailyCallingTrendSection(),
-                  const _SectionGap(),
-                  const _LeadStatusDistributionSection(),
-                  const _SectionGap(),
-                  const _ConversionFunnelSection(),
                   SizedBox(height: widget.bottomSpacing.h),
                 ],
               ),
@@ -2023,12 +2023,23 @@ class _SiteVisitsSection extends StatelessWidget {
                 const Expanded(
                   child: _SectionTitle('Site Visits', fontSize: 19),
                 ),
-                Text(
-                  'View All ›',
-                  style: GoogleFonts.inter(
-                    fontSize: 13.sp,
-                    fontWeight: FontWeight.w700,
-                    color: const Color(0xFFF97316),
+                InkWell(
+                  onTap: () =>
+                      Navigator.of(context).pushNamed(AppRouter.siteVisits),
+                  borderRadius: BorderRadius.circular(8.r),
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 4.w,
+                      vertical: 4.h,
+                    ),
+                    child: Text(
+                      'View All ›',
+                      style: GoogleFonts.inter(
+                        fontSize: 13.sp,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFFF97316),
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -2767,17 +2778,31 @@ class _SlaCardData {
 }
 
 class _LeadStatusDistributionSection extends StatelessWidget {
-  const _LeadStatusDistributionSection();
+  const _LeadStatusDistributionSection({required this.summary});
 
-  static const List<_LeadStatusItem> _items = [
-    _LeadStatusItem('New Leads', Color(0xFF3F7DE8)),
-    _LeadStatusItem('Interested', Color(0xFF10B981)),
-    _LeadStatusItem('Not Interested', Color(0xFF6B7280)),
-    _LeadStatusItem('Converted', Color(0xFFFF7A1A)),
-  ];
+  final _TelecallerDashboardSummary summary;
 
   @override
   Widget build(BuildContext context) {
+    final items = [
+      _LeadStatusItem('New Leads', const Color(0xFF3F7DE8), summary.newLeads),
+      _LeadStatusItem(
+        'Interested',
+        const Color(0xFF10B981),
+        summary.interestedLeads,
+      ),
+      _LeadStatusItem(
+        'Not Interested',
+        const Color(0xFF6B7280),
+        summary.notInterestedLeads,
+      ),
+      _LeadStatusItem(
+        'Converted',
+        const Color(0xFFFF7A1A),
+        summary.convertedLeads,
+      ),
+    ];
+
     return _SectionCard(
       padding: EdgeInsets.fromLTRB(14.w, 14.h, 14.w, 14.h),
       child: Column(
@@ -2802,7 +2827,7 @@ class _LeadStatusDistributionSection extends StatelessWidget {
                     ),
                     SizedBox(height: 6.h),
                     Text(
-                      '0',
+                      _formatCount(summary.totalLeads),
                       style: GoogleFonts.inter(
                         fontSize: 34.sp,
                         fontWeight: FontWeight.w800,
@@ -2814,7 +2839,7 @@ class _LeadStatusDistributionSection extends StatelessWidget {
               ),
               Expanded(
                 child: Column(
-                  children: _items
+                  children: items
                       .map(
                         (item) => Padding(
                           padding: EdgeInsets.only(bottom: 10.h),
@@ -2840,7 +2865,8 @@ class _LeadStatusDistributionSection extends StatelessWidget {
                                 ),
                               ),
                               Text(
-                                '0 (0.0%)',
+                                '${_formatCount(item.value)} '
+                                '(${_percentage(item.value, summary.totalLeads)})',
                                 style: GoogleFonts.inter(
                                   fontSize: 13.5.sp,
                                   fontWeight: FontWeight.w500,
@@ -2863,18 +2889,23 @@ class _LeadStatusDistributionSection extends StatelessWidget {
 }
 
 class _ConversionFunnelSection extends StatelessWidget {
-  const _ConversionFunnelSection();
+  const _ConversionFunnelSection({required this.summary});
 
-  static const List<_FunnelStage> _stages = [
-    _FunnelStage('05', 'Total Leads'),
-    _FunnelStage('00', 'Contacted'),
-    _FunnelStage('00', 'Interested'),
-    _FunnelStage('00', 'Site Visit'),
-    _FunnelStage('00', 'Converted'),
-  ];
+  final _TelecallerDashboardSummary summary;
 
   @override
   Widget build(BuildContext context) {
+    final stages = [
+      _FunnelStage(_formatCount(summary.totalLeads), 'Total Leads'),
+      _FunnelStage(
+        _formatCount((summary.totalLeads - summary.newLeads).clamp(0, 999999)),
+        'Contacted',
+      ),
+      _FunnelStage(_formatCount(summary.interestedLeads), 'Interested'),
+      _FunnelStage(_formatCount(summary.siteVisitScheduledLeads), 'Site Visit'),
+      _FunnelStage(_formatCount(summary.convertedLeads), 'Converted'),
+    ];
+
     return _SectionCard(
       padding: EdgeInsets.fromLTRB(18.w, 18.h, 18.w, 18.h),
       child: Column(
@@ -2896,7 +2927,7 @@ class _ConversionFunnelSection extends StatelessWidget {
                 width: 138.w,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: _stages
+                  children: stages
                       .map(
                         (stage) => Padding(
                           padding: EdgeInsets.only(bottom: 14.h),
@@ -2961,7 +2992,7 @@ class _ConversionFunnelSection extends StatelessWidget {
                 ),
                 SizedBox(height: 6.h),
                 Text(
-                  '12.5%',
+                  summary.conversionRateLabel,
                   style: TextStyle(
                     fontFamily: 'Inter',
                     fontSize: 22.sp,
@@ -3059,10 +3090,16 @@ class _ConversionFunnelPainter extends CustomPainter {
 }
 
 class _LeadStatusItem {
-  const _LeadStatusItem(this.label, this.color);
+  const _LeadStatusItem(this.label, this.color, this.value);
 
   final String label;
   final Color color;
+  final int value;
+}
+
+String _percentage(int value, int total) {
+  if (total == 0) return '0.0%';
+  return '${(value / total * 100).toStringAsFixed(1)}%';
 }
 
 class _FunnelStage {

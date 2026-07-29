@@ -65,12 +65,18 @@ class UserProfileModel {
       ),
       department:
           _value(department, const ['name', 'departmentName']) ??
-          text(const ['departmentName']),
-      employmentType: text(const ['employmentType', 'status']),
-      basicSalary: _number(json['basicSalary'] ?? json['salary']),
+          text(const ['departmentName', 'teamName']),
+      employmentType: text(const [
+        'employmentType',
+        'employmentStatus',
+        'status',
+      ]),
+      basicSalary: _number(
+        json['basicSalary'] ?? json['monthlyBasic'] ?? json['salary'],
+      ),
       reportingManager:
           _value(reporting, const ['fullName', 'name']) ??
-          text(const ['reportingManagerName']),
+          text(const ['reportingManagerName', 'teamLeaderName']),
       officeLocation: text(const [
         'officeLocation',
         'location',
@@ -90,6 +96,10 @@ class ProfileAttendanceRecord {
     required this.shiftName,
     required this.shiftStartMinutes,
     required this.shiftEndMinutes,
+    required this.isGenerated,
+    required this.isLate,
+    required this.lateMinutes,
+    required this.derivedStatusReason,
   });
 
   final DateTime date;
@@ -100,6 +110,10 @@ class ProfileAttendanceRecord {
   final String? shiftName;
   final int? shiftStartMinutes;
   final int? shiftEndMinutes;
+  final bool isGenerated;
+  final bool isLate;
+  final int lateMinutes;
+  final String? derivedStatusReason;
 
   factory ProfileAttendanceRecord.fromJson(Map<String, dynamic> json) {
     final shift = _map(json['shift']);
@@ -112,17 +126,21 @@ class ProfileAttendanceRecord {
       shiftName: shift['name']?.toString(),
       shiftStartMinutes: _integer(shift['startTimeMinutes']),
       shiftEndMinutes: _integer(shift['endTimeMinutes']),
+      isGenerated: json['isGenerated'] == true,
+      isLate: json['isLate'] == true,
+      lateMinutes: _integer(json['lateMinutes']) ?? 0,
+      derivedStatusReason: json['derivedStatusReason']?.toString(),
     );
   }
 
   static List<ProfileAttendanceRecord> listFrom(Object? data) {
     Object? source = data;
-    if (source is Map) {
-      source =
-          source['data'] ??
-          source['items'] ??
-          source['attendance'] ??
-          source['records'];
+    for (var depth = 0; depth < 4 && source is Map; depth++) {
+      final map = Map<String, dynamic>.from(source);
+      final nested =
+          map['data'] ?? map['items'] ?? map['attendance'] ?? map['records'];
+      if (nested == null || identical(nested, source)) break;
+      source = nested;
     }
     if (source is! List) return const [];
     return source

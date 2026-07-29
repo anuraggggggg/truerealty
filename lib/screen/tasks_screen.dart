@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:truerealtycrm/constant/colors_screen.dart';
 import 'package:truerealtycrm/provider/auth_provider.dart';
+import 'package:truerealtycrm/provider/tasks_provider.dart';
 import 'package:truerealtycrm/router/app_router.dart';
 
 class TasksScreen extends StatefulWidget {
@@ -15,139 +16,120 @@ class TasksScreen extends StatefulWidget {
 
 class _TasksScreenState extends State<TasksScreen> {
   String _selectedFilter = 'All';
+  List<_TaskData> _tasks = const [];
+  bool _loading = true;
+  String? _error;
 
-  static const List<_TaskData> _tasks = [
-    _TaskData(
-      type: 'Calls',
-      icon: Icons.call_outlined,
-      title: 'Follow-up Call',
-      lead: 'Rahul Sharma',
-      time: '10:00 AM',
-      priority: 'High',
-      color: AppColors.green,
-      bg: Color(0xFFEAF8F0),
-    ),
-    _TaskData(
-      type: 'Visits',
-      icon: Icons.event_available_outlined,
-      title: 'Site Visit',
-      lead: 'Green Valley Project',
-      time: '11:30 AM',
-      priority: 'High',
-      color: AppColors.orange,
-      bg: Color(0xFFFFF4E9),
-    ),
-    _TaskData(
-      type: 'Meetings',
-      icon: Icons.groups_outlined,
-      title: 'Team Meeting',
-      lead: 'Marketing Team',
-      time: '02:00 PM',
-      priority: 'Medium',
-      color: AppColors.vividBlue,
-      bg: Color(0xFFEAF2FF),
-    ),
-    _TaskData(
-      type: 'Calls',
-      icon: Icons.phone_forwarded_outlined,
-      title: 'Follow-up Call',
-      lead: 'Priya Mehta',
-      time: '04:30 PM',
-      priority: 'Medium',
-      color: AppColors.purple,
-      bg: Color(0xFFF4EAFE),
-    ),
-    _TaskData(
-      type: 'Overdue',
-      icon: Icons.warning_amber_rounded,
-      title: 'Pending Callback',
-      lead: 'Neha Kapoor',
-      time: 'Yesterday, 06:00 PM',
-      priority: 'High',
-      color: AppColors.orange,
-      bg: Color(0xFFFFF4E9),
-    ),
-    _TaskData(
-      type: 'Upcoming',
-      icon: Icons.mail_outline,
-      title: 'Send Proposal',
-      lead: 'Amit Singh',
-      time: 'Tomorrow, 09:30 AM',
-      priority: 'Low',
-      color: AppColors.vividBlue,
-      bg: Color(0xFFEAF2FF),
-    ),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadTasks());
+  }
+
+  Future<void> _loadTasks() async {
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
+    final provider = context.read<TasksProvider>();
+    final response = await provider.fetchTasks(limit: 100);
+    if (!mounted) return;
+    setState(() {
+      _tasks = response == null
+          ? const []
+          : _extractItems(response.data).map(_TaskData.fromApi).toList();
+      _error = response == null
+          ? provider.error ?? 'Unable to load tasks.'
+          : null;
+      _loading = false;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final role = context.watch<AuthProvider>().role;
     final visibleTasks = _getRoleTasks(role);
 
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.fromLTRB(20.w, 24.h, 20.w, 80.h),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(30.r),
-          topRight: Radius.circular(30.r),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.shadowBlue10,
-            blurRadius: 18.r,
-            offset: Offset(0, -4.h),
+    return RefreshIndicator(
+      onRefresh: _loadTasks,
+      child: Container(
+        width: double.infinity,
+        padding: EdgeInsets.fromLTRB(20.w, 24.h, 20.w, 80.h),
+        decoration: BoxDecoration(
+          color: AppColors.white,
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(30.r),
+            topRight: Radius.circular(30.r),
           ),
-        ],
-      ),
-      child: ListView(
-        children: [
-          const _TasksHeader(),
-          SizedBox(height: 24.h),
-          _buildRoleSummary(role),
-          SizedBox(height: 24.h),
-          _TaskFilters(
-            selectedFilter: _selectedFilter,
-            onChanged: (filter) {
-              setState(() => _selectedFilter = filter);
-            },
-          ),
-          SizedBox(height: 24.h),
-          Row(
-            children: [
-              Text(
-                _selectedFilter == 'All' ? 'All Tasks' : _selectedFilter,
-                style: TextStyle(
-                  color: AppColors.navy,
-                  fontSize: 20.sp,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const Spacer(),
-              Text(
-                '${visibleTasks.length} total',
-                style: TextStyle(
-                  color: AppColors.mutedNavy,
-                  fontSize: 14.sp,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 16.h),
-          ...visibleTasks.map(
-            (task) => _TaskCard(
-              icon: task.icon,
-              title: task.title,
-              lead: task.lead,
-              time: task.time,
-              priority: task.priority,
-              color: task.color,
-              bg: task.bg,
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.shadowBlue10,
+              blurRadius: 18.r,
+              offset: Offset(0, -4.h),
             ),
-          ),
-        ],
+          ],
+        ),
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            const _TasksHeader(),
+            SizedBox(height: 24.h),
+            _buildRoleSummary(),
+            SizedBox(height: 24.h),
+            _TaskFilters(
+              selectedFilter: _selectedFilter,
+              onChanged: (filter) {
+                setState(() => _selectedFilter = filter);
+              },
+            ),
+            SizedBox(height: 24.h),
+            Row(
+              children: [
+                Text(
+                  _selectedFilter == 'All' ? 'All Tasks' : _selectedFilter,
+                  style: TextStyle(
+                    color: AppColors.navy,
+                    fontSize: 20.sp,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  '${visibleTasks.length} total',
+                  style: TextStyle(
+                    color: AppColors.mutedNavy,
+                    fontSize: 14.sp,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 16.h),
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 40),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_error != null)
+              _TaskMessage(message: _error!, onRetry: _loadTasks)
+            else if (visibleTasks.isEmpty)
+              const _TaskMessage(message: 'No tasks found.')
+            else
+              ...visibleTasks.map(
+                (task) => _TaskCard(
+                  icon: task.icon,
+                  title: task.title,
+                  lead: task.lead,
+                  time: task.time,
+                  priority: task.priority,
+                  color: task.color,
+                  bg: task.bg,
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -168,96 +150,14 @@ class _TasksScreenState extends State<TasksScreen> {
     return roleTasks.where((task) => task.type == _selectedFilter).toList();
   }
 
-  Widget _buildRoleSummary(UserRole role) {
-    switch (role) {
-      case UserRole.owner:
-        return const _TaskSummaryRow();
-      case UserRole.telecaller:
-        return const _TelecallerTaskSummary();
-      case UserRole.fieldExecutive:
-        return const _FieldExecutiveTaskSummary();
-    }
-  }
-}
-
-class _TelecallerTaskSummary extends StatelessWidget {
-  const _TelecallerTaskSummary();
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: _SummaryCard(
-            label: 'To Call',
-            value: '45',
-            icon: Icons.phone_forwarded_outlined,
-            color: AppColors.vividBlue,
-            bg: const Color(0xFFEAF2FF),
-          ),
-        ),
-        SizedBox(width: 12.w),
-        Expanded(
-          child: _SummaryCard(
-            label: 'Overdue',
-            value: '8',
-            icon: Icons.history_toggle_off_outlined,
-            color: AppColors.orange,
-            bg: const Color(0xFFFFF4E9),
-          ),
-        ),
-        SizedBox(width: 12.w),
-        Expanded(
-          child: _SummaryCard(
-            label: 'Goals',
-            value: '75%',
-            icon: Icons.track_changes_outlined,
-            color: AppColors.green,
-            bg: const Color(0xFFEAF8F0),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _FieldExecutiveTaskSummary extends StatelessWidget {
-  const _FieldExecutiveTaskSummary();
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: _SummaryCard(
-            label: 'Visits',
-            value: '6',
-            icon: Icons.directions_car_outlined,
-            color: AppColors.vividBlue,
-            bg: const Color(0xFFEAF2FF),
-          ),
-        ),
-        SizedBox(width: 12.w),
-        Expanded(
-          child: _SummaryCard(
-            label: 'Meetings',
-            value: '3',
-            icon: Icons.handshake_outlined,
-            color: AppColors.orange,
-            bg: const Color(0xFFFFF4E9),
-          ),
-        ),
-        SizedBox(width: 12.w),
-        Expanded(
-          child: _SummaryCard(
-            label: 'Collections',
-            value: 'Rs 12k',
-            icon: Icons.payments_outlined,
-            color: AppColors.green,
-            bg: const Color(0xFFEAF8F0),
-          ),
-        ),
-      ],
+  Widget _buildRoleSummary() {
+    final done = _tasks.where((task) => task.isDone).length;
+    final overdue = _tasks.where((task) => task.type == 'Overdue').length;
+    return _TaskSummaryRow(
+      total: _tasks.length,
+      pending: _tasks.length - done,
+      done: done,
+      overdue: overdue,
     );
   }
 }
@@ -320,7 +220,17 @@ class _TasksHeader extends StatelessWidget {
 }
 
 class _TaskSummaryRow extends StatelessWidget {
-  const _TaskSummaryRow();
+  const _TaskSummaryRow({
+    required this.total,
+    required this.pending,
+    required this.done,
+    required this.overdue,
+  });
+
+  final int total;
+  final int pending;
+  final int done;
+  final int overdue;
 
   @override
   Widget build(BuildContext context) {
@@ -328,8 +238,8 @@ class _TaskSummaryRow extends StatelessWidget {
       children: [
         Expanded(
           child: _SummaryCard(
-            label: 'Today',
-            value: '12',
+            label: 'Total',
+            value: '$total',
             icon: Icons.today_outlined,
             color: AppColors.vividBlue,
             bg: const Color(0xFFEAF2FF),
@@ -339,7 +249,7 @@ class _TaskSummaryRow extends StatelessWidget {
         Expanded(
           child: _SummaryCard(
             label: 'Pending',
-            value: '7',
+            value: '$pending',
             icon: Icons.pending_actions_outlined,
             color: AppColors.orange,
             bg: const Color(0xFFFFF4E9),
@@ -349,7 +259,7 @@ class _TaskSummaryRow extends StatelessWidget {
         Expanded(
           child: _SummaryCard(
             label: 'Done',
-            value: '5',
+            value: '$done',
             icon: Icons.check_circle_outline,
             color: AppColors.green,
             bg: const Color(0xFFEAF8F0),
@@ -514,6 +424,7 @@ class _TaskData {
     required this.priority,
     required this.color,
     required this.bg,
+    required this.isDone,
   });
 
   final String type;
@@ -524,6 +435,134 @@ class _TaskData {
   final String priority;
   final Color color;
   final Color bg;
+  final bool isDone;
+
+  factory _TaskData.fromApi(dynamic value) {
+    final map = value is Map
+        ? Map<String, dynamic>.from(value)
+        : <String, dynamic>{};
+    String read(List<String> keys, [String fallback = '-']) {
+      for (final key in keys) {
+        final candidate = map[key];
+        if (candidate != null && candidate.toString().trim().isNotEmpty) {
+          if (candidate is Map) {
+            for (final nestedKey in const ['name', 'title', 'fullName']) {
+              if (candidate[nestedKey] != null) {
+                return candidate[nestedKey].toString();
+              }
+            }
+          }
+          return candidate.toString();
+        }
+      }
+      return fallback;
+    }
+
+    final rawType = read(const ['type', 'taskType', 'category'], 'Task');
+    final status = read(const ['status'], 'Pending');
+    final overdue =
+        status.toLowerCase().contains('overdue') ||
+        read(const ['isOverdue'], 'false').toLowerCase() == 'true';
+    final type = overdue ? 'Overdue' : _displayType(rawType);
+    final tone = _taskTone(type);
+    return _TaskData(
+      type: type,
+      icon: tone.$1,
+      title: read(const ['title', 'taskName', 'subject'], 'Task'),
+      lead: read(const [
+        'leadName',
+        'lead',
+        'customerName',
+        'projectName',
+        'project',
+      ]),
+      time: read(const ['dueAt', 'dueDate', 'scheduledAt', 'date', 'time']),
+      priority: read(const ['priority'], 'Normal'),
+      color: tone.$2,
+      bg: tone.$3,
+      isDone: const [
+        'done',
+        'completed',
+        'closed',
+      ].any(status.toLowerCase().contains),
+    );
+  }
+}
+
+List<dynamic> _extractItems(dynamic source) {
+  if (source is List) return source;
+  if (source is Map) {
+    for (final key in const [
+      'tasks',
+      'items',
+      'results',
+      'records',
+      'rows',
+      'data',
+    ]) {
+      final value = source[key];
+      if (value is List) return value;
+      final nested = _extractItems(value);
+      if (nested.isNotEmpty) return nested;
+    }
+  }
+  return const [];
+}
+
+String _displayType(String raw) {
+  final value = raw.toLowerCase();
+  if (value.contains('call')) return 'Calls';
+  if (value.contains('visit')) return 'Visits';
+  if (value.contains('meet')) return 'Meetings';
+  return raw;
+}
+
+(IconData, Color, Color) _taskTone(String type) {
+  switch (type) {
+    case 'Calls':
+      return (Icons.call_outlined, AppColors.green, const Color(0xFFEAF8F0));
+    case 'Visits':
+      return (
+        Icons.event_available_outlined,
+        AppColors.orange,
+        const Color(0xFFFFF4E9),
+      );
+    case 'Meetings':
+      return (
+        Icons.groups_outlined,
+        AppColors.vividBlue,
+        const Color(0xFFEAF2FF),
+      );
+    case 'Overdue':
+      return (
+        Icons.warning_amber_rounded,
+        AppColors.orange,
+        const Color(0xFFFFF4E9),
+      );
+    default:
+      return (
+        Icons.task_alt_outlined,
+        AppColors.purple,
+        const Color(0xFFF4EAFE),
+      );
+  }
+}
+
+class _TaskMessage extends StatelessWidget {
+  const _TaskMessage({required this.message, this.onRetry});
+  final String message;
+  final VoidCallback? onRetry;
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: EdgeInsets.symmetric(vertical: 40.h),
+    child: Column(
+      children: [
+        Text(message, textAlign: TextAlign.center),
+        if (onRetry != null)
+          TextButton(onPressed: onRetry, child: const Text('Retry')),
+      ],
+    ),
+  );
 }
 
 class _TaskCard extends StatelessWidget {

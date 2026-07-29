@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 import 'package:truerealtycrm/constant/colors_screen.dart';
+import 'package:truerealtycrm/provider/leads_provider.dart';
 
 // Copying necessary data structures for Follow-ups
 class _TelecallerFollowUpData {
@@ -26,53 +28,44 @@ class _TelecallerFollowUpData {
   final Color statusColor;
 }
 
-// In a real app, this data should come from a Provider, 
-// for now reusing the sample data structure
-const _followUps = [
-  _TelecallerFollowUpData(
-    name: 'Rahul Mehta',
-    project: 'Trueroot Heights',
-    status: 'Hot Lead',
-    time: '11:00 AM',
-    avatarBg: Color(0xFFFFF4EA),
-    avatarColor: Color(0xFFFFA94D),
-    statusBg: Color(0xFFFFF1E7),
-    statusColor: Color(0xFFFF6B00),
-  ),
-  _TelecallerFollowUpData(
-    name: 'Neha Kapoor',
-    project: 'Trueroot Urbania',
-    status: 'Interested',
-    time: '12:30 PM',
-    avatarBg: Color(0xFFEAFBF2),
-    avatarColor: Color(0xFF22C55E),
-    statusBg: Color(0xFFEAFBF2),
-    statusColor: Color(0xFF10B981),
-  ),
-  _TelecallerFollowUpData(
-    name: 'Amit Sharma',
-    project: 'Trueroot Homes',
-    status: 'New Lead',
-    time: '03:00 PM',
-    avatarBg: Color(0xFFF3E8FF),
-    avatarColor: Color(0xFF8B5CF6),
-    statusBg: Color(0xFFEAF2FF),
-    statusColor: Color(0xFF2563EB),
-  ),
-  _TelecallerFollowUpData(
-    name: 'Sneha Iyer',
-    project: 'Trueroot Skyview',
-    status: 'Hot Lead',
-    time: '04:30 PM',
-    avatarBg: Color(0xFFEAF2FF),
-    avatarColor: Color(0xFF2563EB),
-    statusBg: Color(0xFFFFF1E7),
-    statusColor: Color(0xFFFF6B00),
-  ),
-];
-
-class MyFollowUpsScreen extends StatelessWidget {
+class MyFollowUpsScreen extends StatefulWidget {
   const MyFollowUpsScreen({super.key});
+
+  @override
+  State<MyFollowUpsScreen> createState() => _MyFollowUpsScreenState();
+}
+
+class _MyFollowUpsScreenState extends State<MyFollowUpsScreen> {
+  List<_TelecallerFollowUpData> _followUps = const [];
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    final provider = context.read<LeadProvider>();
+    final response = await provider.fetchMyFollowUps();
+    if (!mounted) return;
+    setState(() {
+      _followUps = response == null
+          ? const []
+          : _followUpItems(
+              response.data,
+            ).map(_followUpFromApi).toList(growable: false);
+      _error = response == null
+          ? provider.error ?? 'Unable to load follow-ups.'
+          : null;
+      _loading = false;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -91,14 +84,22 @@ class MyFollowUpsScreen extends StatelessWidget {
         elevation: 0,
         iconTheme: const IconThemeData(color: AppColors.navy),
       ),
-      body: SingleChildScrollView(
-        padding: EdgeInsets.all(16.r),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      body: RefreshIndicator(
+        onRefresh: _load,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: EdgeInsets.all(16.r),
           children: [
-            const _BestTimeFollowUpSection(),
+            _BestTimeFollowUpSection(followUps: _followUps),
             SizedBox(height: 24.h),
-            const _FollowUpsListSection(),
+            if (_loading)
+              const Center(child: CircularProgressIndicator())
+            else if (_error != null)
+              _FollowUpMessage(message: _error!, onRetry: _load)
+            else if (_followUps.isEmpty)
+              const _FollowUpMessage(message: 'No follow-ups found.')
+            else
+              _FollowUpsListSection(followUps: _followUps),
           ],
         ),
       ),
@@ -107,16 +108,20 @@ class MyFollowUpsScreen extends StatelessWidget {
 }
 
 class _BestTimeFollowUpSection extends StatelessWidget {
-  const _BestTimeFollowUpSection();
+  const _BestTimeFollowUpSection({required this.followUps});
+  final List<_TelecallerFollowUpData> followUps;
 
   @override
   Widget build(BuildContext context) {
-    final slots = [
-      ('09 AM', AppColors.purpleBg),
-      ('11 AM', AppColors.greenBg),
-      ('02 PM', AppColors.softBlue),
-      ('05 PM', AppColors.orangeBg),
-    ];
+    final counts = <String, int>{};
+    for (final item in followUps) {
+      final slot = item.time.trim();
+      if (slot.isNotEmpty && slot != '-') {
+        counts[slot] = (counts[slot] ?? 0) + 1;
+      }
+    }
+    final slots = counts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
 
     return Container(
       padding: EdgeInsets.all(16.r),
@@ -154,21 +159,21 @@ class _BestTimeFollowUpSection extends StatelessWidget {
               crossAxisSpacing: 12.w,
               mainAxisSpacing: 12.h,
             ),
-            itemCount: slots.length,
+            itemCount: slots.length > 4 ? 4 : slots.length,
             itemBuilder: (context, index) {
               return Container(
                 padding: EdgeInsets.all(12.r),
                 decoration: BoxDecoration(
                   color: AppColors.white,
                   borderRadius: BorderRadius.circular(12.r),
-                  border: Border.all(color: slots[index].$2.withOpacity(0.5)),
+                  border: Border.all(color: AppColors.softBlue),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      slots[index].$1,
+                      slots[index].key,
                       style: GoogleFonts.inter(
                         fontSize: 16.sp,
                         fontWeight: FontWeight.bold,
@@ -186,7 +191,7 @@ class _BestTimeFollowUpSection extends StatelessWidget {
                           ),
                         ),
                         Text(
-                          '0',
+                          '${slots[index].value}',
                           style: GoogleFonts.inter(
                             fontSize: 14.sp,
                             fontWeight: FontWeight.bold,
@@ -207,10 +212,12 @@ class _BestTimeFollowUpSection extends StatelessWidget {
 }
 
 class _FollowUpsListSection extends StatelessWidget {
-  const _FollowUpsListSection();
+  const _FollowUpsListSection({required this.followUps});
+  final List<_TelecallerFollowUpData> followUps;
 
   @override
   Widget build(BuildContext context) {
+    final visibleFollowUps = followUps.take(4).toList(growable: false);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -231,18 +238,18 @@ class _FollowUpsListSection extends StatelessWidget {
           ),
           child: Column(
             children: [
-              for (var i = 0; i < _followUps.length; i++) ...[
+              for (var i = 0; i < visibleFollowUps.length; i++) ...[
                 _FollowUpRow(
-                  name: _followUps[i].name,
-                  project: _followUps[i].project,
-                  status: _followUps[i].status,
-                  time: _followUps[i].time,
-                  avatarBg: _followUps[i].avatarBg,
-                  avatarColor: _followUps[i].avatarColor,
-                  statusBg: _followUps[i].statusBg,
-                  statusColor: _followUps[i].statusColor,
+                  name: visibleFollowUps[i].name,
+                  project: visibleFollowUps[i].project,
+                  status: visibleFollowUps[i].status,
+                  time: visibleFollowUps[i].time,
+                  avatarBg: visibleFollowUps[i].avatarBg,
+                  avatarColor: visibleFollowUps[i].avatarColor,
+                  statusBg: visibleFollowUps[i].statusBg,
+                  statusColor: visibleFollowUps[i].statusColor,
                 ),
-                if (i != _followUps.length - 1)
+                if (i != visibleFollowUps.length - 1)
                   Divider(height: 1, color: const Color(0xFFEAEFF5)),
               ],
             ],
@@ -251,6 +258,72 @@ class _FollowUpsListSection extends StatelessWidget {
       ],
     );
   }
+}
+
+List<dynamic> _followUpItems(dynamic source) {
+  if (source is List) return source;
+  if (source is Map) {
+    for (final key in const [
+      'followUps',
+      'follow_ups',
+      'items',
+      'results',
+      'data',
+    ]) {
+      final value = source[key];
+      if (value is List) return value;
+      final nested = _followUpItems(value);
+      if (nested.isNotEmpty) return nested;
+    }
+  }
+  return const [];
+}
+
+_TelecallerFollowUpData _followUpFromApi(dynamic value) {
+  final map = value is Map
+      ? Map<String, dynamic>.from(value)
+      : <String, dynamic>{};
+  String read(List<String> keys, [String fallback = '-']) {
+    for (final key in keys) {
+      final candidate = map[key];
+      if (candidate is Map) {
+        for (final nested in const ['name', 'title', 'fullName']) {
+          if (candidate[nested] != null) return candidate[nested].toString();
+        }
+      } else if (candidate != null && candidate.toString().trim().isNotEmpty) {
+        return candidate.toString();
+      }
+    }
+    return fallback;
+  }
+
+  return _TelecallerFollowUpData(
+    name: read(const ['leadName', 'customerName', 'name', 'lead']),
+    project: read(const ['projectName', 'project', 'preferredProject']),
+    status: read(const ['status', 'leadStatus'], 'Pending'),
+    time: read(const ['time', 'scheduledAt', 'followUpDate', 'dueAt']),
+    avatarBg: const Color(0xFFEAF2FF),
+    avatarColor: const Color(0xFF2563EB),
+    statusBg: const Color(0xFFFFF1E7),
+    statusColor: const Color(0xFFFF6B00),
+  );
+}
+
+class _FollowUpMessage extends StatelessWidget {
+  const _FollowUpMessage({required this.message, this.onRetry});
+  final String message;
+  final VoidCallback? onRetry;
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: EdgeInsets.symmetric(vertical: 48.h),
+    child: Column(
+      children: [
+        Text(message, textAlign: TextAlign.center),
+        if (onRetry != null)
+          TextButton(onPressed: onRetry, child: const Text('Retry')),
+      ],
+    ),
+  );
 }
 
 class _FollowUpRow extends StatelessWidget {
@@ -350,7 +423,7 @@ class _FollowUpRow extends StatelessWidget {
                 ),
               ),
               SizedBox(width: 12.w),
-              Container(
+              SizedBox(
                 width: 48.w,
                 height: 48.w,
                 child: Padding(

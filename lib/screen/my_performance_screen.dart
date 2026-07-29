@@ -14,6 +14,8 @@ import 'package:truerealtycrm/provider/reports_provider.dart';
 class MyPerformanceScreen extends StatefulWidget {
   const MyPerformanceScreen({super.key});
 
+  static const Color pageBackground = Color(0xFFF8FAFD);
+
   @override
   State<MyPerformanceScreen> createState() => _MyPerformanceScreenState();
 
@@ -59,7 +61,7 @@ class MyPerformanceScreen extends StatefulWidget {
     fontStyle: FontStyle.normal,
     height: 1.33,
     letterSpacing: 0,
-    color: Color(0xFF434655),
+    color: Color(0xFF1F2937),
   );
 
   static const TextStyle countPercentageStyle = TextStyle(
@@ -69,7 +71,7 @@ class MyPerformanceScreen extends StatefulWidget {
     fontStyle: FontStyle.normal,
     height: 1.5,
     letterSpacing: 0,
-    color: Color(0xFF74777F),
+    color: Color(0xFF374151),
   );
 
   static const TextStyle conversionStyle = TextStyle(
@@ -680,234 +682,244 @@ class _MyPerformanceScreenState extends State<MyPerformanceScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: MyPerformanceScreen.pageBackground,
       body: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: _loadPerformance,
-          child: SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: EdgeInsets.fromLTRB(20.w, 18.h, 20.w, 24.h),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (_isLoading) const LinearProgressIndicator(),
-                if (_error != null) ...[
-                  _PerformanceError(
-                    message: _error!,
-                    onRetry: _loadPerformance,
-                  ),
-                  SizedBox(height: 12.h),
-                ],
-                Text(
-                  'My Performance',
-                  textAlign: TextAlign.left,
-                  maxLines: 1,
-                  style: TextStyle(
-                    fontFamily: 'Manrope',
-                    fontSize: 30.sp,
-                    fontWeight: FontWeight.bold,
-                    fontStyle: FontStyle.normal,
-                    height: 1.4,
-                    letterSpacing: -0.5,
-                    color: const Color(0xFF002149),
-                  ),
-                ),
-                SizedBox(height: 8.h),
-                Text(
-                  'Track your daily, weekly and monthly performance.',
-                  style: TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 16.sp,
-                    fontWeight: FontWeight.normal,
-                    fontStyle: FontStyle.normal,
-                    height: 1.43,
-                    letterSpacing: 0.0,
-                    color: const Color(0xFF2563EB),
-                  ),
-                ),
-                SizedBox(height: 22.h),
-                const Divider(height: 1, color: Color(0xFFE5E7EB)),
-                SizedBox(height: 20.h),
-                _FieldShell(
-                  child: Row(
+        child: Column(
+          children: [
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: _loadPerformance,
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: EdgeInsets.fromLTRB(15.w, 14.h, 15.w, 24.h),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(
-                        Icons.calendar_today_outlined,
-                        size: MyPerformanceScreen.headerIconSize.sp,
-                        color: const Color(0xFF4B5563),
-                      ),
-                      Expanded(
-                        child: Center(
-                          child: Text(
-                            '${_formatDate(_rangeStart)} - ${_formatDate(_rangeEnd)}',
-                            style: TextStyle(
-                              fontFamily: 'Inter',
-                              fontSize: 18.sp,
-                              fontWeight: FontWeight.w400,
-                              fontStyle: FontStyle.normal,
-                              height: 1.43,
-                              color: const Color(0xFF44474E),
-                            ),
-                          ),
+                      if (_isLoading) const LinearProgressIndicator(),
+                      if (_error != null) ...[
+                        _PerformanceError(
+                          message: _error!,
+                          onRetry: _loadPerformance,
+                        ),
+                        SizedBox(height: 12.h),
+                      ],
+                      Text(
+                        'My Performance',
+                        textAlign: TextAlign.left,
+                        maxLines: 1,
+                        style: TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 30.sp,
+                          fontWeight: FontWeight.w700,
+                          fontStyle: FontStyle.normal,
+                          height: 1.4,
+                          letterSpacing: -0.5,
+                          color: const Color(0xFF002149),
                         ),
                       ),
-                      Icon(
-                        Icons.calendar_today_outlined,
-                        size: MyPerformanceScreen.headerIconSize.sp,
-                        color: const Color(0xFF4B5563),
+                      SizedBox(height: 8.h),
+                      Text(
+                        'Track your daily, weekly and monthly performance.',
+                        style: TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 14.sp,
+                          fontWeight: FontWeight.w500,
+                          fontStyle: FontStyle.normal,
+                          height: 1.33,
+                          letterSpacing: 0.0,
+                          color: const Color(0xFF2563EB),
+                        ),
                       ),
-                    ],
-                  ),
-                ),
-                SizedBox(height: 12.h),
-                Container(
-                  width: 128.w,
-                  padding: EdgeInsets.symmetric(horizontal: 12.w),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(10.r),
-                    border: Border.all(color: const Color(0xFFD1D5DB)),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x08000000),
-                        blurRadius: 10,
-                        offset: Offset(0, 2),
+                      SizedBox(height: 14.h),
+                      Divider(
+                        color: const Color(0xFFBCC6D6),
+                        thickness: 0.8.h,
+                        height: 1.h,
                       ),
-                    ],
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: _selectedPeriod,
-                      icon: Icon(
-                        Icons.keyboard_arrow_down_rounded,
-                        size: MyPerformanceScreen.headerIconSize.sp,
-                      ),
-                      isExpanded: true,
-                      items: const ['Today', 'This Week', 'This Month']
-                          .map(
-                            (period) => DropdownMenuItem(
-                              value: period,
-                              child: Text(
-                                period,
-                                style: TextStyle(
-                                  fontFamily: 'Inter',
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                  fontStyle: FontStyle.normal,
-                                  height: 1.33,
-                                  color: Color(0xFF002149),
+                      SizedBox(height: 24.h),
+                      _FieldShell(
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.calendar_today_outlined,
+                              size: MyPerformanceScreen.headerIconSize.sp,
+                              color: const Color(0xFF4B5563),
+                            ),
+                            Expanded(
+                              child: Center(
+                                child: Text(
+                                  '${_formatDate(_rangeStart)} - ${_formatDate(_rangeEnd)}',
+                                  style: TextStyle(
+                                    fontFamily: 'Inter',
+                                    fontSize: 18.sp,
+                                    fontWeight: FontWeight.w400,
+                                    fontStyle: FontStyle.normal,
+                                    height: 1.43,
+                                    color: const Color(0xFF44474E),
+                                  ),
                                 ),
                               ),
                             ),
-                          )
-                          .toList(),
-                      onChanged: (period) {
-                        if (period == null || period == _selectedPeriod) return;
-                        setState(() => _selectedPeriod = period);
-                        _loadPerformance();
-                      },
-                      style: GoogleFonts.inter(
-                        color: const Color(0xFF082B63),
-                        fontSize: 15.sp,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-                SizedBox(height: 20.h),
-                OutlinedButton.icon(
-                  onPressed: _isLoading || _isExporting
-                      ? null
-                      : _exportPerformance,
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: Size(double.infinity, 48.h),
-                    backgroundColor: Colors.white,
-                    side: const BorderSide(color: Color(0xFFD1D5DB)),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10.r),
-                    ),
-                  ),
-                  icon: _isExporting
-                      ? SizedBox.square(
-                          dimension: 18.sp,
-                          child: const CircularProgressIndicator(
-                            strokeWidth: 2,
-                          ),
-                        )
-                      : Icon(
-                          Icons.download_outlined,
-                          size: MyPerformanceScreen.actionIconSize.sp,
-                          color: const Color(0xFF082B63),
+                            Icon(
+                              Icons.calendar_today_outlined,
+                              size: MyPerformanceScreen.headerIconSize.sp,
+                              color: const Color(0xFF4B5563),
+                            ),
+                          ],
                         ),
-                  label: Text(
-                    'Export',
-                    style: GoogleFonts.inter(
-                      color: const Color(0xFF002149),
-                      fontSize: 18.sp,
-                      fontWeight: FontWeight.w500,
-                      height: 1.33,
-                    ),
-                  ),
-                ),
-                SizedBox(height: 24.h),
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    final cardSpacing = 12.w;
-                    final twoColumnWidth =
-                        (constraints.maxWidth - cardSpacing) / 2;
-
-                    return Column(
-                      children: [
-                        Wrap(
-                          spacing: cardSpacing,
-                          runSpacing: 12.h,
-                          children: _topMetrics
-                              .map(
-                                (metric) => SizedBox(
-                                  width: twoColumnWidth,
-                                  child: _MetricCard(
-                                    metric: metric,
-                                    compact: true,
+                      ),
+                      SizedBox(height: 12.h),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Container(
+                              height: 46.h,
+                              padding: EdgeInsets.symmetric(horizontal: 12.w),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(10.r),
+                                border: Border.all(
+                                  color: const Color(0xFFBFC7D3),
+                                ),
+                              ),
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<String>(
+                                  value: _selectedPeriod,
+                                  icon: Icon(
+                                    Icons.keyboard_arrow_down_rounded,
+                                    size: MyPerformanceScreen.headerIconSize.sp,
+                                  ),
+                                  isExpanded: true,
+                                  items:
+                                      const ['Today', 'This Week', 'This Month']
+                                          .map(
+                                            (period) => DropdownMenuItem(
+                                              value: period,
+                                              child: Text(period),
+                                            ),
+                                          )
+                                          .toList(),
+                                  onChanged: (period) {
+                                    if (period == null ||
+                                        period == _selectedPeriod) {
+                                      return;
+                                    }
+                                    setState(() => _selectedPeriod = period);
+                                    _loadPerformance();
+                                  },
+                                  style: GoogleFonts.inter(
+                                    color: const Color(0xFF082B63),
+                                    fontSize: 15.sp,
+                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
-                              )
-                              .toList(),
-                        ),
-                        SizedBox(height: 10.h),
-                        Wrap(
-                          spacing: cardSpacing,
-                          runSpacing: 12.h,
-                          children: _wideMetrics
-                              .map(
-                                (metric) => SizedBox(
-                                  width: twoColumnWidth,
-                                  child: _MetricCard(metric: metric),
+                              ),
+                            ),
+                          ),
+                          SizedBox(width: 16.w),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _isLoading || _isExporting
+                                  ? null
+                                  : _exportPerformance,
+                              style: OutlinedButton.styleFrom(
+                                minimumSize: Size(double.infinity, 46.h),
+                                backgroundColor: Colors.white,
+                                side: const BorderSide(
+                                  color: Color(0xFFBFC7D3),
                                 ),
-                              )
-                              .toList(),
-                        ),
-                      ],
-                    );
-                  },
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10.r),
+                                ),
+                              ),
+                              icon: _isExporting
+                                  ? SizedBox.square(
+                                      dimension: 17.sp,
+                                      child: const CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : Icon(
+                                      Icons.download_outlined,
+                                      size: 19.sp,
+                                      color: const Color(0xFF082B63),
+                                    ),
+                              label: Text(
+                                'Export',
+                                style: GoogleFonts.inter(
+                                  color: const Color(0xFF002149),
+                                  fontSize: 15.sp,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 24.h),
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final spacing = 10.w;
+                          final threeColumnWidth =
+                              (constraints.maxWidth - (spacing * 2)) / 3;
+                          final twoColumnWidth =
+                              (constraints.maxWidth - spacing) / 2;
+
+                          return Column(
+                            children: [
+                              Wrap(
+                                spacing: spacing,
+                                runSpacing: 10.h,
+                                children: _topMetrics
+                                    .map(
+                                      (metric) => SizedBox(
+                                        width: threeColumnWidth,
+                                        child: _MetricCard(metric: metric),
+                                      ),
+                                    )
+                                    .toList(),
+                              ),
+                              SizedBox(height: 10.h),
+                              Wrap(
+                                spacing: spacing,
+                                runSpacing: 10.h,
+                                children: _wideMetrics
+                                    .map(
+                                      (metric) => SizedBox(
+                                        width: twoColumnWidth,
+                                        child: _MetricCard(metric: metric),
+                                      ),
+                                    )
+                                    .toList(),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                      SizedBox(height: 18.h),
+                      _OverviewCard(series: _barSeries),
+                      SizedBox(height: 14.h),
+                      _OutcomeCard(
+                        outcomes: _callOutcomes,
+                        totalCalls: _totalCalls,
+                      ),
+                      SizedBox(height: 14.h),
+                      _LeadStatusCard(
+                        statuses: _leadStatuses,
+                        totalLeads: _leads.length,
+                      ),
+                      SizedBox(height: 14.h),
+                      const _UnavailablePerformanceCard(
+                        title: 'Daily Performance',
+                        message:
+                            'Daily call, site-visit, remarks and follow-up aggregates are not returned by the available APIs.',
+                      ),
+                    ],
+                  ),
                 ),
-                SizedBox(height: 18.h),
-                _OverviewCard(series: _barSeries),
-                SizedBox(height: 14.h),
-                _OutcomeCard(outcomes: _callOutcomes, totalCalls: _totalCalls),
-                SizedBox(height: 14.h),
-                _LeadStatusCard(
-                  statuses: _leadStatuses,
-                  totalLeads: _leads.length,
-                ),
-                SizedBox(height: 14.h),
-                const _UnavailablePerformanceCard(
-                  title: 'Daily Performance',
-                  message:
-                      'Daily call, site-visit, remarks and follow-up aggregates are not returned by the available APIs.',
-                ),
-              ],
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );
@@ -1441,24 +1453,23 @@ class _FieldShell extends StatelessWidget {
 }
 
 class _MetricCard extends StatelessWidget {
-  const _MetricCard({required this.metric, this.compact = false});
+  const _MetricCard({required this.metric});
 
   final _PerformanceMetric metric;
-  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      constraints: BoxConstraints(minHeight: compact ? 116.h : 108.h),
-      padding: EdgeInsets.fromLTRB(16.w, 15.h, 14.w, 16.h),
+      height: 122.h,
+      padding: EdgeInsets.fromLTRB(12.w, 14.h, 10.w, 14.h),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14.r),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: const Color(0xFFD8DDE5)),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x0D000000),
-            blurRadius: 10,
+            color: Color(0x100F172A),
+            blurRadius: 5,
             offset: Offset(0, 2),
           ),
         ],
@@ -1468,38 +1479,34 @@ class _MetricCard extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Icon(
-                metric.icon,
-                size: MyPerformanceScreen.metricIconSize.sp,
-                color: metric.color,
-              ),
+              Icon(metric.icon, size: 20.sp, color: metric.color),
               SizedBox(width: 8.w),
               Expanded(
                 child: Text(
-                  metric.label,
+                  metric.label.replaceAll('\n', ' '),
                   maxLines: 2,
-                  overflow: TextOverflow.visible,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontFamily: 'Inter',
-                    fontSize: 14.sp,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 13.sp,
+                    fontWeight: FontWeight.w500,
                     fontStyle: FontStyle.normal,
                     height: 1.33,
-                    color: const Color(0xFF74777F),
+                    color: const Color(0xFF6B7280),
                   ),
                 ),
               ),
             ],
           ),
-          SizedBox(height: compact ? 18.h : 16.h),
+          const Spacer(),
           Text(
             metric.value,
             style: GoogleFonts.inter(
-              color: const Color(0xFF1F2937),
-              fontSize: 21.sp,
-              fontWeight: FontWeight.w700,
+              color: const Color(0xFF111827),
+              fontSize: 24.sp,
+              fontWeight: FontWeight.w800,
             ),
           ),
         ],

@@ -77,9 +77,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         );
       }
 
-      return AdminDashboardView(
-        onMenuTap: _openDrawer,
-      );
+      return AdminDashboardView(onMenuTap: _openDrawer);
     }
 
     if (selectedTab == 1) {
@@ -87,10 +85,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       // Navigator.of(context).pushNamed(AppRouter.myleads);
 
       return role == UserRole.telecaller
-          ? MyLeadsScreen()
-      // const _TelecallerLeadOverviewScreen()
-          :
-       const LeadListWidget(isInsideScrollView: true);
+          ? MyLeadsScreen(onMenuTap: _openDrawer)
+          // const _TelecallerLeadOverviewScreen()
+          : const LeadListWidget(isInsideScrollView: true);
     }
 
     if (selectedTab == 2) {
@@ -148,10 +145,7 @@ class _DashboardHeader extends StatelessWidget {
               height: 48.h,
               child: Row(
                 children: [
-                  _PlainIconButton(
-                    icon: Icons.menu,
-                    onTap: onMenuTap,
-                  ),
+                  _PlainIconButton(icon: Icons.menu, onTap: onMenuTap),
                   SizedBox(width: 8.w),
                   const Expanded(child: _BrandLogo()),
                   _PlainIconButton(
@@ -174,9 +168,7 @@ class _DashboardHeader extends StatelessWidget {
                     child: CircleAvatar(
                       radius: 21.r,
                       backgroundColor: Colors.grey.shade100,
-                      backgroundImage: const AssetImage(
-                        'assets/app_icon.png',
-                      ),
+                      backgroundImage: const AssetImage('assets/app_icon.png'),
                     ),
                   ),
                 ],
@@ -239,7 +231,7 @@ class _BrandLogo extends StatelessWidget {
       alignment: Alignment.centerLeft,
       child: SizedBox(
         width: 148.w,
-      height: 58.h,
+        height: 58.h,
         child: Image.asset(
           'assets/app_icon.png',
           fit: BoxFit.contain,
@@ -326,9 +318,9 @@ class _DashboardContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MediaQuery(
-      data: MediaQuery.of(context).copyWith(
-        textScaler: const TextScaler.linear(1.18),
-      ),
+      data: MediaQuery.of(
+        context,
+      ).copyWith(textScaler: const TextScaler.linear(1.18)),
       child: Container(
         width: double.infinity,
         margin: EdgeInsets.only(top: 8.h),
@@ -463,7 +455,7 @@ class _TelecallerDashboardHeader extends StatelessWidget {
                     ),
                   ],
                 ),
-                SizedBox(height: 20. h),
+                SizedBox(height: 20.h),
                 Text(
                   _TelecallerDashboardData.greetingSubtitle,
                   style: TextStyle(
@@ -604,7 +596,6 @@ class _TelecallerDashboardContent extends StatelessWidget {
     );
   }
 }
-
 
 class _CommunicationTabs extends StatelessWidget {
   const _CommunicationTabs();
@@ -946,10 +937,7 @@ class _TelecallerSummaryMetric extends StatelessWidget {
                   child: SizedBox(
                     width: 36.w,
                     height: 36.w,
-                    child: Image.asset(
-                      imagePath!,
-                      fit: BoxFit.contain,
-                    ),
+                    child: Image.asset(imagePath!, fit: BoxFit.contain),
                   ),
                 )
               : Icon(icon, size: 20.sp, color: iconColor),
@@ -5078,17 +5066,11 @@ class _AdminDashboardToolbar extends StatelessWidget {
             onPressed: () {},
             style: OutlinedButton.styleFrom(
               backgroundColor: Colors.white,
-              side: const BorderSide(
-                color: Color(0xFFC4C6D0),
-                width: 1,
-              ),
+              side: const BorderSide(color: Color(0xFFC4C6D0), width: 1),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
-              padding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 8,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             ),
             child: Row(
               children: [
@@ -5120,17 +5102,11 @@ class _AdminDashboardToolbar extends StatelessWidget {
           onPressed: () {},
           style: OutlinedButton.styleFrom(
             backgroundColor: Colors.white,
-            side: const BorderSide(
-              color: Color(0xFFC4C6D0),
-              width: 1,
-            ),
+            side: const BorderSide(color: Color(0xFFC4C6D0), width: 1),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(8),
             ),
-            padding: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 8,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -5229,9 +5205,7 @@ class _AdminDashboardMetricGrid extends StatelessWidget {
         for (int row = 0; row < 4; row++) ...[
           Row(
             children: [
-              Expanded(
-                child: _AdminDashboardMetricCard(data: _items[row * 2]),
-              ),
+              Expanded(child: _AdminDashboardMetricCard(data: _items[row * 2])),
               SizedBox(width: 12.w),
               Expanded(
                 child: _AdminDashboardMetricCard(data: _items[row * 2 + 1]),
@@ -5259,10 +5233,7 @@ class _AdminDashboardMetricCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12.r),
-        border: Border.all(
-          color: const Color(0xFFE3E3E3),
-          width: 1,
-        ),
+        border: Border.all(color: const Color(0xFFE3E3E3), width: 1),
         boxShadow: const [
           BoxShadow(
             color: Color.fromRGBO(0, 0, 0, 0.05),
@@ -5277,16 +5248,16 @@ class _AdminDashboardMetricCard extends StatelessWidget {
         children: [
           Icon(data.icon, size: 15.sp, color: data.iconColor),
           SizedBox(height: 8.h),
-            Text(
-              data.title,
-              maxLines: 2,
-              style: GoogleFonts.inter(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                height: 1.33,
-                color: const Color(0xFF74777F),
-              ),
+          Text(
+            data.title,
+            maxLines: 2,
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              height: 1.33,
+              color: const Color(0xFF74777F),
             ),
+          ),
           SizedBox(height: 10.h),
           FittedBox(
             fit: BoxFit.scaleDown,
@@ -5362,10 +5333,7 @@ class _AdminLeadsBySourceCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12.r),
-        border: Border.all(
-          color: const Color(0xFFE3E3E3),
-          width: 1,
-        ),
+        border: Border.all(color: const Color(0xFFE3E3E3), width: 1),
         boxShadow: const [
           BoxShadow(
             color: Color.fromRGBO(0, 0, 0, 0.05),
@@ -5522,8 +5490,8 @@ class _AdminLeadSourceDonutPainter extends CustomPainter {
       ..strokeCap = StrokeCap.butt;
 
     const gap = 0.08;
-    final sweep = ((2 * 3.141592653589793) - (_colors.length * gap)) /
-        _colors.length;
+    final sweep =
+        ((2 * 3.141592653589793) - (_colors.length * gap)) / _colors.length;
     var start = -1.5707963267948966;
 
     for (final color in _colors) {
@@ -5787,10 +5755,7 @@ class _AdminSiteVisitsOverviewCard extends StatelessWidget {
             ),
           ),
           SizedBox(height: 14.h),
-          SizedBox(
-            height: 238.h,
-            child: const _AdminSiteVisitsLineChart(),
-          ),
+          SizedBox(height: 238.h, child: const _AdminSiteVisitsLineChart()),
           SizedBox(height: 14.h),
           Row(
             children: [
@@ -5823,9 +5788,7 @@ class _AdminSiteVisitsLineChart extends StatelessWidget {
     return Stack(
       children: [
         Positioned.fill(
-          child: CustomPaint(
-            painter: const _AdminSiteVisitsChartPainter(),
-          ),
+          child: CustomPaint(painter: const _AdminSiteVisitsChartPainter()),
         ),
         Positioned(
           left: 34.w,
@@ -5900,16 +5863,8 @@ class _AdminSiteVisitsChartPainter extends CustomPainter {
       return Offset(x, y);
     }
 
-    final navyPoints = [
-      point(0.0, 0.95),
-      point(0.5, 0.97),
-      point(1.0, 2.0),
-    ];
-    final orangePoints = [
-      point(0.0, 0.95),
-      point(0.5, 0.95),
-      point(1.0, 0.0),
-    ];
+    final navyPoints = [point(0.0, 0.95), point(0.5, 0.97), point(1.0, 2.0)];
+    final orangePoints = [point(0.0, 0.95), point(0.5, 0.95), point(1.0, 0.0)];
 
     Path smoothPath(List<Offset> points) {
       final path = Path()..moveTo(points.first.dx, points.first.dy);
@@ -6536,11 +6491,31 @@ class _AdminMapPainter extends CustomPainter {
       tp.paint(canvas, Offset(center.dx - tp.width / 2, center.dy + 10));
     }
 
-    marker(Offset(size.width * .22, size.height * .70), const Color(0xFF2563EB), 'S');
-    marker(Offset(size.width * .36, size.height * .46), const Color(0xFF84CC16), 'N');
-    marker(Offset(size.width * .74, size.height * .62), const Color(0xFF1D4ED8), 'N');
-    marker(Offset(size.width * .48, size.height * .20), const Color(0xFFEF4444), 'L');
-    marker(Offset(size.width * .82, size.height * .20), const Color(0xFFF59E0B), 'L');
+    marker(
+      Offset(size.width * .22, size.height * .70),
+      const Color(0xFF2563EB),
+      'S',
+    );
+    marker(
+      Offset(size.width * .36, size.height * .46),
+      const Color(0xFF84CC16),
+      'N',
+    );
+    marker(
+      Offset(size.width * .74, size.height * .62),
+      const Color(0xFF1D4ED8),
+      'N',
+    );
+    marker(
+      Offset(size.width * .48, size.height * .20),
+      const Color(0xFFEF4444),
+      'L',
+    );
+    marker(
+      Offset(size.width * .82, size.height * .20),
+      const Color(0xFFF59E0B),
+      'L',
+    );
   }
 
   @override
@@ -6862,7 +6837,11 @@ class _AdminTeamPerformanceCard extends StatelessWidget {
           for (int i = 0; i < _members.length; i++) ...[
             _AdminPerformanceRow(data: _members[i]),
             if (i != _members.length - 1)
-              Divider(height: 18.h, thickness: 1, color: const Color(0xFFE5EAF1)),
+              Divider(
+                height: 18.h,
+                thickness: 1,
+                color: const Color(0xFFE5EAF1),
+              ),
           ],
           SizedBox(height: 18.h),
           const _AdminPerformanceSummaryStrip(),
@@ -6910,24 +6889,15 @@ class _AdminPerformanceTabStrip extends StatelessWidget {
       child: Row(
         children: [
           const Expanded(
-            child: _AdminPerformanceTab(
-              label: 'Telecallers',
-              isActive: true,
-            ),
+            child: _AdminPerformanceTab(label: 'Telecallers', isActive: true),
           ),
           SizedBox(width: 8.w),
           const Expanded(
-            child: _AdminPerformanceTab(
-              label: 'Field Execs',
-              isActive: false,
-            ),
+            child: _AdminPerformanceTab(label: 'Field Execs', isActive: false),
           ),
           SizedBox(width: 8.w),
           const Expanded(
-            child: _AdminPerformanceTab(
-              label: 'Managers',
-              isActive: false,
-            ),
+            child: _AdminPerformanceTab(label: 'Managers', isActive: false),
           ),
         ],
       ),
@@ -6936,10 +6906,7 @@ class _AdminPerformanceTabStrip extends StatelessWidget {
 }
 
 class _AdminPerformanceTab extends StatelessWidget {
-  const _AdminPerformanceTab({
-    required this.label,
-    required this.isActive,
-  });
+  const _AdminPerformanceTab({required this.label, required this.isActive});
 
   final String label;
   final bool isActive;
@@ -7250,7 +7217,9 @@ class _AdminReportsShortcutsCard extends StatelessWidget {
           Wrap(
             spacing: 8.w,
             runSpacing: 8.h,
-            children: _reports.map((report) => _AdminReportChip(label: report)).toList(),
+            children: _reports
+                .map((report) => _AdminReportChip(label: report))
+                .toList(),
           ),
           SizedBox(height: 22.h),
           Center(
@@ -7293,7 +7262,9 @@ class _AdminActionChip extends StatelessWidget {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 10.h),
       decoration: BoxDecoration(
-        color: data.isOrange ? const Color(0xFFFF7A1A) : const Color(0xFF18386D),
+        color: data.isOrange
+            ? const Color(0xFFFF7A1A)
+            : const Color(0xFF18386D),
         borderRadius: BorderRadius.circular(10.r),
       ),
       child: Text(
@@ -8380,9 +8351,9 @@ class _MoreTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final canAssignLeads = context
-        .watch<AuthProvider>()
-        .canViewModule('employees');
+    final canAssignLeads = context.watch<AuthProvider>().canViewModule(
+      'employees',
+    );
     return Padding(
       padding: EdgeInsets.fromLTRB(18.w, 24.h, 18.w, 22.h),
       child: Column(
@@ -8526,13 +8497,7 @@ class _NavigationDrawer extends StatelessWidget {
     }
 
     if (role == UserRole.fieldExecutive) {
-      return const [
-        'Dashboard',
-        'Leads',
-        'Tasks',
-        'Site Visits',
-        'More',
-      ];
+      return const ['Dashboard', 'Leads', 'Tasks', 'Site Visits', 'More'];
     }
 
     return DashboardProvider.tabTitles;
@@ -8605,7 +8570,9 @@ class _NavigationDrawer extends StatelessWidget {
                           context.watch<AuthProvider>().roleName,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: AppStyles.bodyMedium.copyWith(color: Colors.white70),
+                          style: AppStyles.bodyMedium.copyWith(
+                            color: Colors.white70,
+                          ),
                         ),
                       ],
                     ),
@@ -8622,107 +8589,121 @@ class _NavigationDrawer extends StatelessWidget {
                     for (var i = 0; i < tabTitles.length; i++)
                       if (!(role == UserRole.telecaller &&
                           tabTitles[i] == 'Leads')) ...[
-                      _DrawerItem(
-                        icon: drawerIcons[i],
-                        label: tabTitles[i],
-                        selected: selectedTab == i,
-                        onTap: () {
-                          context.read<DashboardProvider>().selectTab(i);
-                          Navigator.of(context).pop();
-                        },
-                      ),
-                      if (tabTitles[i] == 'Tasks' ||
-                          tabTitles[i] == 'My Performance') ...[
-                        if (role != UserRole.telecaller)
-                          _DrawerItem(
-                            icon: Icons.calendar_today_outlined,
-                            label: 'Site Visits',
-                            selected: false,
-                            onTap: () {
-                              Navigator.of(context).pop();
-                              Navigator.of(context).pushNamed(AppRouter.siteVisits);
-                            },
-                          ),
-                        // _DrawerItem(
-                        //   icon: Icons.description_outlined,
-                        //   label: 'Report Site Visit',
-                        //   selected: false,
-                        //   onTap: () {
-                        //     Navigator.of(context).pop();
-                        //   },
-                        // ),
-                        if (context.read<AuthProvider>().roleName == 'Telecaller')
-                          _DrawerItem(
-                            icon: Icons.person_outline,
-                            label: 'All Leads',
-                            selected: false,
-                            onTap: () {
-                              Navigator.of(context).pushNamed(AppRouter.myleads);
-                            },
-                          ),
-                        if (context.read<AuthProvider>().roleName == 'Telecaller')
-                          _DrawerItem(
-                            icon: Icons.edit_note_outlined,
-                            label: 'Follow-up Test',
-                            selected: false,
-                            onTap: () {
-                              Navigator.of(context).pop();
-                              Navigator.of(context).pushNamed(
-                                AppRouter.followUpTest,
-                              );
-                            },
-                          ),
-                        if (context.read<AuthProvider>().roleName == 'Telecaller')
-                          _DrawerItem(
-                            icon: Icons.chat_bubble_outline,
-                            label: 'Communication',
-                            subtitle: 'Call History',
-                            selected: false,
-                            onTap: () {
-                              Navigator.of(context).pop();
-                              Navigator.of(context).pushNamed(
-                                AppRouter.telecallerCommunication,
-                              );
-                            },
-                          ),
-                      ],
-                      if (tabTitles[i] == 'Reports' ||
-                          tabTitles[i] == 'Site Visits') ...[
-                        // _DrawerItem(
-                        //   icon: Icons.manage_accounts_outlined,
-                        //   label: 'Lead Management',
-                        //   selected: false,
-                        //   onTap: () {
-                        //     Navigator.of(context).pop();
-                        //   },
-                        // ),
                         _DrawerItem(
-                          icon: Icons.people_alt_outlined,
-                          label: 'Employee',
-                          selected: false,
-                          fontSize: 16.sp,
+                          icon: drawerIcons[i],
+                          label: tabTitles[i],
+                          selected: selectedTab == i,
                           onTap: () {
+                            context.read<DashboardProvider>().selectTab(i);
                             Navigator.of(context).pop();
-                            Navigator.of(
-                              context,
-                            ).pushNamed(AppRouter.employeeDirectory);
                           },
                         ),
-                        // _DrawerItem(
-                        //   icon: Icons.badge_outlined,
-                        //   label: 'Lead Profile Management',
-                        //   selected: false,
-                        //   onTap: () {
-                        //     Navigator.of(context).pop();
-                        //     Navigator.of(
-                        //       context,
-                        //     ).pushNamed(AppRouter.leadProfileManagement);
-                        //   },
-                        // ),
+                        if (tabTitles[i] == 'Tasks' ||
+                            tabTitles[i] == 'My Performance') ...[
+                          if (role != UserRole.telecaller)
+                            _DrawerItem(
+                              icon: Icons.calendar_today_outlined,
+                              label: 'Site Visits',
+                              selected: false,
+                              onTap: () {
+                                Navigator.of(context).pop();
+                                Navigator.of(
+                                  context,
+                                ).pushNamed(AppRouter.siteVisits);
+                              },
+                            ),
+                          // _DrawerItem(
+                          //   icon: Icons.description_outlined,
+                          //   label: 'Report Site Visit',
+                          //   selected: false,
+                          //   onTap: () {
+                          //     Navigator.of(context).pop();
+                          //   },
+                          // ),
+                          if (context.read<AuthProvider>().roleName ==
+                              'Telecaller')
+                            _DrawerItem(
+                              icon: Icons.person_outline,
+                              label: 'All Leads',
+                              selected: false,
+                              onTap: () {
+                                Navigator.of(context).pop();
+                                context.read<DashboardProvider>().selectTab(1);
+                              },
+                            ),
+                          if (context.read<AuthProvider>().roleName ==
+                              'Telecaller')
+                            _DrawerItem(
+                              icon: Icons.edit_note_outlined,
+                              label: 'Follow-up Test',
+                              selected: false,
+                              onTap: () {
+                                Navigator.of(context).pop();
+                                Navigator.of(
+                                  context,
+                                ).pushNamed(AppRouter.followUpTest);
+                              },
+                            ),
+                          if (context.read<AuthProvider>().roleName ==
+                              'Telecaller')
+                            _DrawerItem(
+                              icon: Icons.chat_bubble_outline,
+                              label: 'Communication',
+                              subtitle: 'Call History',
+                              selected: false,
+                              onTap: () {
+                                Navigator.of(context).pop();
+                                Navigator.of(
+                                  context,
+                                ).pushNamed(AppRouter.telecallerCommunication);
+                              },
+                            ),
+                        ],
+                        if (tabTitles[i] == 'Reports' ||
+                            tabTitles[i] == 'Site Visits') ...[
+                          // _DrawerItem(
+                          //   icon: Icons.manage_accounts_outlined,
+                          //   label: 'Lead Management',
+                          //   selected: false,
+                          //   onTap: () {
+                          //     Navigator.of(context).pop();
+                          //   },
+                          // ),
+                          _DrawerItem(
+                            icon: Icons.people_alt_outlined,
+                            label:
+                                context.read<AuthProvider>().role ==
+                                    UserRole.telecaller
+                                ? 'My Profile'
+                                : 'Employee',
+                            selected: false,
+                            fontSize: 16.sp,
+                            onTap: () {
+                              Navigator.of(context).pop();
+                              Navigator.of(
+                                context,
+                              ).pushNamed(AppRouter.profile);
+                            },
+                          ),
+                          // _DrawerItem(
+                          //   icon: Icons.badge_outlined,
+                          //   label: 'Lead Profile Management',
+                          //   selected: false,
+                          //   onTap: () {
+                          //     Navigator.of(context).pop();
+                          //     Navigator.of(
+                          //       context,
+                          //     ).pushNamed(AppRouter.leadProfileManagement);
+                          //   },
+                          // ),
+                        ],
                       ],
-                    ],
                     Padding(
-                      padding: EdgeInsets.only(left: 18.r, top: 8.h, right: 18.r),
+                      padding: EdgeInsets.only(
+                        left: 18.r,
+                        top: 8.h,
+                        right: 18.r,
+                      ),
                       child: _DrawerItem(
                         icon: Icons.logout,
                         label: 'Logout',
@@ -8789,8 +8770,9 @@ class _DrawerItem extends StatelessWidget {
           ? Text(
               subtitle!,
               style: TextStyle(
-                color: (selected ? AppColors.orange : Colors.white)
-                    .withOpacity(0.7),
+                color: (selected ? AppColors.orange : Colors.white).withOpacity(
+                  0.7,
+                ),
                 fontSize: 12.sp,
               ),
             )

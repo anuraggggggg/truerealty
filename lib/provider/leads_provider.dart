@@ -216,9 +216,14 @@ class LeadProvider extends ApiProviderBase {
   Future<ApiResponse<dynamic>?> fetchLeadPipeline({
     String search = '',
     String teamId = 'all',
+    int? limitPerColumn,
   }) {
     return runApiRequest(
-      () => _repository.leadPipeline(search: search, teamId: teamId),
+      () => _repository.leadPipeline(
+        search: search,
+        teamId: teamId,
+        limitPerColumn: limitPerColumn,
+      ),
     );
   }
 
@@ -227,6 +232,7 @@ class LeadProvider extends ApiProviderBase {
     int limit = 10,
     String? due,
     String? status,
+    String? type,
   }) {
     return runApiRequest(
       () => _repository.listFollowUps(
@@ -234,6 +240,7 @@ class LeadProvider extends ApiProviderBase {
         limit: limit,
         due: due,
         status: status,
+        type: type,
       ),
     );
   }

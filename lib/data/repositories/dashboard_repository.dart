@@ -88,6 +88,13 @@ class DashboardRepository {
   }
 
   Future<ApiResponse<dynamic>> fieldExecutiveDashboard() {
-    return _apiClient.get('/dashboard/field-executive');
+    return _apiClient.get(
+      '/dashboard/field-executive',
+      queryParameters: {'_ts': DateTime.now().millisecondsSinceEpoch},
+      headers: const {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+      },
+    );
   }
 }

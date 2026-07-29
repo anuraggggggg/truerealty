@@ -8,10 +8,13 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:truerealtycrm/constant/colors_screen.dart';
 import 'package:truerealtycrm/provider/leads_provider.dart';
+import 'package:truerealtycrm/router/app_router.dart';
 import 'package:truerealtycrm/screen/my_leads_filter_screen.dart';
 
 class MyLeadsScreen extends StatefulWidget {
-  const MyLeadsScreen({super.key});
+  const MyLeadsScreen({super.key, this.onMenuTap});
+
+  final VoidCallback? onMenuTap;
 
   @override
   State<MyLeadsScreen> createState() => _MyLeadsScreenState();
@@ -311,7 +314,8 @@ class _MyLeadsScreenState extends State<MyLeadsScreen> {
   int _totalCount = 0;
   int _upcomingFollowUpCount = 0;
   int _overdueFollowUpCount = 0;
-  int _priorityLeadCount = 0;
+  int _currentPage = 1;
+  int _rowsPerPage = 8;
   bool _isLoading = true;
   bool _isExporting = false;
   String? _error;
@@ -320,6 +324,21 @@ class _MyLeadsScreenState extends State<MyLeadsScreen> {
 
   bool get _isUnauthorized =>
       _error?.toLowerCase().contains('unauthorized') ?? false;
+
+  int get _newLeadCount =>
+      _leads.where((lead) => lead.status.toLowerCase().contains('new')).length;
+
+  int get _convertedLeadCount => _leads
+      .where((lead) => lead.status.toLowerCase().contains('convert'))
+      .length;
+
+  String get _conversionRate {
+    if (_leads.isEmpty) return '0.0%';
+    return '${(_convertedLeadCount / _leads.length * 100).toStringAsFixed(1)}%';
+  }
+
+  int get _totalPages =>
+      _totalCount == 0 ? 1 : (_totalCount / _rowsPerPage).ceil();
 
   @override
   void initState() {
@@ -336,8 +355,8 @@ class _MyLeadsScreenState extends State<MyLeadsScreen> {
     }
     final provider = context.read<LeadProvider>();
     final response = await provider.fetchLeads(
-      page: 1,
-      limit: 100,
+      page: _currentPage,
+      limit: _rowsPerPage,
       source: _filters.source,
       status: _filters.status,
       leadType: _filters.leadType,
@@ -354,7 +373,6 @@ class _MyLeadsScreenState extends State<MyLeadsScreen> {
         (id) => !_leads.any((lead) => lead.apiId == id),
       );
       _totalCount = provider.totalCount;
-      _priorityLeadCount = mappedLeads.where(_isPriorityLead).length;
       _upcomingFollowUpCount = followUpCounts.upcoming;
       _overdueFollowUpCount = followUpCounts.overdue;
       _error = response == null ? leadError ?? 'Unable to load leads.' : null;
@@ -376,6 +394,27 @@ class _MyLeadsScreenState extends State<MyLeadsScreen> {
     if (result == null || !mounted) return;
     setState(() {
       _filters = result;
+      _currentPage = 1;
+      _selectedLeadIds.clear();
+    });
+    await _loadLeads();
+  }
+
+  Future<void> _changePage(int page) async {
+    final nextPage = page.clamp(1, _totalPages);
+    if (nextPage == _currentPage || _isLoading) return;
+    setState(() {
+      _currentPage = nextPage;
+      _selectedLeadIds.clear();
+    });
+    await _loadLeads();
+  }
+
+  Future<void> _changeRowsPerPage(int value) async {
+    if (value == _rowsPerPage || _isLoading) return;
+    setState(() {
+      _rowsPerPage = value;
+      _currentPage = 1;
       _selectedLeadIds.clear();
     });
     await _loadLeads();
@@ -470,26 +509,26 @@ class _MyLeadsScreenState extends State<MyLeadsScreen> {
   List<_LeadSummaryData> get _summaryCards {
     return [
       _LeadSummaryData(
-        title: 'My Leads',
+        title: 'Total Assigned Leads',
         value: _totalCount.toString(),
-        subtitle: 'Telecaller-assigned\nleads',
+        subtitle: 'All assigned leads',
         icon: Icons.groups_2_outlined,
         iconColor: const Color(0xFF2563EB),
         iconBackground: const Color(0xFFEAF1FF),
       ),
       _LeadSummaryData(
-        title: 'Upcoming\nFollow-Ups',
-        value: _upcomingFollowUpCount.toString(),
-        subtitle: 'Due for telecalling',
-        icon: Icons.person_add_alt_1_outlined,
+        title: 'New Leads',
+        value: _newLeadCount.toString(),
+        subtitle: 'Newly assigned',
+        icon: Icons.sell_outlined,
         iconColor: const Color(0xFF22C55E),
         iconBackground: const Color(0xFFE9F9EF),
       ),
       _LeadSummaryData(
-        title: 'Priority Leads',
-        value: _priorityLeadCount.toString(),
-        subtitle: 'Hot or urgent leads',
-        icon: Icons.local_fire_department_outlined,
+        title: 'Follow-ups Due Today',
+        value: _upcomingFollowUpCount.toString(),
+        subtitle: 'Due for telecalling',
+        icon: Icons.access_time_filled_rounded,
         iconColor: const Color(0xFFF97316),
         iconBackground: const Color(0xFFFFF1E8),
       ),
@@ -498,17 +537,18 @@ class _MyLeadsScreenState extends State<MyLeadsScreen> {
         value: _overdueFollowUpCount.toString(),
         subtitle: 'Need immediate attention',
         icon: Icons.event_busy_outlined,
-        iconColor: const Color(0xFFA855F7),
-        iconBackground: const Color(0xFFF3E8FF),
+        iconColor: const Color(0xFFDC2626),
+        iconBackground: const Color(0xFFFEE2E2),
+      ),
+      _LeadSummaryData(
+        title: 'Conversion Rate (This Month)',
+        value: _conversionRate,
+        subtitle: 'Based on converted leads',
+        icon: Icons.query_stats_rounded,
+        iconColor: const Color(0xFF2563EB),
+        iconBackground: const Color(0xFFEAF1FF),
       ),
     ];
-  }
-
-  bool _isPriorityLead(_NewLeadData lead) {
-    final value = '${lead.priority} ${lead.temperature}'.toLowerCase();
-    return value.contains('high') ||
-        value.contains('urgent') ||
-        value.contains('hot');
   }
 
   _FollowUpCounts _countFollowUps(Object? responseData) {
@@ -550,7 +590,7 @@ class _MyLeadsScreenState extends State<MyLeadsScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            const _TopBar(),
+            _TopBar(onMenuTap: widget.onMenuTap),
             Expanded(
               child: RefreshIndicator(
                 color: AppColors.orangeStrong,
@@ -562,8 +602,6 @@ class _MyLeadsScreenState extends State<MyLeadsScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildTabRow(),
-                        SizedBox(height: 24.h),
                         _buildHeading(),
                         SizedBox(height: 14.h),
                         Divider(
@@ -582,28 +620,36 @@ class _MyLeadsScreenState extends State<MyLeadsScreen> {
                         ],
                         LayoutBuilder(
                           builder: (context, constraints) {
-                            final columns = constraints.maxWidth >= 760 ? 4 : 2;
-                            return GridView.builder(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              itemCount: _summaryCards.length,
-                              gridDelegate:
-                                  SliverGridDelegateWithFixedCrossAxisCount(
-                                    crossAxisCount: columns,
-                                    crossAxisSpacing: 10.w,
-                                    mainAxisSpacing: 10.h,
-                                    childAspectRatio: columns == 4 ? 1.7 : 1.55,
+                            final spacing = 10.w;
+                            final halfWidth =
+                                (constraints.maxWidth - spacing) / 2;
+                            return Wrap(
+                              spacing: spacing,
+                              runSpacing: 10.h,
+                              children: List.generate(_summaryCards.length, (
+                                index,
+                              ) {
+                                final isConversion =
+                                    index == _summaryCards.length - 1;
+                                return SizedBox(
+                                  width: isConversion
+                                      ? constraints.maxWidth
+                                      : halfWidth,
+                                  height: isConversion ? 116.h : 124.h,
+                                  child: _LeadSummaryCard(
+                                    data: _summaryCards[index],
                                   ),
-                              itemBuilder: (context, index) {
-                                return _LeadSummaryCard(
-                                  data: _summaryCards[index],
                                 );
-                              },
+                              }),
                             );
                           },
                         ),
                         SizedBox(height: 20.h),
                         _buildNewLeadsSection(context),
+                        SizedBox(height: 20.h),
+                        _TodayTasksSection(leads: _leads),
+                        SizedBox(height: 20.h),
+                        _RecentActivitiesSection(leads: _leads),
                       ],
                     ),
                   ),
@@ -616,55 +662,21 @@ class _MyLeadsScreenState extends State<MyLeadsScreen> {
     );
   }
 
-  Widget _buildTabRow() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'My Leads',
-              style: GoogleFonts.inter(
-                fontSize: 18.sp,
-                fontWeight: FontWeight.w500,
-                color: AppColors.orangeStrong,
-              ),
-            ),
-            SizedBox(width: 8.w),
-            Container(
-              padding: EdgeInsets.symmetric(horizontal: 7.w, vertical: 2.h),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFF1E8),
-                borderRadius: BorderRadius.circular(10.r),
-              ),
-              child: Text(
-                _totalCount.toString(),
-                style: GoogleFonts.inter(
-                  fontSize: 12.sp,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.orangeStrong,
-                ),
-              ),
-            ),
-          ],
-        ),
-        SizedBox(height: 10.h),
-        Container(width: 92.w, height: 2.h, color: AppColors.orangeStrong),
-        SizedBox(height: 9.h),
-        Divider(color: const Color(0xFFD5DCE8), thickness: 0.9.h, height: 1.h),
-      ],
-    );
-  }
-
   Widget _buildHeading() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('My Leads', style: MyLeadsScreen.myLeadsTitleStyle),
-        SizedBox(height: 8.h),
         Text(
-          'Leads assigned to you as telecaller. Track follow-ups, qualification, and next actions from the same premium workspace.',
+          'Lead Records',
+          style: GoogleFonts.inter(
+            fontSize: 25.sp,
+            fontWeight: FontWeight.w800,
+            color: const Color(0xFF0F172A),
+          ),
+        ),
+        SizedBox(height: 5.h),
+        Text(
+          'View and manage all leads assigned to you.',
           textAlign: TextAlign.left,
           style: const TextStyle(
             fontFamily: 'Inter',
@@ -675,11 +687,24 @@ class _MyLeadsScreenState extends State<MyLeadsScreen> {
             letterSpacing: 0,
             color: Color(0xFF44474E),
           ),
-          maxLines: 3,
+          maxLines: 2,
           overflow: TextOverflow.ellipsis,
         ),
       ],
     );
+  }
+
+  Future<void> _showCreateFollowUpSheet(
+    BuildContext context,
+    _NewLeadData? data,
+  ) async {
+    final created = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _ScheduleFollowUpSheet(initialLeadId: data?.apiId),
+    );
+    if (created == true && mounted) await _loadLeads();
   }
 
   Widget _buildNewLeadsSection(BuildContext context) {
@@ -693,53 +718,78 @@ class _MyLeadsScreenState extends State<MyLeadsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Wrap(
-            alignment: WrapAlignment.spaceBetween,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: 12.w,
-            runSpacing: 10.h,
+          Text(
+            'Lead Records',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: MyLeadsScreen.newLeadsTitleStyle,
+          ),
+          SizedBox(height: 10.h),
+          Row(
             children: [
-              Text(
-                'Assigned Leads  •  ${_leads.length} of $_totalCount',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: MyLeadsScreen.newLeadsTitleStyle,
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () => _showCreateFollowUpSheet(context, null),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.orangeStrong,
+                    foregroundColor: Colors.white,
+                    minimumSize: Size(0, 38.h),
+                    padding: EdgeInsets.symmetric(horizontal: 4.w),
+                    textStyle: GoogleFonts.inter(
+                      fontSize: 10.sp,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  icon: Icon(Icons.add_rounded, size: 15.sp),
+                  label: const Text('Add Follow-Up'),
+                ),
               ),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: _openFilters,
-                    icon: Icon(
-                      Icons.tune_rounded,
-                      size: MyLeadsScreen.panelIconSize.sp,
-                    ),
-                    label: Text(_filters.isEmpty ? 'Filter' : 'Filtered'),
-                  ),
-                  SizedBox(width: 8.w),
-                  ElevatedButton.icon(
-                    onPressed: _isExporting ? null : _exportLeads,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.orangeStrong,
-                      foregroundColor: Colors.white,
-                    ),
-                    icon: _isExporting
-                        ? SizedBox(
-                            width: 15.w,
-                            height: 15.w,
-                            child: const CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Icon(Icons.download_rounded),
-                    label: Text(
-                      _selectedLeadIds.isEmpty
-                          ? 'Export all'
-                          : 'Export (${_selectedLeadIds.length})',
+              SizedBox(width: 6.w),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _openFilters,
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: Size(0, 38.h),
+                    padding: EdgeInsets.symmetric(horizontal: 4.w),
+                    textStyle: GoogleFonts.inter(
+                      fontSize: 10.sp,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                ],
+                  icon: Icon(Icons.tune_rounded, size: 15.sp),
+                  label: Text(_filters.isEmpty ? 'Filter' : 'Filtered'),
+                ),
+              ),
+              SizedBox(width: 6.w),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: _isExporting ? null : _exportLeads,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.orangeStrong,
+                    foregroundColor: Colors.white,
+                    minimumSize: Size(0, 38.h),
+                    padding: EdgeInsets.symmetric(horizontal: 4.w),
+                    textStyle: GoogleFonts.inter(
+                      fontSize: 10.sp,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  icon: _isExporting
+                      ? SizedBox(
+                          width: 14.w,
+                          height: 14.w,
+                          child: const CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : Icon(Icons.download_rounded, size: 15.sp),
+                  label: Text(
+                    _selectedLeadIds.isEmpty
+                        ? 'Export all'
+                        : 'Export (${_selectedLeadIds.length})',
+                  ),
+                ),
               ),
             ],
           ),
@@ -748,7 +798,7 @@ class _MyLeadsScreenState extends State<MyLeadsScreen> {
             const _SessionExpiredState()
           else if (!_isLoading && _leads.isEmpty && _error == null)
             const _EmptyLeadsState()
-          else
+          else ...[
             LayoutBuilder(
               builder: (context, constraints) {
                 final columns = constraints.maxWidth >= 1050
@@ -789,14 +839,419 @@ class _MyLeadsScreenState extends State<MyLeadsScreen> {
                 );
               },
             ),
+            SizedBox(height: 16.h),
+            _LeadsPagination(
+              currentPage: _currentPage,
+              totalPages: _totalPages,
+              rowsPerPage: _rowsPerPage,
+              isLoading: _isLoading,
+              onPageChanged: _changePage,
+              onRowsPerPageChanged: _changeRowsPerPage,
+            ),
+          ],
         ],
       ),
     );
   }
 }
 
+class _ScheduleFollowUpSheet extends StatefulWidget {
+  const _ScheduleFollowUpSheet({this.initialLeadId});
+
+  final String? initialLeadId;
+
+  @override
+  State<_ScheduleFollowUpSheet> createState() => _ScheduleFollowUpSheetState();
+}
+
+class _ScheduleFollowUpSheetState extends State<_ScheduleFollowUpSheet> {
+  final _formKey = GlobalKey<FormState>();
+  final _remarksController = TextEditingController();
+  List<LeadModel> _leads = const [];
+  List<_FollowUpProjectOption> _projects = const [];
+  LeadModel? _lead;
+  _FollowUpProjectOption? _project;
+  DateTime _date = DateTime.now();
+  TimeOfDay _time = TimeOfDay.now();
+  bool _reminder = true;
+  bool _loading = true;
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadOptions());
+  }
+
+  @override
+  void dispose() {
+    _remarksController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadOptions() async {
+    final results = await Future.wait([
+      context.read<LeadProvider>().fetchLeads(page: 1, limit: 100),
+      context.read<LeadProvider>().fetchLeadPipeline(limitPerColumn: 1),
+    ]);
+    if (!mounted) return;
+    final leadProvider = context.read<LeadProvider>();
+    final projects = _pipelineProjects(results[1]?.data)
+        .whereType<Map>()
+        .map((value) => _FollowUpProjectOption.fromMap(value))
+        .where((value) => value.id.isNotEmpty && value.name.isNotEmpty)
+        .toList(growable: false);
+    final leads = List<LeadModel>.from(leadProvider.leads);
+    LeadModel? selected;
+    for (final lead in leads) {
+      if (lead.id == widget.initialLeadId ||
+          lead.displayId == widget.initialLeadId) {
+        selected = lead;
+        break;
+      }
+    }
+    setState(() {
+      _leads = leads;
+      _projects = projects;
+      _lead = selected;
+      _loading = false;
+      _error = results[0] == null
+          ? leadProvider.error ?? 'Unable to fetch lead names.'
+          : results[1] == null
+          ? leadProvider.error ?? 'Unable to fetch projects.'
+          : null;
+    });
+  }
+
+  Future<void> _pickDate() async {
+    final value = await showDatePicker(
+      context: context,
+      initialDate: _date,
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 730)),
+    );
+    if (value != null && mounted) setState(() => _date = value);
+  }
+
+  Future<void> _pickTime() async {
+    final value = await showTimePicker(context: context, initialTime: _time);
+    if (value != null && mounted) setState(() => _time = value);
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate() || _lead == null) return;
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    final scheduledAt = DateTime(
+      _date.year,
+      _date.month,
+      _date.day,
+      _time.hour,
+      _time.minute,
+    );
+    final remarks = _remarksController.text.trim();
+    final scheduledLabel =
+        '${scheduledAt.year}-${scheduledAt.month.toString().padLeft(2, '0')}-'
+        '${scheduledAt.day.toString().padLeft(2, '0')} '
+        '${TimeOfDay.fromDateTime(scheduledAt).format(context)}';
+    final response = await context.read<LeadProvider>().createFollowUp(
+      leadId: _lead!.id ?? _lead!.displayId!,
+      body: {
+        'scheduledAt': scheduledLabel,
+        'remarks': remarks,
+        'notes': remarks,
+        'setReminder': _reminder,
+        'status': 'Scheduled',
+      },
+    );
+    if (!mounted) return;
+    if (response == null) {
+      setState(() {
+        _saving = false;
+        _error =
+            context.read<LeadProvider>().error ??
+            'Unable to schedule the follow-up.';
+      });
+      return;
+    }
+    Navigator.of(context).pop(true);
+  }
+
+  InputDecoration _decoration(String label, {String? hint}) {
+    return InputDecoration(
+      labelText: label,
+      hintText: hint,
+      filled: true,
+      fillColor: const Color(0xFFF9FAFC),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10.r)),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10.r),
+        borderSide: const BorderSide(color: Color(0xFFD8E0EC)),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * .92,
+        ),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22.r)),
+        ),
+        child: Column(
+          children: [
+            Padding(
+              padding: EdgeInsets.fromLTRB(18.w, 16.h, 8.w, 12.h),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Schedule New Follow-Up',
+                          style: GoogleFonts.inter(
+                            fontSize: 19.sp,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF0B2D57),
+                          ),
+                        ),
+                        SizedBox(height: 4.h),
+                        Text(
+                          'Schedule a fresh follow-up task for a lead.',
+                          style: GoogleFonts.inter(
+                            fontSize: 13.sp,
+                            color: const Color(0xFF64748B),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : SingleChildScrollView(
+                      padding: EdgeInsets.all(18.r),
+                      child: Form(
+                        key: _formKey,
+                        child: Column(
+                          children: [
+                            if (_error != null) ...[
+                              _ApiErrorBanner(
+                                message: _error!,
+                                onRetry: _loadOptions,
+                              ),
+                              SizedBox(height: 14.h),
+                            ],
+                            DropdownButtonFormField<LeadModel>(
+                              initialValue: _lead,
+                              isExpanded: true,
+                              decoration: _decoration(
+                                'Lead Name',
+                                hint: 'Search lead by name or number...',
+                              ),
+                              items: _leads
+                                  .map(
+                                    (lead) => DropdownMenuItem(
+                                      value: lead,
+                                      child: Text(
+                                        '${lead.name} • ${lead.phone}',
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (value) =>
+                                  setState(() => _lead = value),
+                              validator: (value) =>
+                                  value == null ? 'Choose a lead' : null,
+                            ),
+                            SizedBox(height: 14.h),
+                            DropdownButtonFormField<_FollowUpProjectOption>(
+                              initialValue: _project,
+                              isExpanded: true,
+                              decoration: _decoration(
+                                'Choose Project',
+                                hint: 'Choose a project...',
+                              ),
+                              items: _projects
+                                  .map(
+                                    (project) => DropdownMenuItem(
+                                      value: project,
+                                      child: Text(
+                                        project.name,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (value) =>
+                                  setState(() => _project = value),
+                            ),
+                            SizedBox(height: 14.h),
+                            TextFormField(
+                              key: ValueKey(_lead?.id),
+                              readOnly: true,
+                              initialValue: _lead?.phone ?? '',
+                              decoration: _decoration(
+                                'Mobile Number',
+                                hint: 'Select a lead first',
+                              ),
+                            ),
+                            SizedBox(height: 14.h),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: InkWell(
+                                    onTap: _pickDate,
+                                    child: InputDecorator(
+                                      decoration: _decoration('Date'),
+                                      child: Text(
+                                        '${_date.day.toString().padLeft(2, '0')}/${_date.month.toString().padLeft(2, '0')}/${_date.year}',
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(width: 12.w),
+                                Expanded(
+                                  child: InkWell(
+                                    onTap: _pickTime,
+                                    child: InputDecorator(
+                                      decoration: _decoration('Time'),
+                                      child: Text(_time.format(context)),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            SizedBox(height: 14.h),
+                            TextFormField(
+                              controller: _remarksController,
+                              minLines: 3,
+                              maxLines: 5,
+                              decoration: _decoration(
+                                'Remarks',
+                                hint: 'Add remarks for the next follow-up...',
+                              ),
+                            ),
+                            CheckboxListTile(
+                              contentPadding: EdgeInsets.zero,
+                              value: _reminder,
+                              activeColor: AppColors.orangeStrong,
+                              title: const Text(
+                                'Set reminder for assigned owner',
+                              ),
+                              onChanged: (value) =>
+                                  setState(() => _reminder = value ?? false),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+            ),
+            const Divider(height: 1),
+            Padding(
+              padding: EdgeInsets.all(14.r),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  OutlinedButton(
+                    onPressed: _saving ? null : () => Navigator.pop(context),
+                    child: const Text('Cancel'),
+                  ),
+                  SizedBox(width: 10.w),
+                  ElevatedButton(
+                    onPressed: _saving ? null : _submit,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.orangeStrong,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: _saving
+                        ? SizedBox(
+                            width: 18.w,
+                            height: 18.w,
+                            child: const CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text('Schedule'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FollowUpProjectOption {
+  const _FollowUpProjectOption({required this.id, required this.name});
+
+  factory _FollowUpProjectOption.fromMap(Map<dynamic, dynamic> source) {
+    String read(List<String> keys) {
+      for (final key in keys) {
+        final value = source[key];
+        if (value != null && value.toString().trim().isNotEmpty) {
+          return value.toString().trim();
+        }
+      }
+      return '';
+    }
+
+    return _FollowUpProjectOption(
+      id: read(const ['id', '_id', 'projectId']),
+      name: read(const ['name', 'title', 'projectName']),
+    );
+  }
+
+  final String id;
+  final String name;
+}
+
+List<dynamic> _pipelineProjects(Object? source) {
+  if (source is! Map) return const [];
+  final map = Map<String, dynamic>.from(source);
+  final filters = map['filters'];
+  if (filters is Map && filters['projects'] is List) {
+    return List<dynamic>.from(filters['projects'] as List);
+  }
+  final nested = map['data'];
+  return nested == null ? const [] : _pipelineProjects(nested);
+}
+
 class _TopBar extends StatelessWidget {
-  const _TopBar();
+  const _TopBar({this.onMenuTap});
+
+  final VoidCallback? onMenuTap;
+
+  void _handleLeadingTap(BuildContext context) {
+    if (onMenuTap != null) {
+      onMenuTap!();
+      return;
+    }
+    Navigator.of(
+      context,
+    ).pushNamedAndRemoveUntil(AppRouter.dashboard, (route) => false);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -815,6 +1270,17 @@ class _TopBar extends StatelessWidget {
       ),
       child: Row(
         children: [
+          IconButton(
+            tooltip: onMenuTap == null
+                ? 'Back to dashboard'
+                : 'Open navigation menu',
+            onPressed: () => _handleLeadingTap(context),
+            icon: Icon(
+              onMenuTap == null ? Icons.arrow_back_rounded : Icons.menu_rounded,
+              color: Colors.white,
+            ),
+            iconSize: 25.sp,
+          ),
           Expanded(
             child: Center(
               child: Text(
@@ -827,7 +1293,485 @@ class _TopBar extends StatelessWidget {
               ),
             ),
           ),
+          Tooltip(
+            message: 'Open my profile',
+            child: InkWell(
+              onTap: () => Navigator.of(context).pushNamed(AppRouter.profile),
+              customBorder: const CircleBorder(),
+              child: Container(
+                width: 38.w,
+                height: 38.w,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFDBEAFE),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white54),
+                ),
+                child: Icon(
+                  Icons.person_rounded,
+                  size: 21.sp,
+                  color: AppColors.navy,
+                ),
+              ),
+            ),
+          ),
         ],
+      ),
+    );
+  }
+}
+
+class _LeadsPagination extends StatelessWidget {
+  const _LeadsPagination({
+    required this.currentPage,
+    required this.totalPages,
+    required this.rowsPerPage,
+    required this.isLoading,
+    required this.onPageChanged,
+    required this.onRowsPerPageChanged,
+  });
+
+  final int currentPage;
+  final int totalPages;
+  final int rowsPerPage;
+  final bool isLoading;
+  final ValueChanged<int> onPageChanged;
+  final ValueChanged<int> onRowsPerPageChanged;
+
+  List<int> get _visiblePages {
+    final pages = <int>{1, currentPage - 1, currentPage, currentPage + 1};
+    if (totalPages <= 3) {
+      pages.addAll(List.generate(totalPages, (index) => index + 1));
+    }
+    return pages.where((page) => page >= 1 && page <= totalPages).toList()
+      ..sort();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pages = _visiblePages;
+    return Wrap(
+      alignment: WrapAlignment.spaceBetween,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 10.w,
+      runSpacing: 10.h,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _PaginationButton(
+              icon: Icons.chevron_left_rounded,
+              enabled: currentPage > 1 && !isLoading,
+              onTap: () => onPageChanged(currentPage - 1),
+            ),
+            SizedBox(width: 5.w),
+            for (var index = 0; index < pages.length; index++) ...[
+              if (index > 0 && pages[index] - pages[index - 1] > 1)
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 5.w),
+                  child: Text(
+                    '…',
+                    style: GoogleFonts.inter(color: const Color(0xFF64748B)),
+                  ),
+                ),
+              _PaginationButton(
+                label: pages[index].toString(),
+                selected: pages[index] == currentPage,
+                enabled: !isLoading,
+                onTap: () => onPageChanged(pages[index]),
+              ),
+              SizedBox(width: 5.w),
+            ],
+            _PaginationButton(
+              icon: Icons.chevron_right_rounded,
+              enabled: currentPage < totalPages && !isLoading,
+              onTap: () => onPageChanged(currentPage + 1),
+            ),
+          ],
+        ),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Rows per page:',
+              style: GoogleFonts.inter(
+                fontSize: 11.sp,
+                color: const Color(0xFF475569),
+              ),
+            ),
+            SizedBox(width: 7.w),
+            Container(
+              height: 34.h,
+              padding: EdgeInsets.only(left: 10.w, right: 5.w),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(6.r),
+                border: Border.all(color: const Color(0xFFD5DDE7)),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<int>(
+                  value: rowsPerPage,
+                  isDense: true,
+                  items: const [8, 12, 20]
+                      .map(
+                        (value) => DropdownMenuItem<int>(
+                          value: value,
+                          child: Text(value.toString()),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: isLoading
+                      ? null
+                      : (value) {
+                          if (value != null) onRowsPerPageChanged(value);
+                        },
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _PaginationButton extends StatelessWidget {
+  const _PaginationButton({
+    this.label,
+    this.icon,
+    required this.enabled,
+    required this.onTap,
+    this.selected = false,
+  });
+
+  final String? label;
+  final IconData? icon;
+  final bool enabled;
+  final VoidCallback onTap;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: enabled ? onTap : null,
+      borderRadius: BorderRadius.circular(5.r),
+      child: Container(
+        width: 32.w,
+        height: 32.w,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xFF061A3A) : Colors.white,
+          borderRadius: BorderRadius.circular(5.r),
+          border: Border.all(
+            color: selected ? const Color(0xFF061A3A) : const Color(0xFFD5DDE7),
+          ),
+        ),
+        child: icon != null
+            ? Icon(
+                icon,
+                size: 18.sp,
+                color: enabled
+                    ? const Color(0xFF475569)
+                    : const Color(0xFFCBD5E1),
+              )
+            : Text(
+                label!,
+                style: GoogleFonts.inter(
+                  fontSize: 12.sp,
+                  fontWeight: FontWeight.w700,
+                  color: selected ? Colors.white : const Color(0xFF334155),
+                ),
+              ),
+      ),
+    );
+  }
+}
+
+class _TodayTasksSection extends StatelessWidget {
+  const _TodayTasksSection({required this.leads});
+
+  final List<_NewLeadData> leads;
+
+  @override
+  Widget build(BuildContext context) {
+    final tasks = leads
+        .where((lead) => lead.nextFollowUp != '-' || lead.followUpDate != '-')
+        .take(3)
+        .toList();
+
+    return _LeadDashboardSection(
+      title: 'Today’s Tasks',
+      count: tasks.length,
+      child: tasks.isEmpty
+          ? const _LeadSectionEmpty('No follow-up tasks are currently due.')
+          : Column(
+              children: [
+                for (var index = 0; index < tasks.length; index++) ...[
+                  _TaskRow(lead: tasks[index]),
+                  if (index != tasks.length - 1)
+                    const Divider(height: 1, color: Color(0xFFE8EDF3)),
+                ],
+              ],
+            ),
+    );
+  }
+}
+
+class _TaskRow extends StatelessWidget {
+  const _TaskRow({required this.lead});
+
+  final _NewLeadData lead;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 12.h),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 20.w,
+            height: 20.w,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(4.r),
+              border: Border.all(color: const Color(0xFFCBD5E1)),
+            ),
+          ),
+          SizedBox(width: 12.w),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Follow-up with ${lead.name}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.inter(
+                    fontSize: 14.sp,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF24334B),
+                  ),
+                ),
+                SizedBox(height: 5.h),
+                Text(
+                  lead.nextFollowUp != '-'
+                      ? lead.nextFollowUp
+                      : '${lead.followUpDate} ${lead.followUpTime}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.inter(
+                    fontSize: 11.sp,
+                    color: const Color(0xFF64748B),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(width: 8.w),
+          _LeadStatusPill(
+            label: lead.priority == '-' ? lead.status : lead.priority,
+            color: const Color(0xFFF97316),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RecentActivitiesSection extends StatelessWidget {
+  const _RecentActivitiesSection({required this.leads});
+
+  final List<_NewLeadData> leads;
+
+  @override
+  Widget build(BuildContext context) {
+    final activities = leads.take(3).toList();
+    return _LeadDashboardSection(
+      title: 'Recent Activities',
+      child: activities.isEmpty
+          ? const _LeadSectionEmpty('No recent lead activity is available.')
+          : Column(
+              children: [
+                for (var index = 0; index < activities.length; index++) ...[
+                  _ActivityRow(lead: activities[index], index: index),
+                  if (index != activities.length - 1) SizedBox(height: 15.h),
+                ],
+              ],
+            ),
+    );
+  }
+}
+
+class _ActivityRow extends StatelessWidget {
+  const _ActivityRow({required this.lead, required this.index});
+
+  final _NewLeadData lead;
+  final int index;
+
+  @override
+  Widget build(BuildContext context) {
+    final icons = [
+      Icons.phone_in_talk_outlined,
+      Icons.chat_outlined,
+      Icons.schedule_rounded,
+    ];
+    final colors = [
+      const Color(0xFF2563EB),
+      const Color(0xFF10B981),
+      const Color(0xFFF97316),
+    ];
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 24.w,
+          height: 24.w,
+          decoration: BoxDecoration(
+            color: colors[index % colors.length].withValues(alpha: 0.10),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            icons[index % icons.length],
+            size: 14.sp,
+            color: colors[index % colors.length],
+          ),
+        ),
+        SizedBox(width: 10.w),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${lead.timelineTitle} • ${lead.name}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.inter(
+                  fontSize: 13.sp,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF24334B),
+                ),
+              ),
+              SizedBox(height: 3.h),
+              Text(
+                lead.updatedOn,
+                style: GoogleFonts.inter(
+                  fontSize: 10.sp,
+                  color: const Color(0xFF94A3B8),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _LeadDashboardSection extends StatelessWidget {
+  const _LeadDashboardSection({
+    required this.title,
+    required this.child,
+    this.count,
+  });
+
+  final String title;
+  final Widget child;
+  final int? count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.fromLTRB(16.w, 16.h, 16.w, 14.h),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12.r),
+        border: Border.all(color: const Color(0xFFDDE4EC)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0B0F172A),
+            blurRadius: 7,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                title,
+                style: GoogleFonts.inter(
+                  fontSize: 20.sp,
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF17345C),
+                ),
+              ),
+              if (count != null) ...[
+                SizedBox(width: 8.w),
+                _LeadStatusPill(
+                  label: count.toString(),
+                  color: const Color(0xFFF97316),
+                ),
+              ],
+            ],
+          ),
+          SizedBox(height: 10.h),
+          const Divider(height: 1, color: Color(0xFFE8EDF3)),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _LeadStatusPill extends StatelessWidget {
+  const _LeadStatusPill({required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: BoxConstraints(maxWidth: 92.w),
+      padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(5.r),
+      ),
+      child: Text(
+        label.toUpperCase(),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: GoogleFonts.inter(
+          fontSize: 9.sp,
+          fontWeight: FontWeight.w800,
+          color: Colors.white,
+        ),
+      ),
+    );
+  }
+}
+
+class _LeadSectionEmpty extends StatelessWidget {
+  const _LeadSectionEmpty(this.message);
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 18.h),
+      child: Center(
+        child: Text(
+          message,
+          textAlign: TextAlign.center,
+          style: GoogleFonts.inter(
+            fontSize: 12.sp,
+            color: const Color(0xFF64748B),
+          ),
+        ),
       ),
     );
   }
@@ -931,16 +1875,16 @@ class _LeadSummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
+      padding: EdgeInsets.fromLTRB(12.w, 12.h, 12.w, 10.h),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFEAEBED)),
+        borderRadius: BorderRadius.circular(10.r),
+        border: Border.all(color: const Color(0xFFD9E2EE)),
         boxShadow: const [
           BoxShadow(
-            color: Color.fromRGBO(0, 0, 0, 0.05),
-            blurRadius: 2,
-            offset: Offset(0, 1),
+            color: Color(0x120F172A),
+            blurRadius: 8,
+            offset: Offset(0, 3),
           ),
         ],
       ),
@@ -948,21 +1892,18 @@ class _LeadSummaryCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 22.w,
-                height: 22.w,
+                width: 28.w,
+                height: 28.w,
                 decoration: BoxDecoration(
                   color: data.iconBackground,
                   shape: BoxShape.circle,
                 ),
-                child: Icon(
-                  data.icon,
-                  size: MyLeadsScreen.cardIconSize.sp,
-                  color: data.iconColor,
-                ),
+                child: Icon(data.icon, size: 14.sp, color: data.iconColor),
               ),
-              SizedBox(width: 10.w),
+              SizedBox(width: 8.w),
               Expanded(
                 child: Text(
                   data.title,
@@ -981,12 +1922,26 @@ class _LeadSummaryCard extends StatelessWidget {
               color: AppColors.slate900,
             ),
           ),
-          SizedBox(height: 1.h),
-          Text(
-            data.subtitle,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: MyLeadsScreen.cardSubtitleStyle,
+          SizedBox(height: 3.h),
+          Row(
+            children: [
+              Icon(
+                Icons.trending_up_rounded,
+                size: 12.sp,
+                color: data.iconColor,
+              ),
+              SizedBox(width: 3.w),
+              Expanded(
+                child: Text(
+                  data.subtitle.replaceAll('\n', ' '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: MyLeadsScreen.cardSubtitleStyle.copyWith(
+                    color: data.iconColor,
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -1781,6 +2736,21 @@ class _LeadActionsSheet extends StatelessWidget {
   }
 
   Future<void> _showCreateFollowUpSheet(
+    BuildContext context,
+    _NewLeadData? data,
+  ) async {
+    await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _ScheduleFollowUpSheet(initialLeadId: data?.apiId),
+    );
+  }
+
+  // Kept temporarily for reference while the new API-backed form replaces the
+  // old static design.
+  // ignore: unused_element
+  Future<void> _showLegacyCreateFollowUpSheet(
     BuildContext context,
     _NewLeadData data,
   ) {

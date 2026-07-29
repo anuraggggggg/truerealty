@@ -112,10 +112,15 @@ class LeadRepository {
   Future<ApiResponse<dynamic>> leadPipeline({
     String search = '',
     String teamId = 'all',
+    int? limitPerColumn,
   }) {
     return _apiClient.get(
       '/leads/pipeline',
-      queryParameters: {'search': search, 'teamId': teamId},
+      queryParameters: {
+        'search': search,
+        'teamId': teamId,
+        'limitPerColumn': limitPerColumn,
+      },
     );
   }
 
@@ -124,6 +129,7 @@ class LeadRepository {
     int limit = 10,
     String? due,
     String? status,
+    String? type,
   }) {
     return _apiClient.get(
       '/leads/follow-ups',
@@ -132,6 +138,7 @@ class LeadRepository {
         'limit': limit,
         'due': due,
         'status': status,
+        'type': type,
       },
       headers: const {'Cache-Control': 'no-cache', 'Pragma': 'no-cache'},
     );
