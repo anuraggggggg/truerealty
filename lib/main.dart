@@ -62,27 +62,156 @@ class MyApp extends StatelessWidget {
         splitScreenMode: true,
         builder: (context, child) {
           final baseIconSize = 22.sp;
+          final textTheme = GoogleFonts.interTextTheme().copyWith(
+            displayLarge: GoogleFonts.inter(
+              fontSize: 48.sp,
+              height: 1.12,
+              fontWeight: FontWeight.w700,
+            ),
+            displayMedium: GoogleFonts.inter(
+              fontSize: 40.sp,
+              height: 1.15,
+              fontWeight: FontWeight.w700,
+            ),
+            displaySmall: GoogleFonts.inter(
+              fontSize: 34.sp,
+              height: 1.18,
+              fontWeight: FontWeight.w700,
+            ),
+            headlineLarge: GoogleFonts.inter(
+              fontSize: 30.sp,
+              height: 1.2,
+              fontWeight: FontWeight.w700,
+            ),
+            headlineMedium: GoogleFonts.inter(
+              fontSize: 26.sp,
+              height: 1.22,
+              fontWeight: FontWeight.w700,
+            ),
+            headlineSmall: GoogleFonts.inter(
+              fontSize: 22.sp,
+              height: 1.25,
+              fontWeight: FontWeight.w700,
+            ),
+            titleLarge: GoogleFonts.inter(
+              fontSize: 21.sp,
+              height: 1.3,
+              fontWeight: FontWeight.w700,
+            ),
+            titleMedium: GoogleFonts.inter(
+              fontSize: 18.sp,
+              height: 1.35,
+              fontWeight: FontWeight.w600,
+            ),
+            titleSmall: GoogleFonts.inter(
+              fontSize: 16.sp,
+              height: 1.35,
+              fontWeight: FontWeight.w600,
+            ),
+            bodyLarge: GoogleFonts.inter(fontSize: 17.sp, height: 1.5),
+            bodyMedium: GoogleFonts.inter(fontSize: 16.sp, height: 1.45),
+            bodySmall: GoogleFonts.inter(fontSize: 14.sp, height: 1.4),
+            labelLarge: GoogleFonts.inter(
+              fontSize: 16.sp,
+              height: 1.3,
+              fontWeight: FontWeight.w600,
+            ),
+            labelMedium: GoogleFonts.inter(
+              fontSize: 14.sp,
+              height: 1.3,
+              fontWeight: FontWeight.w600,
+            ),
+            labelSmall: GoogleFonts.inter(
+              fontSize: 14.sp,
+              height: 1.25,
+              fontWeight: FontWeight.w600,
+            ),
+          );
           return MaterialApp(
             debugShowCheckedModeBanner: false,
-            title: 'TrueRoot Realty CRM',
+            title: 'TrueRoot',
             theme: ThemeData(
               colorScheme: ColorScheme.fromSeed(seedColor: AppColors.navy),
-              textTheme: GoogleFonts.interTextTheme(),
+              textTheme: textTheme,
+              primaryTextTheme: textTheme,
               iconTheme: IconThemeData(size: baseIconSize),
               primaryIconTheme: IconThemeData(size: baseIconSize),
               appBarTheme: AppBarTheme(
                 iconTheme: IconThemeData(size: baseIconSize),
                 actionsIconTheme: IconThemeData(size: baseIconSize),
+                titleTextStyle: textTheme.titleLarge?.copyWith(
+                  color: AppColors.navy,
+                ),
               ),
               iconButtonTheme: IconButtonThemeData(
                 style: IconButton.styleFrom(iconSize: baseIconSize),
               ),
+              inputDecorationTheme: InputDecorationTheme(
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 16.w,
+                  vertical: 17.h,
+                ),
+                hintStyle: textTheme.bodyMedium?.copyWith(
+                  color: const Color(0xFF747781),
+                ),
+                helperStyle: textTheme.bodySmall,
+                errorStyle: textTheme.bodySmall?.copyWith(
+                  color: const Color(0xFFB3261E),
+                ),
+              ),
+              textButtonTheme: TextButtonThemeData(
+                style: TextButton.styleFrom(
+                  textStyle: textTheme.labelLarge,
+                  minimumSize: Size(48.w, 48.h),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 16.w,
+                    vertical: 12.h,
+                  ),
+                ),
+              ),
+              elevatedButtonTheme: ElevatedButtonThemeData(
+                style: ElevatedButton.styleFrom(
+                  textStyle: textTheme.labelLarge,
+                  minimumSize: Size(48.w, 50.h),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 18.w,
+                    vertical: 13.h,
+                  ),
+                ),
+              ),
+              outlinedButtonTheme: OutlinedButtonThemeData(
+                style: OutlinedButton.styleFrom(
+                  textStyle: textTheme.labelLarge,
+                  minimumSize: Size(48.w, 48.h),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 16.w,
+                    vertical: 12.h,
+                  ),
+                ),
+              ),
+              chipTheme: ChipThemeData(
+                labelStyle: textTheme.labelMedium,
+                padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
+              ),
               bottomNavigationBarTheme: BottomNavigationBarThemeData(
+                selectedLabelStyle: textTheme.labelMedium,
+                unselectedLabelStyle: textTheme.labelMedium,
                 selectedIconTheme: IconThemeData(size: baseIconSize),
                 unselectedIconTheme: IconThemeData(size: baseIconSize - 1),
               ),
               useMaterial3: true,
             ),
+            builder: (context, app) {
+              final mediaQuery = MediaQuery.of(context);
+              final systemScale = mediaQuery.textScaler.scale(1);
+              final comfortableScale = (systemScale * 1.1).clamp(1.1, 1.6);
+              return MediaQuery(
+                data: mediaQuery.copyWith(
+                  textScaler: TextScaler.linear(comfortableScale),
+                ),
+                child: app ?? const SizedBox.shrink(),
+              );
+            },
             onGenerateRoute: AppRouter.generateRoute,
             home: const _SessionGate(),
           );

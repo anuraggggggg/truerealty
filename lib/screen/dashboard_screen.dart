@@ -8197,11 +8197,11 @@ class _SmallPill extends StatelessWidget {
 class _BottomNavigation extends StatelessWidget {
   const _BottomNavigation({required this.selectedIndex, required this.onTap});
 
-  static const double _defaultNavIconSize = 18;
-  static const double _telecallerNavIconSize = 24;
-  static const double _telecallerMyPerformanceIconSize = 27;
-  static const double _defaultNavLabelSize = 11;
-  static const double _telecallerNavLabelSize = 9;
+  static const double _defaultNavIconSize = 22;
+  static const double _telecallerNavIconSize = 25;
+  static const double _telecallerMyPerformanceIconSize = 28;
+  static const double _defaultNavLabelSize = 12.5;
+  static const double _telecallerNavLabelSize = 10;
 
   final int selectedIndex;
   final ValueChanged<int> onTap;
@@ -8260,11 +8260,13 @@ class _BottomNavigation extends StatelessWidget {
 
     return DecoratedBox(
       decoration: const BoxDecoration(
+        color: AppColors.white,
+        border: Border(top: BorderSide(color: Color(0xFFD5DDE9))),
         boxShadow: [
           BoxShadow(
-            color: Color(0x0F061B69),
-            blurRadius: 10,
-            offset: Offset(0, -2),
+            color: Color(0x1A061B69),
+            blurRadius: 12,
+            offset: Offset(0, -3),
           ),
         ],
       ),
@@ -8285,8 +8287,8 @@ class _BottomNavigation extends StatelessWidget {
               type: BottomNavigationBarType.fixed,
               backgroundColor: AppColors.white,
               elevation: 0,
-              selectedItemColor: AppColors.vividBlue,
-              unselectedItemColor: const Color(0xFF7B8496),
+              selectedItemColor: AppColors.navy,
+              unselectedItemColor: AppColors.textSecondary,
               showSelectedLabels: role != UserRole.telecaller,
               showUnselectedLabels: role != UserRole.telecaller,
               selectedFontSize: navLabelSize,
@@ -8296,7 +8298,7 @@ class _BottomNavigation extends StatelessWidget {
                 fontSize: navLabelSize,
               ),
               unselectedLabelStyle: TextStyle(
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w700,
                 fontSize: navLabelSize,
               ),
               items: navItems
@@ -8551,60 +8553,86 @@ class _NavigationDrawerState extends State<_NavigationDrawer> {
           children: [
             Padding(
               padding: EdgeInsets.fromLTRB(24.w, 22.h, 18.w, 14.h),
-              child: Row(
+              child: Column(
                 children: [
-                  CircleAvatar(
-                    radius: 25.r,
-                    backgroundColor: Colors.white24,
-                    backgroundImage: image.isNotEmpty
-                        ? NetworkImage(image)
-                        : null,
-                    child: image.isEmpty
-                        ? Text(
-                            name
-                                .trim()
-                                .split(RegExp(r'\s+'))
-                                .take(2)
-                                .map((part) => part[0])
-                                .join()
-                                .toUpperCase(),
-                            style: GoogleFonts.inter(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          )
-                        : null,
-                  ),
-                  SizedBox(width: 14.w),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.inter(
-                            fontSize: 17.sp,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                        Text(
-                          designation,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.inter(
-                            fontSize: 13.sp,
-                            color: const Color(0xFFD3DEEB),
-                          ),
-                        ),
-                      ],
+                  Container(
+                    width: double.infinity,
+                    height: 66.h,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 14.w,
+                      vertical: 8.h,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12.r),
+                    ),
+                    child: Image.asset(
+                      'assets/app_logo.png',
+                      fit: BoxFit.contain,
+                      alignment: Alignment.centerLeft,
                     ),
                   ),
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: Icon(Icons.close, color: Colors.white, size: 22.sp),
+                  SizedBox(height: 16.h),
+                  Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 25.r,
+                        backgroundColor: Colors.white24,
+                        backgroundImage: image.isNotEmpty
+                            ? NetworkImage(image)
+                            : null,
+                        child: image.isEmpty
+                            ? Text(
+                                name
+                                    .trim()
+                                    .split(RegExp(r'\s+'))
+                                    .take(2)
+                                    .map((part) => part[0])
+                                    .join()
+                                    .toUpperCase(),
+                                style: GoogleFonts.inter(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              )
+                            : null,
+                      ),
+                      SizedBox(width: 14.w),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.inter(
+                                fontSize: 17.sp,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white,
+                              ),
+                            ),
+                            Text(
+                              designation,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.inter(
+                                fontSize: 13.sp,
+                                color: const Color(0xFFD3DEEB),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: Icon(
+                          Icons.close,
+                          color: Colors.white,
+                          size: 22.sp,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),

@@ -66,7 +66,7 @@ class AppStyles {
     fontFamily: 'Inter',
     fontSize: 16,
     fontWeight: FontWeight.normal,
-    height: 1.0,
+    height: 1.35,
     color: Color(0xFF747781),
   );
   static TextStyle get inputText => GoogleFonts.inter(
@@ -145,18 +145,18 @@ class CommonWidgets {
   static Widget fieldLabel(String text) {
     return Text(
       text,
-      style: TextStyle(
+      style: const TextStyle(
         fontFamily: 'Inter',
-        fontSize: 14,
+        fontSize: 15,
         fontWeight: FontWeight.w600,
-        height: 1.33,
-        letterSpacing: 0.6,
+        height: 1.35,
+        letterSpacing: 0.3,
         color: Color(0xFF002149),
       ),
     );
   }
 
-  static Widget fieldLabelScaled(String text, {double fontSize = 14}) {
+  static Widget fieldLabelScaled(String text, {double fontSize = 15}) {
     return Text(
       text,
       style: GoogleFonts.inter(

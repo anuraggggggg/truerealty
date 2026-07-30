@@ -174,7 +174,13 @@ class _FieldExecutiveDashboardViewState
     setState(() {
       _todaySiteVisitItems = visitItems;
       for (final item in visitItems) {
-        _visitActionStates.putIfAbsent(item.id, () => item.initialActionState);
+        final serverState = item.initialActionState;
+        final localState = _visitActionStates[item.id];
+        if (localState == null ||
+            serverState == _VisitActionState.checkedIn ||
+            serverState == _VisitActionState.checkedOut) {
+          _visitActionStates[item.id] = serverState;
+        }
       }
       _todayVisitRoutePoints = mappedItems
           .map((item) => item.coordinate!)
@@ -301,6 +307,9 @@ class _FieldExecutiveDashboardViewState
       _visitActionsLoading.remove(item.id);
       if (response != null) {
         _visitActionStates[item.id] = _VisitActionState.checkedOut;
+        _activeVisitRoutePoints = const [];
+        _activeVisitRouteLabels = const [];
+        _activeVisitPolylinePoints = const [];
       }
     });
     _showVisitResult(
@@ -309,6 +318,33 @@ class _FieldExecutiveDashboardViewState
           ? 'Site visit checked out.'
           : provider.error ?? 'Unable to check out.',
     );
+  }
+
+  Future<void> _requestCheckOutVisit(_TodaySiteVisitItem item) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Complete site visit?'),
+        content: Text(
+          'Check out ${item.leadName} from ${item.project}. '
+          'Your current location will be recorded.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            icon: const Icon(Icons.logout_rounded),
+            label: const Text('Check Out'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      await _checkOutVisit(item);
+    }
   }
 
   Future<void> _undoVisitStart(_TodaySiteVisitItem item) async {
@@ -673,7 +709,7 @@ class _FieldExecutiveDashboardViewState
                           _visitActionsLoading.contains(item.id),
                       onStartVisit: _startVisit,
                       onCheckIn: _checkInVisit,
-                      onCheckOut: _checkOutVisit,
+                      onCheckOut: _requestCheckOutVisit,
                       onUndoStart: _undoVisitStart,
                     ),
                     SizedBox(height: 12.h),
@@ -2093,11 +2129,28 @@ class _UpcomingSiteVisitTile extends StatelessWidget {
                             : null,
                         style: ElevatedButton.styleFrom(
                           minimumSize: Size.fromHeight(42.h),
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 10.w,
+                            vertical: 6.h,
+                          ),
+                          textStyle: GoogleFonts.inter(
+                            fontSize: 11.sp,
+                            fontWeight: FontWeight.w800,
+                          ),
                           elevation: 0,
-                          backgroundColor: AppColors.orangeDeep,
+                          backgroundColor:
+                              actionState == _VisitActionState.checkedIn
+                              ? AppColors.navy
+                              : AppColors.orangeDeep,
                           foregroundColor: Colors.white,
-                          disabledBackgroundColor: const Color(0xFFE5E7EB),
-                          disabledForegroundColor: const Color(0xFF94A3B8),
+                          disabledBackgroundColor:
+                              actionState == _VisitActionState.checkedOut
+                              ? AppColors.greenDeep
+                              : const Color(0xFFE5E7EB),
+                          disabledForegroundColor:
+                              actionState == _VisitActionState.checkedOut
+                              ? Colors.white
+                              : const Color(0xFF94A3B8),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(8.r),
                           ),
@@ -2129,39 +2182,80 @@ class _UpcomingSiteVisitTile extends StatelessWidget {
                               ? 'Check Out'
                               : 'Completed',
                           style: GoogleFonts.inter(
-                            fontSize: 12.sp,
+                            fontSize: 11.sp,
                             fontWeight: FontWeight.w800,
                           ),
                         ),
                       ),
                     ),
-                    if (actionState == _VisitActionState.started ||
-                        actionState == _VisitActionState.checkedIn) ...[
-                      SizedBox(width: 8.w),
-                      OutlinedButton(
-                        onPressed: actionLoading ? null : onUndoStart,
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: Size(0, 42.h),
-                          padding: EdgeInsets.symmetric(horizontal: 11.w),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8.r),
-                          ),
-                        ),
-                        child: const Text('Undo start'),
-                      ),
-                    ],
                   ],
                 ),
                 if (actionState == _VisitActionState.started) ...[
                   SizedBox(height: 8.h),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Route active. Check in when you reach the site.',
+                          style: GoogleFonts.inter(
+                            fontSize: 10.sp,
+                            height: 1.25,
+                            color: const Color(0xFF64748B),
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: 8.w),
+                      OutlinedButton(
+                        onPressed: actionLoading ? null : onUndoStart,
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: Size(0, 36.h),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 9.w,
+                            vertical: 5.h,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8.r),
+                          ),
+                        ),
+                        child: Text(
+                          'Undo',
+                          style: GoogleFonts.inter(
+                            fontSize: 10.sp,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                if (actionState == _VisitActionState.checkedIn) ...[
+                  SizedBox(height: 8.h),
                   Align(
                     alignment: Alignment.centerRight,
                     child: Text(
-                      'Route is active. Use the map below, then check in at the site.',
+                      'Checked in. Tap Check Out when the visit is complete.',
                       textAlign: TextAlign.right,
                       style: GoogleFonts.inter(
-                        fontSize: 10.5.sp,
-                        color: const Color(0xFF64748B),
+                        fontSize: 11.sp,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.navy,
+                      ),
+                    ),
+                  ),
+                ],
+                if (actionState == _VisitActionState.checkedOut) ...[
+                  SizedBox(height: 8.h),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      'Visit completed and checked out.',
+                      textAlign: TextAlign.right,
+                      style: GoogleFonts.inter(
+                        fontSize: 11.sp,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.greenDeep,
                       ),
                     ),
                   ),
@@ -2244,18 +2338,23 @@ class _VisitStatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 5.h),
-      decoration: BoxDecoration(
-        color: const Color(0xFFEAF2FF),
-        borderRadius: BorderRadius.circular(999.r),
-      ),
-      child: Text(
-        status.trim().isEmpty ? 'Scheduled' : status,
-        style: GoogleFonts.inter(
-          fontSize: 10.5.sp,
-          fontWeight: FontWeight.w800,
-          color: const Color(0xFF155EEF),
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: 130.w),
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 9.w, vertical: 5.h),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEAF2FF),
+          borderRadius: BorderRadius.circular(999.r),
+        ),
+        child: Text(
+          status.trim().isEmpty ? 'Scheduled' : status,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: GoogleFonts.inter(
+            fontSize: 10.sp,
+            fontWeight: FontWeight.w800,
+            color: const Color(0xFF155EEF),
+          ),
         ),
       ),
     );
@@ -3298,6 +3397,9 @@ class _TodaySiteVisitItem {
     final raw = visit.raw;
     final project = _dashboardMap(raw['project'] ?? raw['property']);
     final lead = _dashboardMap(raw['lead']);
+    final tracking = _dashboardMap(
+      raw['tracking'] ?? raw['visitTracking'] ?? raw['attendance'],
+    );
     final displayId = _dashboardText(raw['displayId']);
     final leadName = _dashboardFirstText([
       visit.leadName,
@@ -3340,8 +3442,22 @@ class _TodaySiteVisitItem {
         leadName,
         projectName,
       ].where((part) => part.trim().isNotEmpty).join(' • '),
-      checkedInAt: _dashboardDate(raw['checkedInAt']),
-      checkedOutAt: _dashboardDate(raw['checkedOutAt']),
+      checkedInAt: _dashboardFirstDate([
+        raw['checkedInAt'],
+        raw['checkInAt'],
+        raw['checkInTime'],
+        raw['actualCheckInAt'],
+        tracking['checkedInAt'],
+        tracking['checkInAt'],
+      ]),
+      checkedOutAt: _dashboardFirstDate([
+        raw['checkedOutAt'],
+        raw['checkOutAt'],
+        raw['checkOutTime'],
+        raw['actualCheckOutAt'],
+        tracking['checkedOutAt'],
+        tracking['checkOutAt'],
+      ]),
     );
   }
 
@@ -3376,6 +3492,14 @@ enum _VisitActionState { notStarted, started, checkedIn, checkedOut }
 DateTime? _dashboardDate(Object? value) {
   if (value == null) return null;
   return DateTime.tryParse(value.toString())?.toLocal();
+}
+
+DateTime? _dashboardFirstDate(Iterable<Object?> values) {
+  for (final value in values) {
+    final date = _dashboardDate(value);
+    if (date != null) return date;
+  }
+  return null;
 }
 
 class _VisitFunnelData {
