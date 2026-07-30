@@ -8567,7 +8567,7 @@ class _NavigationDrawerState extends State<_NavigationDrawer> {
                       borderRadius: BorderRadius.circular(12.r),
                     ),
                     child: Image.asset(
-                      'assets/app_logo.png',
+                      'assets/app_icon.png',
                       fit: BoxFit.contain,
                       alignment: Alignment.centerLeft,
                     ),
