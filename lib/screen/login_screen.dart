@@ -122,7 +122,6 @@ class _LoginCard extends StatelessWidget {
       final response = await context.read<AuthProvider>().login(
         email: email,
         password: password,
-        expectedRole: authProvider.role,
       );
 
       if (!context.mounted) {
@@ -217,58 +216,6 @@ class _LoginCard extends StatelessWidget {
                 size: 24.sp,
               ),
             ),
-          ),
-          SizedBox(height: 20.h),
-          CommonWidgets.fieldLabel('Select Role (For Demo)'),
-          SizedBox(height: 10.h),
-          DropdownButtonFormField<UserRole>(
-            initialValue: context.watch<AuthProvider>().role,
-            decoration: InputDecoration(
-              filled: true,
-              fillColor: AppColors.white,
-              contentPadding: EdgeInsets.symmetric(
-                horizontal: 18.w,
-                vertical: 20.h,
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10.r),
-                borderSide: const BorderSide(color: AppColors.border),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10.r),
-                borderSide: const BorderSide(color: AppColors.navy, width: 1.4),
-              ),
-            ),
-            items: [
-              // Owner app login is temporarily hidden for the current rollout.
-              DropdownMenuItem(
-                value: UserRole.telecaller,
-                child: Text(
-                  'Telecaller App',
-                  style: TextStyle(
-                    color: AppColors.navy,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 16.sp,
-                  ),
-                ),
-              ),
-              DropdownMenuItem(
-                value: UserRole.fieldExecutive,
-                child: Text(
-                  'Field Executive App',
-                  style: TextStyle(
-                    color: AppColors.navy,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 16.sp,
-                  ),
-                ),
-              ),
-            ],
-            onChanged: (UserRole? value) {
-              if (value != null) {
-                context.read<AuthProvider>().setRole(value);
-              }
-            },
           ),
           SizedBox(height: 14.h),
           Row(
