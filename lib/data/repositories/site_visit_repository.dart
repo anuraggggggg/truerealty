@@ -13,6 +13,8 @@ class SiteVisitRepository {
     String? dateFrom,
     String? dateTo,
     String? fieldExecutiveId,
+    int limit = 100,
+    int page = 1,
   }) {
     return _apiClient.get(
       '/site-visits',
@@ -22,7 +24,11 @@ class SiteVisitRepository {
         'dateFrom': dateFrom,
         'dateTo': dateTo,
         'fieldExecutiveId': fieldExecutiveId,
+        'limit': limit,
+        'page': page,
+        '_ts': DateTime.now().millisecondsSinceEpoch,
       },
+      headers: const {'Cache-Control': 'no-cache', 'Pragma': 'no-cache'},
     );
   }
 

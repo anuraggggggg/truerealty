@@ -6,18 +6,69 @@ import 'package:truerealtycrm/constant/colors_screen.dart';
 class MyLeadsFilterResult {
   const MyLeadsFilterResult({
     this.project,
-    this.source,
     this.status,
     this.leadType,
+    this.configuration,
+    this.dateRange,
+    this.customDate,
   });
 
   final String? project;
-  final String? source;
   final String? status;
   final String? leadType;
+  final String? configuration;
+  final MyLeadsDateRange? dateRange;
+  final DateTime? customDate;
 
   bool get isEmpty =>
-      project == null && source == null && status == null && leadType == null;
+      project == null &&
+      status == null &&
+      leadType == null &&
+      configuration == null &&
+      dateRange == null;
+
+  DateTime? get dateFrom {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    return switch (dateRange) {
+      MyLeadsDateRange.lastWeek => today.subtract(const Duration(days: 7)),
+      MyLeadsDateRange.lastMonth => DateTime(
+        today.year,
+        today.month - 1,
+        today.day,
+      ),
+      MyLeadsDateRange.custom =>
+        customDate == null
+            ? null
+            : DateTime(customDate!.year, customDate!.month, customDate!.day),
+      null => null,
+    };
+  }
+
+  DateTime? get dateTo {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    return switch (dateRange) {
+      MyLeadsDateRange.lastWeek || MyLeadsDateRange.lastMonth => today,
+      MyLeadsDateRange.custom =>
+        customDate == null
+            ? null
+            : DateTime(customDate!.year, customDate!.month, customDate!.day),
+      null => null,
+    };
+  }
+}
+
+enum MyLeadsDateRange { lastWeek, lastMonth, custom }
+
+extension MyLeadsDateRangeLabel on MyLeadsDateRange {
+  String get label {
+    return switch (this) {
+      MyLeadsDateRange.lastWeek => 'Last 1 Week',
+      MyLeadsDateRange.lastMonth => 'Last 1 Month',
+      MyLeadsDateRange.custom => 'Custom Date',
+    };
+  }
 }
 
 class MyLeadsFilterScreen extends StatefulWidget {
@@ -25,14 +76,14 @@ class MyLeadsFilterScreen extends StatefulWidget {
     super.key,
     this.initial = const MyLeadsFilterResult(),
     this.projects = const [],
-    this.sources = const [],
     this.statuses = const [],
+    this.configurations = const [],
   });
 
   final MyLeadsFilterResult initial;
   final List<String> projects;
-  final List<String> sources;
   final List<String> statuses;
+  final List<String> configurations;
 
   @override
   State<MyLeadsFilterScreen> createState() => _MyLeadsFilterScreenState();
@@ -40,17 +91,24 @@ class MyLeadsFilterScreen extends StatefulWidget {
 
 class _MyLeadsFilterScreenState extends State<MyLeadsFilterScreen> {
   String? _project;
-  String? _source;
   String? _status;
   String? _leadType;
+  String? _configuration;
+  MyLeadsDateRange? _dateRange;
+  DateTime? _customDate;
 
   @override
   void initState() {
     super.initState();
     _project = widget.initial.project;
-    _source = widget.initial.source;
     _status = widget.initial.status;
     _leadType = widget.initial.leadType;
+    _configuration = widget.initial.configuration;
+    _dateRange = widget.initial.dateRange;
+    _customDate = widget.initial.customDate;
+    if (_dateRange == MyLeadsDateRange.custom && _customDate == null) {
+      _customDate = DateTime.now();
+    }
   }
 
   @override
@@ -100,14 +158,6 @@ class _MyLeadsFilterScreenState extends State<MyLeadsFilterScreen> {
                           ),
                           SizedBox(height: 16.h),
                           _dropdown(
-                            label: 'Source',
-                            value: _source,
-                            values: widget.sources,
-                            onChanged: (value) =>
-                                setState(() => _source = value),
-                          ),
-                          SizedBox(height: 16.h),
-                          _dropdown(
                             label: 'Status',
                             value: _status,
                             values: widget.statuses,
@@ -116,12 +166,26 @@ class _MyLeadsFilterScreenState extends State<MyLeadsFilterScreen> {
                           ),
                           SizedBox(height: 16.h),
                           _dropdown(
-                            label: 'Temperature',
+                            label: 'Lead Type',
                             value: _leadType,
                             values: const ['Hot', 'Warm', 'Cold'],
                             onChanged: (value) =>
                                 setState(() => _leadType = value),
                           ),
+                          SizedBox(height: 16.h),
+                          _dropdown(
+                            label: 'Configuration',
+                            value: _configuration,
+                            values: _configurationOptions,
+                            onChanged: (value) =>
+                                setState(() => _configuration = value),
+                          ),
+                          SizedBox(height: 16.h),
+                          _dateRangeDropdown(),
+                          if (_dateRange == MyLeadsDateRange.custom) ...[
+                            SizedBox(height: 16.h),
+                            _customDateField(context),
+                          ],
                         ],
                       ),
                     ),
@@ -138,9 +202,11 @@ class _MyLeadsFilterScreenState extends State<MyLeadsFilterScreen> {
                     onPressed: () {
                       setState(() {
                         _project = null;
-                        _source = null;
                         _status = null;
                         _leadType = null;
+                        _configuration = null;
+                        _dateRange = null;
+                        _customDate = null;
                       });
                     },
                     child: const Text('Reset'),
@@ -151,9 +217,13 @@ class _MyLeadsFilterScreenState extends State<MyLeadsFilterScreen> {
                       context,
                       MyLeadsFilterResult(
                         project: _project,
-                        source: _source,
                         status: _status,
                         leadType: _leadType,
+                        configuration: _configuration,
+                        dateRange: _dateRange,
+                        customDate: _dateRange == MyLeadsDateRange.custom
+                            ? _customDate
+                            : null,
                       ),
                     ),
                     style: ElevatedButton.styleFrom(
@@ -166,6 +236,88 @@ class _MyLeadsFilterScreenState extends State<MyLeadsFilterScreen> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  List<String> get _configurationOptions {
+    const defaults = [
+      '1 BHK',
+      '2 BHK',
+      '3 BHK',
+      '4 BHK',
+      '5 BHK',
+      'Studio',
+      'Penthouse',
+    ];
+    return {...defaults, ...widget.configurations}.toList();
+  }
+
+  Widget _dateRangeDropdown() {
+    return DropdownButtonFormField<MyLeadsDateRange>(
+      initialValue: _dateRange,
+      isExpanded: true,
+      decoration: InputDecoration(
+        labelText: 'Date Range',
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(9.r)),
+      ),
+      hint: const Text('All Dates'),
+      items: [
+        const DropdownMenuItem<MyLeadsDateRange>(
+          value: null,
+          child: Text('All Dates'),
+        ),
+        ...MyLeadsDateRange.values.map(
+          (item) => DropdownMenuItem<MyLeadsDateRange>(
+            value: item,
+            child: Text(item.label),
+          ),
+        ),
+      ],
+      onChanged: (value) {
+        setState(() {
+          _dateRange = value;
+          if (value == MyLeadsDateRange.custom) {
+            _customDate ??= DateTime.now();
+          } else {
+            _customDate = null;
+          }
+        });
+      },
+    );
+  }
+
+  Widget _customDateField(BuildContext context) {
+    final value = _customDate;
+    return InkWell(
+      borderRadius: BorderRadius.circular(9.r),
+      onTap: () async {
+        final now = DateTime.now();
+        final picked = await showDatePicker(
+          context: context,
+          initialDate: value ?? now,
+          firstDate: DateTime(now.year - 5),
+          lastDate: now,
+        );
+        if (picked != null && mounted) {
+          setState(() => _customDate = picked);
+        }
+      },
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: 'Custom Date',
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(9.r)),
+          suffixIcon: const Icon(Icons.calendar_today_rounded),
+        ),
+        child: Text(
+          value == null
+              ? 'Select date'
+              : '${value.day.toString().padLeft(2, '0')}/${value.month.toString().padLeft(2, '0')}/${value.year}',
+          style: GoogleFonts.inter(
+            fontSize: 14.sp,
+            color: value == null ? const Color(0xFF64748B) : AppColors.navy,
+          ),
         ),
       ),
     );

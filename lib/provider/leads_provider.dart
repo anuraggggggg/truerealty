@@ -65,11 +65,20 @@ class LeadProvider extends ApiProviderBase {
     String? dateFrom,
     String? dateTo,
   }) async {
+    // The live /leads API currently honors configuration/propertyType/search/statusId.
+    // leadType + date range are present on each lead but ignored as query params,
+    // so we request a wider page and filter those locally.
+    final needsLocalFilter =
+        (leadType?.trim().isNotEmpty ?? false) ||
+        (dateFrom?.trim().isNotEmpty ?? false) ||
+        (dateTo?.trim().isNotEmpty ?? false);
+    final requestLimit = needsLocalFilter ? 100 : limit;
+
     final response = await runApiRequest(
       () => _repository.listLeads(
         search: search,
-        page: page,
-        limit: limit,
+        page: needsLocalFilter ? 1 : page,
+        limit: requestLimit,
         source: source,
         status: status,
         leadType: leadType,
@@ -88,17 +97,36 @@ class LeadProvider extends ApiProviderBase {
       final parsedLeads = _extractLeadList(
         response.data,
       ).map(LeadModel.fromJson).toList();
-      final statusFilter = _cleanStatus(status ?? '');
-      final visibleLeads = statusFilter.isEmpty
-          ? parsedLeads
-          : _filterLeadsByStatus(parsedLeads, statusFilter);
 
-      _leads
-        ..clear()
-        ..addAll(visibleLeads);
-      _totalCount = statusFilter.isEmpty
-          ? (_extractTotalCount(response.data) ?? _leads.length)
-          : _leads.length;
+      var visibleLeads = parsedLeads;
+      final statusFilter = _cleanStatus(status ?? '');
+      if (statusFilter.isNotEmpty) {
+        visibleLeads = _filterLeadsByStatus(visibleLeads, statusFilter);
+      }
+      visibleLeads = _filterLeadsByLeadType(visibleLeads, leadType);
+      visibleLeads = _filterLeadsByDate(visibleLeads, dateFrom, dateTo);
+      // configuration is filtered by the API, but keep a local safety net.
+      visibleLeads = _filterLeadsByConfiguration(visibleLeads, configuration);
+
+      if (needsLocalFilter) {
+        final start = ((page - 1) * limit).clamp(0, visibleLeads.length);
+        final end = (start + limit).clamp(0, visibleLeads.length);
+        _totalCount = visibleLeads.length;
+        _leads
+          ..clear()
+          ..addAll(visibleLeads.sublist(start, end));
+      } else {
+        _leads
+          ..clear()
+          ..addAll(visibleLeads);
+        final metaTotal = _extractTotalCount(response.data);
+        if (statusFilter.isNotEmpty) {
+          _totalCount = _leads.length;
+        } else {
+          _totalCount = metaTotal ?? _leads.length;
+        }
+      }
+
       if (statusFilter.isEmpty || _statusCounts.isEmpty) {
         _replaceStatusSummary(parsedLeads);
       } else {
@@ -141,6 +169,60 @@ class LeadProvider extends ApiProviderBase {
     return apiLeads
         .where((lead) => _statusMatches(lead.status, status))
         .toList();
+  }
+
+  List<LeadModel> _filterLeadsByLeadType(
+    List<LeadModel> apiLeads,
+    String? leadType,
+  ) {
+    final selected = leadType?.trim().toLowerCase() ?? '';
+    if (selected.isEmpty) return apiLeads;
+    return apiLeads
+        .where((lead) => (lead.leadType ?? '').trim().toLowerCase() == selected)
+        .toList();
+  }
+
+  List<LeadModel> _filterLeadsByConfiguration(
+    List<LeadModel> apiLeads,
+    String? configuration,
+  ) {
+    final selected = configuration?.trim().toLowerCase() ?? '';
+    if (selected.isEmpty) return apiLeads;
+    return apiLeads
+        .where(
+          (lead) =>
+              (lead.configuration ?? '').trim().toLowerCase() == selected,
+        )
+        .toList();
+  }
+
+  List<LeadModel> _filterLeadsByDate(
+    List<LeadModel> apiLeads,
+    String? dateFrom,
+    String? dateTo,
+  ) {
+    final from = _parseFilterDate(dateFrom, endOfDay: false);
+    final to = _parseFilterDate(dateTo, endOfDay: true);
+    if (from == null && to == null) return apiLeads;
+    return apiLeads.where((lead) {
+      final created = lead.createdAt;
+      if (created == null) return false;
+      if (from != null && created.isBefore(from)) return false;
+      if (to != null && created.isAfter(to)) return false;
+      return true;
+    }).toList();
+  }
+
+  DateTime? _parseFilterDate(String? value, {required bool endOfDay}) {
+    final text = value?.trim() ?? '';
+    if (text.isEmpty) return null;
+    final parsed = DateTime.tryParse(text);
+    if (parsed == null) return null;
+    final local = parsed.isUtc ? parsed.toLocal() : parsed;
+    if (endOfDay) {
+      return DateTime(local.year, local.month, local.day, 23, 59, 59, 999);
+    }
+    return DateTime(local.year, local.month, local.day);
   }
 
   Future<ApiResponse<dynamic>?> fetchDeletedLeads({
@@ -349,11 +431,15 @@ class LeadModel {
   final String status;
   final String? stage;
   final String? source;
+  final String? leadType;
+  final String? configuration;
+  final String? propertyType;
   final String? project;
   final String? location;
   final String? assignedTo;
   final String? dueLabel;
   final String? createdLabel;
+  final DateTime? createdAt;
   final Map<String, dynamic>? raw;
 
   LeadModel({
@@ -365,18 +451,22 @@ class LeadModel {
     required this.status,
     this.stage,
     this.source,
+    this.leadType,
+    this.configuration,
+    this.propertyType,
     this.project,
     this.location,
     this.assignedTo,
     this.dueLabel,
     this.createdLabel,
+    this.createdAt,
     this.raw,
   });
 
   factory LeadModel.fromJson(Object? json) {
     final map = json is Map<String, dynamic> ? json : <String, dynamic>{};
-    final requirement = map['requirement'] is Map<String, dynamic>
-        ? map['requirement'] as Map<String, dynamic>
+    final requirement = map['requirement'] is Map
+        ? Map<String, dynamic>.from(map['requirement'] as Map)
         : const <String, dynamic>{};
 
     return LeadModel(
@@ -397,14 +487,35 @@ class LeadModel {
           'New',
       stage: _readString(map, const ['stageName', 'stage']),
       source: _readString(map, const ['sourceName', 'source']),
+      leadType: _readString(map, const [
+        'leadType',
+        'temperatureName',
+        'temperature',
+      ]),
+      configuration: _readString(requirement, const [
+        'configuration',
+        'bhk',
+        'unitType',
+      ]),
+      propertyType: _readString(requirement, const [
+        'propertyType',
+        'property_type',
+      ]),
       project:
-          _readString(map, const ['projectName', 'preferredProjectId']) ??
+          _readString(map, const [
+            'projectName',
+            'preferredProjectId',
+          ]) ??
           _readString(requirement, const [
             'preferredProjectId',
             'preferredProject',
           ]),
       location:
-          _readString(map, const ['location', 'preferredLocation']) ??
+          _readString(map, const [
+            'projectArea',
+            'location',
+            'preferredLocation',
+          ]) ??
           _readString(requirement, const ['preferredLocation', 'location']),
       assignedTo: _readString(map, const [
         'assignedToName',
@@ -424,12 +535,16 @@ class LeadModel {
         'createdAt',
         'addedDate',
       ]),
+      createdAt: DateTime.tryParse(
+        _readString(map, const ['createdAt', 'created_at', 'addedDate']) ?? '',
+      ),
       raw: map,
     );
   }
 
   bool get isHot {
-    final text = '${status.toLowerCase()} ${stage?.toLowerCase() ?? ''}';
+    final text =
+        '${leadType?.toLowerCase() ?? ''} ${status.toLowerCase()} ${stage?.toLowerCase() ?? ''}';
     return text.contains('hot');
   }
 

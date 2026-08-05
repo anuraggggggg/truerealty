@@ -2,6 +2,47 @@ import 'package:truerealtycrm/data/models/api_response.dart';
 import 'package:truerealtycrm/data/repositories/site_visit_repository.dart';
 import 'package:truerealtycrm/provider/api_provider_base.dart';
 
+enum SiteVisitListFilter {
+  all,
+  upcoming,
+  scheduled,
+  completed,
+  cancelled,
+}
+
+extension SiteVisitListFilterX on SiteVisitListFilter {
+  String get label {
+    switch (this) {
+      case SiteVisitListFilter.all:
+        return 'All Visits';
+      case SiteVisitListFilter.upcoming:
+        return 'Upcoming';
+      case SiteVisitListFilter.scheduled:
+        return 'Scheduled';
+      case SiteVisitListFilter.completed:
+        return 'Completed';
+      case SiteVisitListFilter.cancelled:
+        return 'Cancelled';
+    }
+  }
+
+  bool matches(SiteVisitModel visit) {
+    final status = visit.status.toLowerCase();
+    switch (this) {
+      case SiteVisitListFilter.all:
+        return true;
+      case SiteVisitListFilter.upcoming:
+        return status.contains('upcoming');
+      case SiteVisitListFilter.scheduled:
+        return status.contains('scheduled');
+      case SiteVisitListFilter.completed:
+        return status.contains('completed');
+      case SiteVisitListFilter.cancelled:
+        return status.contains('cancel');
+    }
+  }
+}
+
 class SiteVisitModel {
   const SiteVisitModel({
     required this.id,
@@ -9,27 +50,41 @@ class SiteVisitModel {
     required this.project,
     required this.status,
     required this.type,
+    this.displayId = '',
     this.leadId = '',
+    this.leadDisplayId = '',
     this.phone = '',
     this.location = '',
+    this.unitLabel = '',
+    this.projectImageUrl = '',
     this.executiveName = '',
     this.executiveId = '',
+    this.executiveImageUrl = '',
+    this.executiveRole = '',
     this.scheduledAt,
+    this.reminderAt,
     this.durationMinutes,
     this.raw = const {},
   });
 
   final String id;
+  final String displayId;
   final String leadId;
+  final String leadDisplayId;
   final String leadName;
   final String phone;
   final String project;
   final String location;
+  final String unitLabel;
+  final String projectImageUrl;
   final String status;
   final String type;
   final String executiveName;
   final String executiveId;
+  final String executiveImageUrl;
+  final String executiveRole;
   final DateTime? scheduledAt;
+  final DateTime? reminderAt;
   final int? durationMinutes;
   final Map<String, dynamic> raw;
 
@@ -50,7 +105,7 @@ class SiteVisitModel {
       'Nov',
       'Dec',
     ];
-    return '${value.day} ${months[value.month - 1]}, ${value.year}';
+    return '${value.day.toString().padLeft(2, '0')} ${months[value.month - 1]} ${value.year}';
   }
 
   String get time {
@@ -61,9 +116,42 @@ class SiteVisitModel {
     return '$hour:$minute ${value.hour >= 12 ? 'PM' : 'AM'}';
   }
 
+  String get reminderLabel {
+    final value = reminderAt;
+    if (value == null) return 'No reminder';
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    final hour = value.hour % 12 == 0 ? 12 : value.hour % 12;
+    final minute = value.minute.toString().padLeft(2, '0');
+    final ampm = value.hour >= 12 ? 'PM' : 'AM';
+    return '${value.day.toString().padLeft(2, '0')} ${months[value.month - 1]} ${value.year} $hour:$minute $ampm';
+  }
+
+  String get formattedPhone {
+    final rawPhone = phone.trim();
+    if (rawPhone.isEmpty) return '-';
+    if (rawPhone.startsWith('+')) return rawPhone;
+    final digits = rawPhone.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.length == 10) return '+91 $digits';
+    return rawPhone;
+  }
+
   factory SiteVisitModel.fromJson(Map<String, dynamic> json) {
     final lead = _map(json['lead']);
     final project = _map(json['project'] ?? json['property']);
+    final unit = _map(json['unit']);
     final executive = _map(
       json['fieldExecutive'] ??
           json['assignedExecutive'] ??
@@ -83,15 +171,35 @@ class SiteVisitModel {
         schedule['scheduledAt'] ??
         schedule['date'];
 
+    final countryCode = _text(
+      lead['mobileCountryCode'] ?? json['mobileCountryCode'],
+    );
+    final mobile = _firstNonEmpty([
+      json['leadPhone'],
+      lead['phone'],
+      lead['mobile'],
+      json['phone'],
+      json['mobile'],
+    ]);
+    final phone = mobile.isEmpty
+        ? ''
+        : mobile.startsWith('+')
+        ? mobile
+        : countryCode.isEmpty
+        ? mobile
+        : '$countryCode $mobile'.trim();
+
     return SiteVisitModel(
       id: _text(json['id'] ?? json['_id']),
+      displayId: _text(json['displayId'] ?? json['visitId']),
       leadId: _text(
-        json['leadId'] ??
-            lead['displayId'] ??
-            lead['leadId'] ??
-            lead['id'] ??
-            lead['_id'],
+        json['leadId'] ?? lead['id'] ?? lead['_id'],
       ),
+      leadDisplayId: _firstNonEmpty([
+        json['leadDisplayId'],
+        lead['displayId'],
+        lead['leadId'],
+      ]),
       leadName: _firstNonEmpty([
         json['leadName'],
         lead['name'],
@@ -99,12 +207,7 @@ class SiteVisitModel {
         combinedLeadName,
         json['customerName'],
       ], fallback: 'Unknown lead'),
-      phone: _firstNonEmpty([
-        lead['phone'],
-        lead['mobile'],
-        json['phone'],
-        json['mobile'],
-      ]),
+      phone: phone,
       project: _firstNonEmpty([
         json['projectName'],
         project['name'],
@@ -112,11 +215,27 @@ class SiteVisitModel {
         json['propertyName'],
       ], fallback: 'Project not available'),
       location: _firstNonEmpty([
+        json['projectLocation'],
         json['location'],
         project['location'],
         project['address'],
         project['city'],
         json['meetingPoint'],
+      ]),
+      unitLabel: _firstNonEmpty([
+        json['unitLabel'],
+        unit['label'],
+        unit['unitNumber'],
+        unit['name'],
+        [
+          _text(unit['tower']),
+          _text(unit['unitNumber']),
+        ].where((part) => part.isNotEmpty).join(', '),
+      ]),
+      projectImageUrl: _firstNonEmpty([
+        project['imageUrl'],
+        json['projectImageUrl'],
+        json['imageUrl'],
       ]),
       status: _pretty(
         _firstNonEmpty([
@@ -128,9 +247,10 @@ class SiteVisitModel {
         _firstNonEmpty([
           json['visitType'],
           json['type'],
-        ], fallback: 'Site visit'),
+        ], fallback: 'Site Visit'),
       ),
       executiveName: _firstNonEmpty([
+        json['assignedExecutiveName'],
         json['fieldExecutiveName'],
         executive['name'],
         executive['fullName'],
@@ -138,15 +258,27 @@ class SiteVisitModel {
             .trim(),
       ], fallback: 'Unassigned'),
       executiveId: _text(
-        json['fieldExecutiveId'] ??
+        json['assignedExecutiveId'] ??
+            json['fieldExecutiveId'] ??
             json['executiveId'] ??
-            json['assignedExecutiveId'] ??
             executive['employeeId'] ??
             executive['userId'] ??
             executive['id'] ??
             executive['_id'],
       ),
+      executiveImageUrl: _firstNonEmpty([
+        json['assignedExecutiveImage'],
+        executive['image'],
+        executive['imageUrl'],
+        executive['avatar'],
+      ]),
+      executiveRole: _firstNonEmpty([
+        json['assignedExecutiveRole'],
+        executive['role'],
+        executive['roleName'],
+      ]),
       scheduledAt: _date(dateValue),
+      reminderAt: _date(json['reminderAt'] ?? schedule['reminderAt']),
       durationMinutes: _integer(
         json['durationMinutes'] ?? json['duration'] ?? schedule['duration'],
       ),
@@ -208,40 +340,110 @@ class SiteVisitProvider extends ApiProviderBase {
 
   final SiteVisitRepository _repository;
   final List<SiteVisitModel> _siteVisits = [];
+  SiteVisitListFilter _filter = SiteVisitListFilter.all;
+  String? _selectedExecutiveId;
+  String _searchQuery = '';
   dynamic _options;
+  bool _hasLoaded = false;
 
   List<SiteVisitModel> get siteVisits => List.unmodifiable(_siteVisits);
+  SiteVisitListFilter get filter => _filter;
+  String? get selectedExecutiveId => _selectedExecutiveId;
+  String get searchQuery => _searchQuery;
   dynamic get options => _options;
+  bool get hasLoaded => _hasLoaded;
 
   int get totalVisits => _siteVisits.length;
-  int get scheduledVisits => _countStatus('scheduled');
-  int get completedVisits => _countStatus('completed');
-  int get cancelledVisits => _countStatus('cancel');
-  int get upcomingVisits {
-    final now = DateTime.now();
-    return _siteVisits
-        .where(
-          (visit) =>
-              visit.scheduledAt != null &&
-              visit.scheduledAt!.isAfter(now) &&
-              !_isStatus(visit, 'completed') &&
-              !_isStatus(visit, 'cancel'),
-        )
-        .length;
+  int get upcomingVisits => countFor(SiteVisitListFilter.upcoming);
+  int get scheduledVisits => countFor(SiteVisitListFilter.scheduled);
+  int get completedVisits => countFor(SiteVisitListFilter.completed);
+  int get cancelledVisits => countFor(SiteVisitListFilter.cancelled);
+
+  int get fieldExecutiveCount {
+    final ids = <String>{};
+    for (final visit in _siteVisits) {
+      final id = visit.executiveId.trim();
+      if (id.isNotEmpty) ids.add(id.toLowerCase());
+    }
+    return ids.length;
   }
 
   int get activeVisits => _siteVisits
       .where(
         (visit) =>
-            !_isStatus(visit, 'completed') && !_isStatus(visit, 'cancel'),
+            !visit.status.toLowerCase().contains('completed') &&
+            !visit.status.toLowerCase().contains('cancel'),
       )
       .length;
 
-  int _countStatus(String status) =>
-      _siteVisits.where((visit) => _isStatus(visit, status)).length;
+  double get completionRate {
+    if (_siteVisits.isEmpty) return 0;
+    return (completedVisits / _siteVisits.length) * 100;
+  }
 
-  bool _isStatus(SiteVisitModel visit, String status) =>
-      visit.status.toLowerCase().contains(status);
+  List<SiteVisitModel> get visibleVisits {
+    final query = _searchQuery.trim().toLowerCase();
+    final executiveId = _selectedExecutiveId?.trim().toLowerCase() ?? '';
+    return _siteVisits.where((visit) {
+      if (!_filter.matches(visit)) return false;
+      if (executiveId.isNotEmpty &&
+          visit.executiveId.trim().toLowerCase() != executiveId) {
+        return false;
+      }
+      if (query.isEmpty) return true;
+      return visit.leadName.toLowerCase().contains(query) ||
+          visit.phone.toLowerCase().contains(query) ||
+          visit.project.toLowerCase().contains(query) ||
+          visit.location.toLowerCase().contains(query) ||
+          visit.executiveName.toLowerCase().contains(query) ||
+          visit.leadDisplayId.toLowerCase().contains(query) ||
+          visit.status.toLowerCase().contains(query) ||
+          visit.type.toLowerCase().contains(query);
+    }).toList(growable: false);
+  }
+
+  List<SiteVisitModel> get todayAndUpcoming {
+    final now = DateTime.now();
+    final startOfToday = DateTime(now.year, now.month, now.day);
+    final items = _siteVisits.where((visit) {
+      final status = visit.status.toLowerCase();
+      if (status.contains('completed') || status.contains('cancel')) {
+        return false;
+      }
+      final scheduled = visit.scheduledAt;
+      if (scheduled == null) return status.contains('upcoming');
+      return !scheduled.isBefore(startOfToday) || status.contains('upcoming');
+    }).toList()
+      ..sort((a, b) {
+        final aDate = a.scheduledAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final bDate = b.scheduledAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return aDate.compareTo(bDate);
+      });
+    return items.take(5).toList(growable: false);
+  }
+
+  int countFor(SiteVisitListFilter filter) {
+    return _siteVisits.where(filter.matches).length;
+  }
+
+  void setFilter(SiteVisitListFilter filter) {
+    if (_filter == filter) return;
+    _filter = filter;
+    notifyListeners();
+  }
+
+  void setSelectedExecutiveId(String? executiveId) {
+    final next = executiveId?.trim().isEmpty == true ? null : executiveId;
+    if (_selectedExecutiveId == next) return;
+    _selectedExecutiveId = next;
+    notifyListeners();
+  }
+
+  void setSearchQuery(String value) {
+    if (_searchQuery == value) return;
+    _searchQuery = value;
+    notifyListeners();
+  }
 
   Future<ApiResponse<dynamic>?> fetchSiteVisits({
     String? search,
@@ -249,6 +451,8 @@ class SiteVisitProvider extends ApiProviderBase {
     String? dateFrom,
     String? dateTo,
     String? fieldExecutiveId,
+    int limit = 100,
+    int page = 1,
   }) async {
     final response = await runApiRequest(
       () => _repository.listSiteVisits(
@@ -257,29 +461,19 @@ class SiteVisitProvider extends ApiProviderBase {
         dateFrom: dateFrom,
         dateTo: dateTo,
         fieldExecutiveId: fieldExecutiveId,
+        limit: limit,
+        page: page,
       ),
     );
     if (response != null) {
-      final parsedVisits = _extractList(
-        response.data,
-      ).map(SiteVisitModel.fromJson).where((visit) => visit.id.isNotEmpty);
-      final selectedExecutive = fieldExecutiveId?.trim() ?? '';
-      final visits = parsedVisits.toList();
-      final hasExecutiveIds = visits.any(
-        (visit) => visit.executiveId.trim().isNotEmpty,
-      );
-      final visibleVisits = selectedExecutive.isEmpty || !hasExecutiveIds
-          ? visits
-          : visits
-                .where(
-                  (visit) =>
-                      visit.executiveId.trim().toLowerCase() ==
-                      selectedExecutive.toLowerCase(),
-                )
-                .toList();
+      final visits = _extractList(response.data)
+          .map(SiteVisitModel.fromJson)
+          .where((visit) => visit.id.isNotEmpty)
+          .toList();
       _siteVisits
         ..clear()
-        ..addAll(visibleVisits);
+        ..addAll(visits);
+      _hasLoaded = true;
       notifyListeners();
     }
     return response;
@@ -305,14 +499,19 @@ class SiteVisitProvider extends ApiProviderBase {
           map['visits'] ??
           map['results'] ??
           map['rows'];
-      if (next == null || identical(next, value)) break;
-      value = next;
+      if (next != null) {
+        value = next;
+        continue;
+      }
+      break;
     }
-    if (value is! List) return const [];
-    return value
-        .whereType<Map>()
-        .map((item) => Map<String, dynamic>.from(item))
-        .toList();
+    if (value is List) {
+      return value
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList(growable: false);
+    }
+    return const [];
   }
 
   Future<ApiResponse<dynamic>?> createSiteVisitFromApi(
@@ -366,7 +565,7 @@ class SiteVisitProvider extends ApiProviderBase {
     return runApiRequest(_repository.stopTracking);
   }
 
-  Future<ApiResponse<dynamic>?> fetchLiveTracking() {
+  Future<ApiResponse<dynamic>?> liveTracking() {
     return runApiRequest(_repository.liveTracking);
   }
 }

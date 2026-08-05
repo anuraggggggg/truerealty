@@ -13,10 +13,14 @@ class AuthProvider extends ApiProviderBase {
   UserRole _role = UserRole.telecaller;
   AuthSession? _session;
   String? _loginValidationError;
+  OtpChallenge? _otpChallenge;
+  LoginRequest? _pendingLoginRequest;
 
   UserRole get role => _role;
   AuthSession? get session => _session;
-  bool get isAuthenticated => _session?.accessToken?.isNotEmpty ?? false;
+  OtpChallenge? get otpChallenge => _otpChallenge;
+  bool get isAuthenticated => _session?.hasTokens ?? false;
+  bool get requiresOtp => _otpChallenge != null;
   String? get loginError => _loginValidationError ?? error;
 
   bool canViewModule(String moduleKey) {
@@ -62,35 +66,155 @@ class AuthProvider extends ApiProviderBase {
     notifyListeners();
   }
 
+  /// Login with email+password or mobile+password.
+  /// Backend decides whether OTP is required.
   Future<ApiResponse<AuthSession>?> login({
-    required String email,
+    String? email,
+    String? mobile,
     required String password,
-    UserRole? expectedRole,
   }) async {
     _loginValidationError = null;
-    final response = await runApiRequest(
-      () => _repository.login(LoginRequest(email: email, password: password)),
-    );
-    _session = response?.data;
-    final authenticatedRole = _roleFromSession();
-    if (authenticatedRole != null &&
-        expectedRole != null &&
-        authenticatedRole != expectedRole) {
-      await _repository.clearSession();
-      _session = null;
-      _role = expectedRole;
-      _loginValidationError =
-          'These credentials belong to ${_roleLabel(authenticatedRole)}. '
-          'Please select ${_roleLabel(authenticatedRole)} and try again.';
+    final identifier = (email ?? mobile ?? '').trim();
+    if (identifier.isEmpty || password.isEmpty) {
+      _loginValidationError = 'Please enter your email/mobile and password.';
       notifyListeners();
       return null;
     }
+
+    final request = _buildLoginRequest(
+      identifier: identifier,
+      password: password,
+    );
+
+    final response = await runApiRequest(() => _repository.login(request));
+    final session = response?.data;
+    if (session == null) {
+      notifyListeners();
+      return null;
+    }
+
+    if (session.requiresOtp) {
+      _pendingLoginRequest = request;
+      _otpChallenge = session.otpChallenge ??
+          OtpChallenge(
+            identifier: request.email ?? request.mobile ?? identifier,
+            deliveryTarget: 'your registered phone',
+            expiresInSeconds: 300,
+            resendAfterSeconds: 60,
+            message: response?.message,
+          );
+      _session = null;
+      notifyListeners();
+      return response;
+    }
+
+    await _completeAuthenticatedSession(session);
+    return response;
+  }
+
+  Future<ApiResponse<AuthSession>?> verifyOtp({required String otp}) async {
+    _loginValidationError = null;
+    final challenge = _otpChallenge;
+    final identifier = challenge?.identifier.trim() ?? '';
+    if (identifier.isEmpty) {
+      _loginValidationError = 'OTP session expired. Please login again.';
+      notifyListeners();
+      return null;
+    }
+    if (otp.trim().length != 6) {
+      _loginValidationError = 'Please enter the 6-digit OTP.';
+      notifyListeners();
+      return null;
+    }
+
+    final response = await runApiRequest(
+      () => _repository.verifyOtp(
+        VerifyOtpRequest(identifier: identifier, otp: otp.trim()),
+      ),
+    );
+    final session = response?.data;
+    if (session == null || !session.hasTokens) {
+      notifyListeners();
+      return null;
+    }
+
+    _otpChallenge = null;
+    _pendingLoginRequest = null;
+    await _completeAuthenticatedSession(session);
+    return response;
+  }
+
+  Future<ApiResponse<AuthSession>?> resendOtp() async {
+    _loginValidationError = null;
+    final pending = _pendingLoginRequest;
+    if (pending == null) {
+      _loginValidationError = 'OTP session expired. Please login again.';
+      notifyListeners();
+      return null;
+    }
+
+    final response = await runApiRequest(() => _repository.resendOtp(pending));
+    final session = response?.data;
+    if (session == null) {
+      notifyListeners();
+      return null;
+    }
+
+    if (session.requiresOtp) {
+      _otpChallenge = session.otpChallenge ??
+          OtpChallenge(
+            identifier: pending.email ?? pending.mobile ?? '',
+            deliveryTarget:
+                _otpChallenge?.deliveryTarget ?? 'your registered phone',
+            expiresInSeconds: 300,
+            resendAfterSeconds: 60,
+            message: response?.message,
+          );
+      notifyListeners();
+      return response;
+    }
+
+    // Rare case: backend issues tokens on resend/login.
+    if (session.hasTokens) {
+      _otpChallenge = null;
+      _pendingLoginRequest = null;
+      await _completeAuthenticatedSession(session);
+    }
+    return response;
+  }
+
+  void clearOtpChallenge() {
+    _otpChallenge = null;
+    _pendingLoginRequest = null;
+    _loginValidationError = null;
+    notifyListeners();
+  }
+
+  LoginRequest _buildLoginRequest({
+    required String identifier,
+    required String password,
+  }) {
+    if (_looksLikeEmail(identifier)) {
+      return LoginRequest(email: identifier, password: password);
+    }
+    return LoginRequest(
+      mobile: identifier.replaceAll(RegExp(r'\s+'), ''),
+      password: password,
+    );
+  }
+
+  bool _looksLikeEmail(String value) {
+    return value.contains('@');
+  }
+
+  Future<void> _completeAuthenticatedSession(AuthSession session) async {
+    _session = session;
+    final authenticatedRole = _roleFromSession();
     if (authenticatedRole != null) {
       _role = authenticatedRole;
       await _repository.saveRole(_role.name);
     }
     notifyListeners();
-    return response;
   }
 
   Future<ApiResponse<AuthSession>?> refreshSession() async {
@@ -99,6 +223,7 @@ class AuthProvider extends ApiProviderBase {
     if (_syncRoleFromSession()) {
       await _repository.saveRole(_role.name);
     }
+    notifyListeners();
     return response;
   }
 
@@ -114,17 +239,6 @@ class AuthProvider extends ApiProviderBase {
   UserRole? _roleFromSession() {
     final sessionRole = _findRole(_session?.user) ?? _findRole(_session?.raw);
     return _parseRole(sessionRole);
-  }
-
-  String _roleLabel(UserRole role) {
-    switch (role) {
-      case UserRole.owner:
-        return 'Owner';
-      case UserRole.telecaller:
-        return 'Telecaller';
-      case UserRole.fieldExecutive:
-        return 'Field Executive';
-    }
   }
 
   String? _findRole(Object? value, [int depth = 0]) {
@@ -191,6 +305,9 @@ class AuthProvider extends ApiProviderBase {
   Future<ApiResponse<dynamic>?> logout() async {
     final response = await runApiRequest(_repository.logout);
     _session = null;
+    _otpChallenge = null;
+    _pendingLoginRequest = null;
+    notifyListeners();
     return response;
   }
 
@@ -211,6 +328,8 @@ class AuthProvider extends ApiProviderBase {
   Future<void> clearSession() async {
     await _repository.clearSession();
     _session = null;
+    _otpChallenge = null;
+    _pendingLoginRequest = null;
     notifyListeners();
   }
 }

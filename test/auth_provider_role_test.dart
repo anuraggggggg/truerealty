@@ -18,6 +18,7 @@ void main() {
     await provider.login(email: 'field@example.com', password: 'password');
 
     expect(provider.role, UserRole.fieldExecutive);
+    expect(provider.isAuthenticated, isTrue);
   });
 
   test('nested field-agent alias is normalized', () async {
@@ -51,23 +52,53 @@ void main() {
     expect(provider.role, UserRole.fieldExecutive);
   });
 
-  test('credential and selected designation mismatch rejects login', () async {
+  test('backend OTP challenge does not authenticate until verify', () async {
     final repository = _FakeAuthRepository(
-      const AuthSession(accessToken: 'token', user: {'role': 'SALES_AGENT'}),
+      AuthSession(
+        requiresOtp: true,
+        otpChallenge: const OtpChallenge(
+          identifier: 'telecaller@gmail.com',
+          deliveryTarget: 'registered phone ending 9748',
+          expiresInSeconds: 300,
+          resendAfterSeconds: 60,
+        ),
+      ),
+      verifySession: const AuthSession(
+        accessToken: 'verified-token',
+        user: {'role': 'telecaller'},
+      ),
     );
     final provider = AuthProvider(repository: repository);
 
-    final response = await provider.login(
-      email: 'field@example.com',
+    final loginResponse = await provider.login(
+      email: 'telecaller@gmail.com',
       password: 'password',
-      expectedRole: UserRole.telecaller,
     );
 
-    expect(response, isNull);
+    expect(loginResponse, isNotNull);
+    expect(provider.requiresOtp, isTrue);
     expect(provider.isAuthenticated, isFalse);
+    expect(provider.otpChallenge?.deliveryTarget, contains('9748'));
+
+    final verifyResponse = await provider.verifyOtp(otp: '123456');
+
+    expect(verifyResponse, isNotNull);
+    expect(provider.isAuthenticated, isTrue);
+    expect(provider.requiresOtp, isFalse);
     expect(provider.role, UserRole.telecaller);
-    expect(provider.loginError, contains('select Field Executive'));
-    expect(repository.didClearSession, isTrue);
+  });
+
+  test('mobile identifier is sent as mobile login', () async {
+    final repository = _FakeAuthRepository(
+      const AuthSession(accessToken: 'token', user: {'role': 'telecaller'}),
+    );
+    final provider = AuthProvider(repository: repository);
+
+    await provider.login(mobile: '9876543210', password: 'password');
+
+    expect(repository.lastLoginRequest?.mobile, '9876543210');
+    expect(repository.lastLoginRequest?.email, isNull);
+    expect(provider.isAuthenticated, isTrue);
   });
 
   test('API module permissions hide forbidden employee access', () async {
@@ -106,14 +137,30 @@ void main() {
 }
 
 class _FakeAuthRepository extends AuthRepository {
-  _FakeAuthRepository(this.session);
+  _FakeAuthRepository(this.session, {this.verifySession});
 
   final AuthSession session;
+  final AuthSession? verifySession;
+  LoginRequest? lastLoginRequest;
   bool didClearSession = false;
 
   @override
   Future<ApiResponse<AuthSession>> login(LoginRequest request) async {
+    lastLoginRequest = request;
     return ApiResponse(statusCode: 200, data: session);
+  }
+
+  @override
+  Future<ApiResponse<AuthSession>> verifyOtp(VerifyOtpRequest request) async {
+    return ApiResponse(
+      statusCode: 200,
+      data: verifySession ?? session,
+    );
+  }
+
+  @override
+  Future<ApiResponse<AuthSession>> resendOtp(LoginRequest request) {
+    return login(request);
   }
 
   @override

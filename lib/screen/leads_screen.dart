@@ -3,13 +3,11 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:truerealtycrm/constant/colors_screen.dart';
-import 'package:truerealtycrm/provider/employee_provider.dart';
-import 'package:truerealtycrm/provider/auth_provider.dart';
-import 'package:truerealtycrm/provider/lead_master_provider.dart';
 import 'package:truerealtycrm/provider/project_provider.dart';
 import 'package:truerealtycrm/router/app_router.dart';
 import '../provider/leads_provider.dart';
 import 'package:truerealtycrm/widget/app_loading.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class LeadListWidget extends StatefulWidget {
   const LeadListWidget({
@@ -29,24 +27,19 @@ class _LeadListWidgetState extends State<LeadListWidget> {
   String _selectedTab = 'All';
   bool _showFilters = false;
   bool _loadingFilters = false;
-  String? _source;
-  String? _status;
   String? _leadType;
-  String? _propertyType;
   String? _configuration;
-  String? _assignedTo;
-  String? _team;
-  String? _area;
   String? _dateRange;
-  String? _slaStatus;
-  List<String> _sources = const [];
-  List<String> _statuses = const [];
-  List<String> _leadTypes = const [];
-  List<String> _propertyTypes = const [];
-  List<String> _configurations = const [];
-  List<String> _employees = const [];
-  List<String> _teams = const [];
-  List<String> _areas = const [];
+  List<String> _leadTypes = const ['Hot', 'Warm', 'Cold'];
+  List<String> _configurations = const [
+    '1 BHK',
+    '2 BHK',
+    '3 BHK',
+    '4 BHK',
+    '5 BHK',
+    'Studio',
+    'Penthouse',
+  ];
 
   static const double _sectionGap = 18;
   static const double _cardGap = 14;
@@ -67,80 +60,94 @@ class _LeadListWidgetState extends State<LeadListWidget> {
     await context.read<LeadProvider>().fetchLeads(
       page: page,
       limit: 10,
-      status: _status ?? _statusFilterForTab(_selectedTab),
-      source: _source,
+      status: _statusFilterForTab(_selectedTab),
       leadType: _leadType,
       configuration: _configuration,
-      propertyType: _propertyType,
-      assignedTo: _assignedTo,
-      team: _team,
-      area: _area,
-      slaStatus: _slaStatus,
       dateFrom: _dateBounds.$1,
       dateTo: _dateBounds.$2,
     );
+    if (!mounted) return;
+    _syncFilterOptionsFromLeads(context.read<LeadProvider>().leads);
   }
 
   Future<void> _loadFilterOptions() async {
     if (_loadingFilters) return;
     setState(() => _loadingFilters = true);
-    final master = context.read<LeadMasterProvider>();
-    final employee = context.read<EmployeeProvider>();
-    final project = context.read<ProjectProvider>();
-    final auth = context.read<AuthProvider>();
-    final canViewMasters = auth.canViewModule('lead_masters');
-    final canViewEmployees = auth.canViewModule('employees');
-    final canViewTeams = auth.canViewModule('teams');
-    final canViewProjects = auth.canViewModule('projects');
-    final responses = await Future.wait([
-      if (canViewMasters)
-        master.fetchMasterValues(masterCategory: 'source')
-      else
-        Future.value(null),
-      if (canViewMasters)
-        master.fetchMasterValues(masterCategory: 'status')
-      else
-        Future.value(null),
-      if (canViewMasters)
-        master.fetchMasterValues(masterCategory: 'lead_type')
-      else
-        Future.value(null),
-      if (canViewMasters)
-        master.fetchMasterValues(masterCategory: 'property_type')
-      else
-        Future.value(null),
-      if (canViewMasters)
-        master.fetchMasterValues(masterCategory: 'configuration')
-      else
-        Future.value(null),
-      if (canViewEmployees)
-        employee.fetchEmployees(limit: 100)
-      else
-        Future.value(null),
-      if (canViewTeams) employee.fetchTeams() else Future.value(null),
-      if (canViewProjects) project.fetchProjects() else Future.value(null),
-    ]);
-    if (!mounted) return;
-    setState(() {
-      _sources = _optionLabels(responses[0]?.data);
-      _statuses = _optionLabels(responses[1]?.data);
-      _leadTypes = _optionLabels(responses[2]?.data);
-      _propertyTypes = _optionLabels(responses[3]?.data);
-      _configurations = _optionLabels(responses[4]?.data);
-      _employees = _optionLabels(responses[5]?.data);
-      _teams = _optionLabels(responses[6]?.data);
-      _areas = _optionLabels(
-        responses[7]?.data,
-        keys: const ['location', 'area', 'city'],
+    try {
+      final projectResponse = await context
+          .read<ProjectProvider>()
+          .fetchProjects();
+      if (!mounted) return;
+      final fromProjects = _configurationLabelsFromProjects(
+        projectResponse?.data,
       );
-      _loadingFilters = false;
-    });
+      setState(() {
+        _configurations = _mergeOptions(_configurations, fromProjects);
+        _loadingFilters = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loadingFilters = false);
+    }
   }
 
-  List<String> _optionLabels(
-    Object? source, {
-    List<String> keys = const ['label', 'name', 'title', 'value', 'fullName'],
-  }) {
+  void _syncFilterOptionsFromLeads(List<LeadModel> leads) {
+    final types = <String>{..._leadTypes};
+    final configs = <String>{..._configurations};
+    for (final lead in leads) {
+      final type = lead.leadType?.trim() ?? '';
+      if (type.isNotEmpty) types.add(type);
+      final config = lead.configuration?.trim() ?? '';
+      if (config.isNotEmpty) configs.add(config);
+    }
+    final nextTypes = types.toList()..sort();
+    final nextConfigs = configs.toList()..sort();
+    if (!_listEquals(nextTypes, _leadTypes) ||
+        !_listEquals(nextConfigs, _configurations)) {
+      setState(() {
+        _leadTypes = nextTypes;
+        _configurations = nextConfigs;
+      });
+    }
+  }
+
+  bool _listEquals(List<String> a, List<String> b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  List<String> _mergeOptions(List<String> primary, List<String> extra) {
+    final values = <String>{
+      ...primary.map((e) => e.trim()).where((e) => e.isNotEmpty),
+      ...extra.map((e) => e.trim()).where((e) => e.isNotEmpty),
+    };
+    return values.toList()..sort();
+  }
+
+  List<String> _configurationLabelsFromProjects(Object? source) {
+    final projects = _extractList(source);
+    final values = <String>{};
+    for (final project in projects) {
+      if (project is! Map) continue;
+      final configurations =
+          project['configurations'] ?? project['configuration'];
+      if (configurations is List) {
+        for (final item in configurations) {
+          final text = item.toString().trim();
+          if (text.isNotEmpty) values.add(text);
+        }
+      } else if (configurations != null) {
+        final text = configurations.toString().trim();
+        if (text.isNotEmpty) values.add(text);
+      }
+    }
+    return values.toList()..sort();
+  }
+
+  List<dynamic> _extractList(Object? source) {
     Object? value = source;
     for (var i = 0; i < 4 && value is Map; i++) {
       final map = Map<String, dynamic>.from(value);
@@ -149,28 +156,9 @@ class _LeadListWidgetState extends State<LeadListWidget> {
           map['items'] ??
           map['results'] ??
           map['rows'] ??
-          map['projects'] ??
-          map['employees'] ??
-          map['teams'];
+          map['projects'];
     }
-    if (value is! List) return const [];
-    final values = <String>{};
-    for (final item in value) {
-      if (item is Map) {
-        final map = Map<String, dynamic>.from(item);
-        for (final key in keys) {
-          final text = map[key]?.toString().trim() ?? '';
-          if (text.isNotEmpty) {
-            values.add(text);
-            break;
-          }
-        }
-      } else {
-        final text = item.toString().trim();
-        if (text.isNotEmpty) values.add(text);
-      }
-    }
-    return values.toList()..sort();
+    return value is List ? value : const [];
   }
 
   (String?, String?) get _dateBounds {
@@ -196,10 +184,7 @@ class _LeadListWidgetState extends State<LeadListWidget> {
     if (_selectedTab == tab && _page == 1) {
       return;
     }
-    setState(() {
-      _selectedTab = tab;
-      _status = null;
-    });
+    setState(() => _selectedTab = tab);
     await _fetchLeads(page: 1);
   }
 
@@ -474,7 +459,9 @@ class _LeadListWidgetState extends State<LeadListWidget> {
   }
 
   Widget _buildTabs(LeadProvider leadProvider) {
-    final statusNames = leadProvider.statusNames;
+    final statusNames = leadProvider.statusNames
+        .where((status) => !_isLostStatus(status))
+        .toList();
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
@@ -500,20 +487,10 @@ class _LeadListWidgetState extends State<LeadListWidget> {
   }
 
   Widget _buildAdvancedFilters() {
-    final auth = context.read<AuthProvider>();
-    final canViewEmployees = auth.canViewModule('employees');
-    final canViewTeams = auth.canViewModule('teams');
     final activeCount = [
-      _source,
-      _status,
       _leadType,
-      _propertyType,
       _configuration,
-      _assignedTo,
-      _team,
-      _area,
       _dateRange,
-      _slaStatus,
     ].where((value) => value != null).length;
     return Container(
       padding: EdgeInsets.all(16.r),
@@ -547,7 +524,7 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                     ),
                     SizedBox(height: 4.h),
                     Text(
-                      'Refine leads by ownership, source, status, SLA and date.',
+                      'Filter by date, lead type and configuration from your leads data.',
                       style: GoogleFonts.inter(
                         fontSize: 11.5.sp,
                         color: const Color(0xFF64748B),
@@ -570,7 +547,7 @@ class _LeadListWidgetState extends State<LeadListWidget> {
             LayoutBuilder(
               builder: (context, constraints) {
                 final width = constraints.maxWidth >= 900
-                    ? (constraints.maxWidth - 36.w) / 4
+                    ? (constraints.maxWidth - 24.w) / 3
                     : constraints.maxWidth >= 560
                     ? (constraints.maxWidth - 12.w) / 2
                     : constraints.maxWidth;
@@ -578,64 +555,6 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                   spacing: 12.w,
                   runSpacing: 14.h,
                   children: [
-                    _filterDropdown(
-                      'Lead Source',
-                      _source,
-                      _sources,
-                      width,
-                      (v) => setState(() => _source = v),
-                    ),
-                    _filterDropdown(
-                      'Lead Status',
-                      _status,
-                      _statuses,
-                      width,
-                      (v) => setState(() => _status = v),
-                    ),
-                    _filterDropdown(
-                      'Lead Type',
-                      _leadType,
-                      _leadTypes,
-                      width,
-                      (v) => setState(() => _leadType = v),
-                    ),
-                    _filterDropdown(
-                      'Property Type',
-                      _propertyType,
-                      _propertyTypes,
-                      width,
-                      (v) => setState(() => _propertyType = v),
-                    ),
-                    _filterDropdown(
-                      'Configuration',
-                      _configuration,
-                      _configurations,
-                      width,
-                      (v) => setState(() => _configuration = v),
-                    ),
-                    if (canViewEmployees)
-                      _filterDropdown(
-                        'Assigned To',
-                        _assignedTo,
-                        _employees,
-                        width,
-                        (v) => setState(() => _assignedTo = v),
-                      ),
-                    if (canViewTeams)
-                      _filterDropdown(
-                        'Team-wise',
-                        _team,
-                        _teams,
-                        width,
-                        (v) => setState(() => _team = v),
-                      ),
-                    _filterDropdown(
-                      'Area-wise',
-                      _area,
-                      _areas,
-                      width,
-                      (v) => setState(() => _area = v),
-                    ),
                     _filterDropdown(
                       'Date Range',
                       _dateRange,
@@ -649,11 +568,18 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                       (v) => setState(() => _dateRange = v),
                     ),
                     _filterDropdown(
-                      'SLA Status',
-                      _slaStatus,
-                      const ['On track', 'At risk', 'Breached'],
+                      'Lead Type',
+                      _leadType,
+                      _leadTypes,
                       width,
-                      (v) => setState(() => _slaStatus = v),
+                      (v) => setState(() => _leadType = v),
+                    ),
+                    _filterDropdown(
+                      'Configuration',
+                      _configuration,
+                      _configurations,
+                      width,
+                      (v) => setState(() => _configuration = v),
                     ),
                   ],
                 );
@@ -695,12 +621,13 @@ class _LeadListWidgetState extends State<LeadListWidget> {
     double width,
     ValueChanged<String?> onChanged,
   ) {
-    final unique = options.toSet().toList();
+    final unique = options.toSet().toList()..sort();
+    final selected = unique.contains(value) ? value : null;
     return SizedBox(
       width: width,
-      child: DropdownButtonFormField<String>(
-        key: ValueKey('$label-$value-${unique.length}'),
-        initialValue: unique.contains(value) ? value : null,
+      child: DropdownButtonFormField<String?>(
+        key: ValueKey('$label-$selected-${unique.length}'),
+        initialValue: selected,
         isExpanded: true,
         decoration: InputDecoration(
           labelText: label,
@@ -709,10 +636,22 @@ class _LeadListWidgetState extends State<LeadListWidget> {
           fillColor: const Color(0xFFFCFDFE),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(10.r)),
         ),
-        hint: Text('All $label'),
-        items: unique
-            .map((item) => DropdownMenuItem(value: item, child: Text(item)))
-            .toList(),
+        items: [
+          DropdownMenuItem<String?>(
+            value: null,
+            child: Text(
+              'All $label',
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+            ),
+          ),
+          ...unique.map(
+            (item) => DropdownMenuItem<String?>(
+              value: item,
+              child: Text(item, overflow: TextOverflow.ellipsis),
+            ),
+          ),
+        ],
         onChanged: onChanged,
       ),
     );
@@ -738,16 +677,9 @@ class _LeadListWidgetState extends State<LeadListWidget> {
 
   Future<void> _resetFilters() async {
     setState(() {
-      _source = null;
-      _status = null;
       _leadType = null;
-      _propertyType = null;
       _configuration = null;
-      _assignedTo = null;
-      _team = null;
-      _area = null;
       _dateRange = null;
-      _slaStatus = null;
       _selectedTab = 'All';
     });
     await _fetchLeads(page: 1);
@@ -813,29 +745,15 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                   ),
                   SizedBox(width: 10.w),
                   Expanded(
-                    child: Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            lead.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.inter(
-                              fontSize: 15.sp,
-                              fontWeight: FontWeight.w700,
-                              color: const Color(0xFF0B1735),
-                            ),
-                          ),
-                        ),
-                        if (lead.displayId?.isNotEmpty == true) ...[
-                          SizedBox(width: 7.w),
-                          _CompactLeadBadge(
-                            text: lead.displayId!,
-                            foreground: const Color(0xFF596273),
-                            background: const Color(0xFFF0F2F6),
-                          ),
-                        ],
-                      ],
+                    child: Text(
+                      lead.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.inter(
+                        fontSize: 15.sp,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF0B1735),
+                      ),
                     ),
                   ),
                   SizedBox(width: 7.w),
@@ -947,17 +865,8 @@ class _LeadListWidgetState extends State<LeadListWidget> {
               SizedBox(height: 11.h),
               Row(
                 children: [
-                  Text('Source: ', style: _professionalLeadLabelStyle),
-                  Expanded(
-                    child: Text(
-                      lead.source ?? '-',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: _professionalLeadFooterValueStyle,
-                    ),
-                  ),
                   Text('Owner: ', style: _professionalLeadLabelStyle),
-                  Flexible(
+                  Expanded(
                     child: Text(
                       lead.assignedTo ?? 'Unassigned',
                       maxLines: 1,
@@ -965,7 +874,6 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                       style: _professionalLeadFooterValueStyle,
                     ),
                   ),
-                  SizedBox(width: 8.w),
                   _CompactLeadBadge(
                     text: sla.$1,
                     foreground: sla.$2,
@@ -974,9 +882,85 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                   ),
                 ],
               ),
+              SizedBox(height: 10.h),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _callLead(lead.phone),
+                      icon: Icon(Icons.call_outlined, size: 16.sp),
+                      label: const Text('Call'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.orangeDeep,
+                        side: const BorderSide(color: Color(0xFFFFD8C2)),
+                        padding: EdgeInsets.symmetric(vertical: 10.h),
+                      ),
+                    ),
+                  ),
+                  SizedBox(width: 10.w),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _openWhatsApp(lead.phone),
+                      icon: Icon(Icons.chat_outlined, size: 16.sp),
+                      label: const Text('WhatsApp'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF168553),
+                        side: const BorderSide(color: Color(0xFFB7E4C7)),
+                        padding: EdgeInsets.symmetric(vertical: 10.h),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Future<void> _callLead(String phone) async {
+    final cleaned = phone.replaceAll(RegExp(r'\s+'), '');
+    if (cleaned.isEmpty || cleaned == '-') return;
+    final uri = Uri(scheme: 'tel', path: cleaned);
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to open the phone dialer.')),
+      );
+    }
+  }
+
+  Future<void> _openWhatsApp(String phone) async {
+    final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No valid phone number for WhatsApp.')),
+      );
+      return;
+    }
+    final normalized = digits.length == 10 ? '91$digits' : digits;
+    final candidates = <Uri>[
+      Uri.parse('whatsapp://send?phone=$normalized'),
+      Uri.parse('https://api.whatsapp.com/send?phone=$normalized'),
+      Uri.parse('https://wa.me/$normalized'),
+    ];
+    for (final uri in candidates) {
+      try {
+        final launched = await launchUrl(
+          uri,
+          mode: LaunchMode.externalApplication,
+        );
+        if (launched) return;
+      } catch (_) {}
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Unable to open WhatsApp. Please install WhatsApp.'),
       ),
     );
   }
@@ -1070,6 +1054,32 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                               AppRouter.leadProfileManagement,
                               arguments: lead,
                             );
+                          },
+                        ),
+                        SizedBox(height: 10.h),
+                        _buildSheetAction(
+                          context: sheetContext,
+                          icon: Icons.call_outlined,
+                          iconColor: AppColors.orangeDeep,
+                          iconBackground: const Color(0xFFFFF1E8),
+                          title: 'Call',
+                          subtitle: 'Call this lead',
+                          onTap: () {
+                            Navigator.pop(sheetContext);
+                            _callLead(lead.phone);
+                          },
+                        ),
+                        SizedBox(height: 10.h),
+                        _buildSheetAction(
+                          context: sheetContext,
+                          icon: Icons.chat_outlined,
+                          iconColor: const Color(0xFF168553),
+                          iconBackground: const Color(0xFFE8F8EF),
+                          title: 'WhatsApp',
+                          subtitle: 'Message on WhatsApp',
+                          onTap: () {
+                            Navigator.pop(sheetContext);
+                            _openWhatsApp(lead.phone);
                           },
                         ),
                         SizedBox(height: 10.h),
@@ -1896,7 +1906,12 @@ class _LeadListWidgetState extends State<LeadListWidget> {
   }
 
   String? _statusFilterForTab(String tab) {
-    return tab == 'All' ? null : tab;
+    if (tab == 'All' || _isLostStatus(tab)) return null;
+    return tab;
+  }
+
+  bool _isLostStatus(String status) {
+    return status.trim().toLowerCase().contains('lost');
   }
 
   Color? _tabTextColor(String status) {

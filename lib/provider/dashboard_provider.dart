@@ -26,9 +26,9 @@ class DashboardProvider extends ApiProviderBase {
   static const List<String> tabTitles = [
     'Dashboard',
     'Leads',
-    'Tasks',
-    'Reports',
-    'More',
+    'Follow Ups',
+    'Site Visit',
+    'Projects',
   ];
 
   String get selectedTitle => tabTitles[_selectedTab];

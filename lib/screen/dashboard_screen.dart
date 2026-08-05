@@ -13,10 +13,9 @@ import 'package:truerealtycrm/screen/admin_dashboard_view.dart';
 import 'package:truerealtycrm/screen/field_executive_dashboard_screen.dart';
 import 'package:truerealtycrm/screen/lead_activity_timeline_screen.dart';
 import 'package:truerealtycrm/screen/leads_screen.dart';
-import 'package:truerealtycrm/screen/my_performance_screen.dart';
-import 'package:truerealtycrm/screen/reports_screen.dart';
+import 'package:truerealtycrm/screen/my_follow_ups_screen.dart';
+import 'package:truerealtycrm/screen/projects_screen.dart';
 import 'package:truerealtycrm/screen/site_visits_screen.dart';
-import 'package:truerealtycrm/screen/tasks_screen.dart';
 import 'package:truerealtycrm/screen/telecaller_dashboard_screen.dart';
 import 'package:truerealtycrm/screen/telecaller_documents_screen.dart';
 
@@ -91,27 +90,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     if (selectedTab == 2) {
-      if (role == UserRole.telecaller) {
-        return const MyPerformanceScreen();
-      }
-
-      return TasksScreen(onMenuTap: _openDrawer);
+      return MyFollowUpsScreen(onMenuTap: _openDrawer);
     }
 
     if (selectedTab == 3) {
-      if (role == UserRole.telecaller) {
-        return SiteVisitDetailsScreen(onMenuTap: _openDrawer);
-      }
-
-      if (role == UserRole.fieldExecutive) {
-        return SiteVisitDetailsScreen(onMenuTap: _openDrawer);
-      }
-
-      return const ReportsScreen();
+      return SiteVisitDetailsScreen(onMenuTap: _openDrawer);
     }
 
     if (selectedTab == 4) {
-      return const _MoreTab();
+      return ProjectsScreen(onMenuTap: _openDrawer);
     }
 
     return _PlaceholderTab(title: dashboardProvider.selectedTitle);
@@ -8199,7 +8186,6 @@ class _BottomNavigation extends StatelessWidget {
 
   static const double _defaultNavIconSize = 22;
   static const double _telecallerNavIconSize = 25;
-  static const double _telecallerMyPerformanceIconSize = 28;
   static const double _defaultNavLabelSize = 12.5;
   static const double _telecallerNavLabelSize = 10;
 
@@ -8209,44 +8195,16 @@ class _BottomNavigation extends StatelessWidget {
   static const items = [
     _BottomNavData(Icons.dashboard_outlined, Icons.dashboard, 'Dashboard'),
     _BottomNavData(Icons.groups_outlined, Icons.groups, 'Leads'),
-    _BottomNavData(Icons.assignment_outlined, Icons.assignment, 'Tasks'),
-    _BottomNavData(Icons.bar_chart_outlined, Icons.bar_chart, 'Reports'),
-    _BottomNavData(Icons.more_horiz, Icons.more_horiz, 'More'),
+    _BottomNavData(Icons.schedule_outlined, Icons.schedule, 'Follow Ups'),
+    _BottomNavData(
+      Icons.calendar_today_outlined,
+      Icons.calendar_today,
+      'Site Visit',
+    ),
+    _BottomNavData(Icons.apartment_outlined, Icons.apartment, 'Projects'),
   ];
 
   List<_BottomNavData> _itemsForRole(UserRole role) {
-    if (role == UserRole.telecaller) {
-      return const [
-        _BottomNavData(Icons.dashboard_outlined, Icons.dashboard, 'Dashboard'),
-        _BottomNavData(Icons.groups_outlined, Icons.groups, 'Leads'),
-        _BottomNavData(
-          Icons.bar_chart_outlined,
-          Icons.bar_chart,
-          'Performance',
-        ),
-        _BottomNavData(
-          Icons.calendar_today_outlined,
-          Icons.calendar_today,
-          'Site Visits',
-        ),
-        _BottomNavData(Icons.more_horiz, Icons.more_horiz, 'More'),
-      ];
-    }
-
-    if (role == UserRole.fieldExecutive) {
-      return const [
-        _BottomNavData(Icons.dashboard_outlined, Icons.dashboard, 'Dashboard'),
-        _BottomNavData(Icons.groups_outlined, Icons.groups, 'Leads'),
-        _BottomNavData(Icons.assignment_outlined, Icons.assignment, 'Tasks'),
-        _BottomNavData(
-          Icons.calendar_today_outlined,
-          Icons.calendar_today,
-          'Site Visits',
-        ),
-        _BottomNavData(Icons.more_horiz, Icons.more_horiz, 'More'),
-      ];
-    }
-
     return items;
   }
 
@@ -8321,10 +8279,6 @@ class _BottomNavigation extends StatelessWidget {
   }
 
   double _iconSizeForItem(UserRole role, _BottomNavData item) {
-    if (role == UserRole.telecaller && item.label == 'Performance') {
-      return _telecallerMyPerformanceIconSize.sp;
-    }
-
     return role == UserRole.telecaller
         ? _telecallerNavIconSize.sp
         : _defaultNavIconSize.sp;
@@ -8346,123 +8300,6 @@ class _QuickActionData {
   final String label;
   final Color color;
   final Color bg;
-}
-
-class _MoreTab extends StatelessWidget {
-  const _MoreTab();
-
-  @override
-  Widget build(BuildContext context) {
-    final canAssignLeads = context.watch<AuthProvider>().canViewModule(
-      'employees',
-    );
-    return Padding(
-      padding: EdgeInsets.fromLTRB(18.w, 24.h, 18.w, 22.h),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('More', style: AppStyles.h2),
-          SizedBox(height: 16.h),
-          if (canAssignLeads) ...[
-            _ActionTile(
-              icon: Icons.assignment_ind_outlined,
-              title: 'Assign Leads',
-              subtitle: 'Manage manual and AI lead assignment',
-              color: AppColors.vividBlue,
-              bg: AppColors.windowBlue,
-              onTap: () =>
-                  Navigator.of(context).pushNamed(AppRouter.assignLeads),
-            ),
-            SizedBox(height: 10.h),
-          ],
-          _ActionTile(
-            icon: Icons.calendar_today_outlined,
-            title: 'Site Visits',
-            subtitle: 'Manage and track site visits',
-            color: AppColors.green,
-            bg: AppColors.greenBg,
-            onTap: () => Navigator.of(context).pushNamed(AppRouter.siteVisits),
-          ),
-          SizedBox(height: 10.h),
-          _ActionTile(
-            icon: Icons.logout,
-            title: 'Logout',
-            subtitle: 'Leave the current session',
-            color: AppColors.orange,
-            bg: AppColors.orangeBg,
-            onTap: () =>
-                Navigator.of(context).pushNamed(AppRouter.logoutConfirmation),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ActionTile extends StatelessWidget {
-  const _ActionTile({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.color,
-    required this.bg,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final Color color;
-  final Color bg;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(10.r),
-      child: Padding(
-        padding: EdgeInsets.symmetric(vertical: 4.h),
-        child: Row(
-          children: [
-            CircleAvatar(
-              radius: 22.r,
-              backgroundColor: bg,
-              child: Icon(icon, color: color, size: 26.sp),
-            ),
-            SizedBox(width: 12.w),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      color: AppColors.navy,
-                      fontSize: 14.sp,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  SizedBox(height: 3.h),
-                  Text(
-                    subtitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: AppColors.mutedNavy,
-                      fontSize: 11.sp,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Icon(Icons.chevron_right, color: AppColors.mutedNavy, size: 24.sp),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 class _PlaceholderTab extends StatelessWidget {
@@ -8727,6 +8564,12 @@ class _NavigationDrawerState extends State<_NavigationDrawer> {
                           ? CrossFadeState.showSecond
                           : CrossFadeState.showFirst,
                       duration: const Duration(milliseconds: 180),
+                    ),
+                    _DrawerItem(
+                      icon: Icons.logout,
+                      label: 'Logout',
+                      selected: false,
+                      onTap: () => _openRoute(AppRouter.logoutConfirmation),
                     ),
                   ],
                 ),

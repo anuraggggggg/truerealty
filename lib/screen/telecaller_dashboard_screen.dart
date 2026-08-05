@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
@@ -8,8 +9,10 @@ import 'package:provider/provider.dart';
 import 'package:truerealtycrm/constant/colors_screen.dart';
 import 'package:truerealtycrm/provider/auth_provider.dart';
 import 'package:truerealtycrm/provider/attendance_provider.dart';
+import 'package:truerealtycrm/provider/dashboard_provider.dart';
 import 'package:truerealtycrm/provider/leads_provider.dart';
 import 'package:truerealtycrm/provider/notification_provider.dart';
+import 'package:truerealtycrm/provider/site_visits_provider.dart';
 import 'package:truerealtycrm/provider/upload_provider.dart';
 import 'package:truerealtycrm/router/app_router.dart';
 import 'package:truerealtycrm/screen/telecaller_activities_screen.dart';
@@ -48,8 +51,8 @@ class TelecallerDashboardView extends StatefulWidget {
 class _TelecallerDashboardViewState extends State<TelecallerDashboardView> {
   static const List<_MetricCardData> _topRows = [
     _MetricCardData(
-      title: 'TOTAL ASSIGNED\nLEADS',
-      value: '05',
+      title: 'TOTAL LEADS',
+      value: '00',
       icon: Icons.groups_outlined,
       color: Color(0xFF2563EB),
       cardHeight: 132,
@@ -64,7 +67,7 @@ class _TelecallerDashboardViewState extends State<TelecallerDashboardView> {
       cardHeight: 132,
     ),
     _MetricCardData(
-      title: 'TODAY\'S\nFOLLOWUPS',
+      title: 'TODAY FOLLOW UP',
       value: '00',
       icon: Icons.person_search_outlined,
       color: Color(0xFFF97316),
@@ -73,8 +76,8 @@ class _TelecallerDashboardViewState extends State<TelecallerDashboardView> {
       cardHeight: 132,
     ),
     _MetricCardData(
-      title: 'MISSED\nFOLLOW-UPS',
-      value: '05',
+      title: 'MISSED FOLLOW UP',
+      value: '00',
       icon: Icons.person_remove_outlined,
       color: Color(0xFFEF4444),
       badge: 'Overdue',
@@ -82,25 +85,8 @@ class _TelecallerDashboardViewState extends State<TelecallerDashboardView> {
       cardHeight: 132,
     ),
     _MetricCardData(
-      title: 'HOT LEADS',
-      value: '00',
-      icon: Icons.local_fire_department_outlined,
-      color: Color(0xFFEF4444),
-      cardHeight: 132,
-    ),
-    _MetricCardData(
-      title: 'COLD LEADS',
-      value: '00',
-      icon: Icons.ac_unit_rounded,
-      color: Color(0xFF3B82F6),
-      cardHeight: 132,
-    ),
-  ];
-
-  static const List<_MetricCardData> _bottomRows = [
-    _MetricCardData(
       title: 'INTERESTED LEADS',
-      value: '05',
+      value: '00',
       icon: Icons.thumb_up_alt_outlined,
       color: Color(0xFF22C55E),
       cardHeight: 132,
@@ -112,15 +98,32 @@ class _TelecallerDashboardViewState extends State<TelecallerDashboardView> {
       color: Color(0xFFA855F7),
       cardHeight: 132,
     ),
+  ];
+
+  static const List<_MetricCardData> _bottomRows = [
     _MetricCardData(
-      title: 'SITE VISIT SCHEDULED',
+      title: 'HOT LEADS',
       value: '00',
-      icon: Icons.calendar_today_outlined,
+      icon: Icons.local_fire_department_outlined,
+      color: Color(0xFFEF4444),
+      cardHeight: 132,
+    ),
+    _MetricCardData(
+      title: 'SITE VISIT DONE',
+      value: '00',
+      icon: Icons.home_work_outlined,
       color: Color(0xFF9333EA),
       cardHeight: 132,
     ),
     _MetricCardData(
-      title: 'CONVERTED\nLEADS',
+      title: 'RE-VISIT DONE',
+      value: '00',
+      icon: Icons.replay_circle_filled_outlined,
+      color: Color(0xFF0F766E),
+      cardHeight: 132,
+    ),
+    _MetricCardData(
+      title: 'BOOKING DONE',
       value: '00',
       icon: Icons.check_circle_outline_rounded,
       color: Color(0xFF16A34A),
@@ -133,6 +136,8 @@ class _TelecallerDashboardViewState extends State<TelecallerDashboardView> {
   List<LeadModel> _leads = const [];
   List<_FollowUpDashboardItem> _followUps = const [];
   List<_TelecallerNotificationItem> _notifications = const [];
+  List<SiteVisitModel> _siteVisits = const [];
+  Map<String, dynamic> _apiKpi = const {};
   bool _isLoading = true;
   bool _hasLoaded = false;
   bool _attendanceActionLoading = false;
@@ -162,16 +167,28 @@ class _TelecallerDashboardViewState extends State<TelecallerDashboardView> {
     final leadProvider = context.read<LeadProvider>();
     final notificationProvider = context.read<NotificationProvider>();
     final attendanceProvider = context.read<AttendanceProvider>();
-    final leadsResponse = await leadProvider.fetchLeads(limit: 500);
-    final followUpsResponse = await leadProvider.fetchFollowUps(limit: 500);
-    final notificationsResponse = await notificationProvider.fetchNotifications(
-      limit: 20,
-    );
-    final attendanceResponse = await attendanceProvider.fetchTodayAttendance();
+    final dashboardProvider = context.read<DashboardProvider>();
+    final siteVisitProvider = context.read<SiteVisitProvider>();
+
+    final results = await Future.wait([
+      leadProvider.fetchLeads(limit: 500),
+      leadProvider.fetchFollowUps(limit: 500),
+      notificationProvider.fetchNotifications(limit: 20),
+      attendanceProvider.fetchTodayAttendance(),
+      dashboardProvider.fetchTelecallerDashboard(),
+      siteVisitProvider.fetchSiteVisits(limit: 100),
+    ]);
 
     if (!mounted) {
       return;
     }
+
+    final leadsResponse = results[0];
+    final followUpsResponse = results[1];
+    final notificationsResponse = results[2];
+    final attendanceResponse = results[3];
+    final dashboardResponse = results[4];
+    final siteVisitsResponse = results[5];
 
     final parsedLeads = leadsResponse == null
         ? leadProvider.leads
@@ -188,11 +205,17 @@ class _TelecallerDashboardViewState extends State<TelecallerDashboardView> {
         : _extractApiList(
             notificationsResponse?.data,
           ).map(_TelecallerNotificationItem.fromJson).toList();
+    final kpi = _extractTelecallerKpi(dashboardResponse?.data);
+    final parsedSiteVisits = siteVisitsResponse == null
+        ? siteVisitProvider.siteVisits
+        : siteVisitProvider.siteVisits;
 
     setState(() {
       _leads = parsedLeads;
       _followUps = parsedFollowUps;
       _notifications = parsedNotifications;
+      _siteVisits = List<SiteVisitModel>.from(parsedSiteVisits);
+      _apiKpi = kpi;
       _todayAttendance = _TodayAttendanceData.fromApi(attendanceResponse?.data);
       _error =
           leadsResponse == null ||
@@ -200,6 +223,7 @@ class _TelecallerDashboardViewState extends State<TelecallerDashboardView> {
               notificationsResponse == null
           ? leadProvider.error ??
                 notificationProvider.error ??
+                dashboardProvider.error ??
                 'Unable to refresh dashboard data.'
           : null;
       _isLoading = false;
@@ -211,6 +235,8 @@ class _TelecallerDashboardViewState extends State<TelecallerDashboardView> {
     return _TelecallerDashboardSummary.fromData(
       leads: _leads,
       followUps: _followUps,
+      siteVisits: _siteVisits,
+      apiKpi: _apiKpi,
       now: DateTime.now(),
     );
   }
@@ -233,18 +259,18 @@ class _TelecallerDashboardViewState extends State<TelecallerDashboardView> {
         .trim();
     final summary = _summary;
     final topRows = _metricRows(_topRows, {
-      'TOTAL ASSIGNED\nLEADS': summary.totalLeads,
+      'TOTAL LEADS': summary.totalLeads,
       'NEW LEADS': summary.newLeads,
-      'TODAY\'S\nFOLLOWUPS': summary.todayFollowUps,
-      'MISSED\nFOLLOW-UPS': summary.missedFollowUps,
-      'HOT LEADS': summary.hotLeads,
-      'COLD LEADS': summary.coldLeads,
-    });
-    final bottomRows = _metricRows(_bottomRows, {
+      'TODAY FOLLOW UP': summary.todayFollowUps,
+      'MISSED FOLLOW UP': summary.missedFollowUps,
       'INTERESTED LEADS': summary.interestedLeads,
       'NOT INTERESTED': summary.notInterestedLeads,
-      'SITE VISIT SCHEDULED': summary.siteVisitScheduledLeads,
-      'CONVERTED\nLEADS': summary.convertedLeads,
+    });
+    final bottomRows = _metricRows(_bottomRows, {
+      'HOT LEADS': summary.hotLeads,
+      'SITE VISIT DONE': summary.siteVisitDoneLeads,
+      'RE-VISIT DONE': summary.reVisitDone,
+      'BOOKING DONE': summary.bookingsDone,
     });
 
     return RefreshIndicator(
@@ -259,9 +285,7 @@ class _TelecallerDashboardViewState extends State<TelecallerDashboardView> {
             Stack(
               children: [
                 SizedBox(
-                  height:
-                      headerHeight +
-                      66.h, // Extra room for scaled header content
+                  height: headerHeight + 330.h,
                   width: double.infinity,
                   child: _DashboardHeader(
                     userName: userName.isEmpty ? 'Telecaller' : userName,
@@ -275,9 +299,18 @@ class _TelecallerDashboardViewState extends State<TelecallerDashboardView> {
                 ),
                 Padding(
                   padding: EdgeInsets.only(top: 180.h, left: 16.w, right: 16.w),
-                  child: _DashboardPanel(
-                    topRows: topRows,
-                    bottomRows: bottomRows,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _TodayPunchCard(
+                        data: _todayAttendance,
+                        isLoading: _attendanceActionLoading,
+                        onPunchIn: _openPunchIn,
+                        onPunchOut: _punchOut,
+                      ),
+                      SizedBox(height: 14.h),
+                      _DashboardPanel(topRows: topRows, bottomRows: bottomRows),
+                    ],
                   ),
                 ),
               ],
@@ -312,13 +345,6 @@ class _TelecallerDashboardViewState extends State<TelecallerDashboardView> {
                         builder: (_) => const TelecallerActivitiesScreen(),
                       ),
                     ),
-                  ),
-                  const _SectionGap(),
-                  _TodayPunchCard(
-                    data: _todayAttendance,
-                    isLoading: _attendanceActionLoading,
-                    onPunchIn: _openPunchIn,
-                    onPunchOut: _punchOut,
                   ),
                   const _SectionGap(),
                   _PerformanceSection(summary: summary),
@@ -823,6 +849,9 @@ class _TelecallerDashboardSummary {
     required this.interestedLeads,
     required this.notInterestedLeads,
     required this.siteVisitScheduledLeads,
+    required this.siteVisitDoneLeads,
+    required this.reVisitDone,
+    required this.bookingsDone,
     required this.convertedLeads,
     required this.todayCallFollowUps,
     required this.dueNextHour,
@@ -840,6 +869,9 @@ class _TelecallerDashboardSummary {
   final int interestedLeads;
   final int notInterestedLeads;
   final int siteVisitScheduledLeads;
+  final int siteVisitDoneLeads;
+  final int reVisitDone;
+  final int bookingsDone;
   final int convertedLeads;
   final int todayCallFollowUps;
   final int dueNextHour;
@@ -851,25 +883,28 @@ class _TelecallerDashboardSummary {
     if (totalLeads == 0) {
       return '0.0%';
     }
-    return '${((convertedLeads / totalLeads) * 100).toStringAsFixed(1)}%';
+    final booked = bookingsDone > 0 ? bookingsDone : convertedLeads;
+    return '${((booked / totalLeads) * 100).toStringAsFixed(1)}%';
   }
 
   factory _TelecallerDashboardSummary.fromData({
     required List<LeadModel> leads,
     required List<_FollowUpDashboardItem> followUps,
+    required List<SiteVisitModel> siteVisits,
+    required Map<String, dynamic> apiKpi,
     required DateTime now,
   }) {
     final todayStart = DateTime(now.year, now.month, now.day);
     final tomorrowStart = todayStart.add(const Duration(days: 1));
     final nextHour = now.add(const Duration(hours: 1));
     final activeFollowUps = followUps.where((item) => !item.isClosed).toList();
-    final todayFollowUps = activeFollowUps
+    final computedTodayFollowUps = activeFollowUps
         .where(
           (item) =>
               item.scheduledAt != null && _isSameDay(item.scheduledAt!, now),
         )
         .length;
-    final missedFollowUps = activeFollowUps
+    final computedMissedFollowUps = activeFollowUps
         .where(
           (item) =>
               item.scheduledAt != null &&
@@ -902,17 +937,69 @@ class _TelecallerDashboardSummary {
             .toList()
           ..sort((a, b) => a.scheduledAt!.compareTo(b.scheduledAt!));
 
+    final computedSiteVisitDone = leads.where(_isSiteVisitDoneLead).length;
+    final computedReVisitDone = siteVisits.where(_isReVisitDone).length;
+    final computedBookings = leads.where(_isBookingDoneLead).length;
+
+    final totalLeads = _kpiInt(
+      apiKpi['totalAssignedLeads'],
+      fallback: leads.length,
+    );
+    final newLeads = _kpiInt(
+      apiKpi['newLeads'],
+      fallback: leads.where(_isNewLead).length,
+    );
+    final todayFollowUps = _kpiInt(
+      apiKpi['todaysFollowUps'],
+      fallback: computedTodayFollowUps,
+    );
+    final missedFollowUps = _kpiInt(
+      apiKpi['missedFollowUps'],
+      fallback: computedMissedFollowUps,
+    );
+    final interestedLeads = _kpiInt(
+      apiKpi['interestedLeads'],
+      fallback: leads.where(_isInterestedLead).length,
+    );
+    final notInterestedLeads = _kpiInt(
+      apiKpi['notInterestedLeads'],
+      fallback: leads.where(_isNotInterestedLead).length,
+    );
+    final hotLeads = _kpiInt(
+      apiKpi['hotLeads'],
+      fallback: leads.where(_isHotLead).length,
+    );
+    final bookingsDone = _kpiInt(
+      apiKpi['bookingsDone'],
+      fallback: _kpiInt(apiKpi['convertedLeads'], fallback: computedBookings),
+    );
+
     return _TelecallerDashboardSummary(
-      totalLeads: leads.length,
-      newLeads: leads.where((lead) => _isLeadCreatedToday(lead, now)).length,
+      totalLeads: totalLeads,
+      newLeads: newLeads,
       todayFollowUps: todayFollowUps,
       missedFollowUps: missedFollowUps,
-      hotLeads: leads.where(_isHotLead).length,
-      coldLeads: leads.where(_isColdLead).length,
-      interestedLeads: leads.where(_isInterestedLead).length,
-      notInterestedLeads: leads.where(_isNotInterestedLead).length,
-      siteVisitScheduledLeads: leads.where(_isSiteVisitScheduledLead).length,
-      convertedLeads: leads.where(_isConvertedLead).length,
+      hotLeads: hotLeads,
+      coldLeads: _kpiInt(
+        apiKpi['coldLeads'],
+        fallback: leads.where(_isColdLead).length,
+      ),
+      interestedLeads: interestedLeads,
+      notInterestedLeads: notInterestedLeads,
+      siteVisitScheduledLeads: _kpiInt(
+        apiKpi['siteVisitScheduled'],
+        fallback: leads.where(_isSiteVisitScheduledLead).length,
+      ),
+      siteVisitDoneLeads: _kpiInt(
+        apiKpi['siteVisitDone'],
+        fallback: computedSiteVisitDone,
+      ),
+      reVisitDone: _kpiInt(
+        apiKpi['reVisitDone'],
+        fallback: computedReVisitDone,
+      ),
+      bookingsDone: bookingsDone,
+      convertedLeads: bookingsDone,
       todayCallFollowUps: activeFollowUps
           .where(
             (item) =>
@@ -1925,12 +2012,17 @@ class _MetricCard extends StatelessWidget {
             ),
           ),
           SizedBox(height: 8.h),
-          Text(
-            data.value,
-            style: GoogleFonts.inter(
-              fontSize: 24.sp,
-              fontWeight: FontWeight.w800,
-              color: AppColors.navy,
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              data.value,
+              maxLines: 1,
+              style: GoogleFonts.inter(
+                fontSize: 24.sp,
+                fontWeight: FontWeight.w800,
+                color: AppColors.navy,
+              ),
             ),
           ),
         ],
@@ -2824,9 +2916,14 @@ class _LeadStatusDistributionSection extends StatelessWidget {
         summary.notInterestedLeads,
       ),
       _LeadStatusItem(
-        'Converted',
+        'Site Visit Done',
+        const Color(0xFF9333EA),
+        summary.siteVisitDoneLeads,
+      ),
+      _LeadStatusItem(
+        'Bookings Done',
         const Color(0xFFFF7A1A),
-        summary.convertedLeads,
+        summary.bookingsDone,
       ),
     ];
 
@@ -2929,8 +3026,8 @@ class _ConversionFunnelSection extends StatelessWidget {
         'Contacted',
       ),
       _FunnelStage(_formatCount(summary.interestedLeads), 'Interested'),
-      _FunnelStage(_formatCount(summary.siteVisitScheduledLeads), 'Site Visit'),
-      _FunnelStage(_formatCount(summary.convertedLeads), 'Converted'),
+      _FunnelStage(_formatCount(summary.siteVisitDoneLeads), 'Site Visit Done'),
+      _FunnelStage(_formatCount(summary.bookingsDone), 'Bookings Done'),
     ];
 
     return _SectionCard(
@@ -3221,19 +3318,11 @@ bool _isSameDay(DateTime first, DateTime second) {
       first.day == second.day;
 }
 
-bool _isLeadCreatedToday(LeadModel lead, DateTime now) {
-  final createdAt = lead.raw == null
-      ? null
-      : _readDate(lead.raw!, const ['createdAt', 'created_at']);
-  if (createdAt != null) {
-    return _isSameDay(createdAt, now);
-  }
-  return _leadText(lead).contains('new');
-}
-
 bool _isHotLead(LeadModel lead) {
   final text = _leadText(lead);
-  return text.contains('hot') || text.contains('high');
+  return text.contains('hot') ||
+      text.contains('high') ||
+      text.contains('very hot');
 }
 
 bool _isColdLead(LeadModel lead) => _leadText(lead).contains('cold');
@@ -3245,17 +3334,64 @@ bool _isInterestedLead(LeadModel lead) {
 
 bool _isNotInterestedLead(LeadModel lead) {
   final text = _leadText(lead);
-  return text.contains('not interested') || text.contains('lost');
+  return text.contains('not interested') ||
+      text.contains('lost') ||
+      text.contains('already purchased');
+}
+
+bool _isNewLead(LeadModel lead) {
+  final text = _leadText(lead);
+  return text.contains('new lead') || text == 'new' || text.contains('new-lead');
 }
 
 bool _isSiteVisitScheduledLead(LeadModel lead) {
   final text = _leadText(lead);
-  return text.contains('site visit') && text.contains('schedu');
+  return (text.contains('site visit') && text.contains('schedu')) ||
+      text.contains('site visit scheduel');
 }
 
-bool _isConvertedLead(LeadModel lead) {
+bool _isSiteVisitDoneLead(LeadModel lead) {
   final text = _leadText(lead);
-  return text.contains('converted') || text.contains('booked');
+  return text.contains('site visit done') ||
+      (text.contains('site visit') && text.contains('done'));
+}
+
+bool _isBookingDoneLead(LeadModel lead) {
+  final text = _leadText(lead);
+  return text.contains('booking done') ||
+      text.contains('booked') ||
+      text.contains('converted') ||
+      lead.raw?['convertedAt'] != null;
+}
+
+bool _isReVisitDone(SiteVisitModel visit) {
+  final type = visit.type.toLowerCase();
+  final status = visit.status.toLowerCase();
+  final isRevisit = type.contains('re-visit') ||
+      type.contains('revisit') ||
+      type.contains('re visit');
+  return isRevisit && status.contains('completed');
+}
+
+Map<String, dynamic> _extractTelecallerKpi(Object? source) {
+  if (source is! Map) return const {};
+  final root = Map<String, dynamic>.from(source);
+  final kpi = root['kpi'];
+  if (kpi is Map) return Map<String, dynamic>.from(kpi);
+  return root;
+}
+
+int _kpiInt(Object? value, {int fallback = 0}) {
+  if (value == null) return fallback;
+  if (value is num) return value.toInt();
+  if (value is Map) {
+    final nested = value['value'] ?? value['count'] ?? value['total'];
+    if (nested is num) return nested.toInt();
+    final parsed = int.tryParse(nested?.toString() ?? '');
+    if (parsed != null) return parsed;
+  }
+  final parsed = int.tryParse(value.toString());
+  return parsed ?? fallback;
 }
 
 String _leadText(LeadModel lead) {
@@ -3267,6 +3403,7 @@ String _leadText(LeadModel lead) {
           _readString(raw, const ['stageName', 'stage']),
           _readString(raw, const ['temperatureName', 'temperature']),
           _readString(raw, const ['priorityName', 'priority']),
+          _readString(raw, const ['leadType']),
         ].whereType<String>().join(' ');
 
   return [
@@ -3682,6 +3819,8 @@ class PunchInSelfieDialog extends StatefulWidget {
 class _PunchInSelfieDialogState extends State<PunchInSelfieDialog>
     with WidgetsBindingObserver {
   CameraController? _cameraController;
+  List<CameraDescription> _cameras = const [];
+  CameraDescription? _selectedCamera;
   String? _imagePath;
   Uint8List? _preview;
   bool _isCameraLoading = true;
@@ -3695,7 +3834,30 @@ class _PunchInSelfieDialogState extends State<PunchInSelfieDialog>
     _startCamera();
   }
 
-  Future<void> _startCamera() async {
+  Future<void> _disposeCameraController() async {
+    final controller = _cameraController;
+    if (controller == null) return;
+
+    // Detach CameraPreview before dispose so CameraX can release its surface.
+    if (mounted) {
+      setState(() => _cameraController = null);
+      final frame = Completer<void>();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!frame.isCompleted) frame.complete();
+      });
+      await frame.future;
+    } else {
+      _cameraController = null;
+    }
+
+    try {
+      await controller.dispose();
+    } catch (_) {
+      // CameraX can throw if the preview surface was never bound; safe to ignore.
+    }
+  }
+
+  Future<void> _startCamera({CameraDescription? camera}) async {
     if (mounted) {
       setState(() {
         _isCameraLoading = true;
@@ -3703,16 +3865,23 @@ class _PunchInSelfieDialogState extends State<PunchInSelfieDialog>
       });
     }
     try {
-      final cameras = await availableCameras();
+      final cameras = _cameras.isEmpty ? await availableCameras() : _cameras;
       if (cameras.isEmpty) {
         throw StateError('No camera was found on this device.');
       }
-      final frontCamera = cameras.firstWhere(
-        (camera) => camera.lensDirection == CameraLensDirection.front,
-        orElse: () => cameras.first,
-      );
+      final preferredCamera = camera ?? _selectedCamera;
+      final selectedCamera =
+          preferredCamera ??
+          cameras.firstWhere(
+            (camera) => camera.lensDirection == CameraLensDirection.front,
+            orElse: () => cameras.first,
+          );
+
+      // Only one camera session is allowed; dispose the old one first.
+      await _disposeCameraController();
+
       final controller = CameraController(
-        frontCamera,
+        selectedCamera,
         ResolutionPreset.medium,
         enableAudio: false,
         imageFormatGroup: ImageFormatGroup.jpeg,
@@ -3722,8 +3891,9 @@ class _PunchInSelfieDialogState extends State<PunchInSelfieDialog>
         await controller.dispose();
         return;
       }
-      await _cameraController?.dispose();
       setState(() {
+        _cameras = cameras;
+        _selectedCamera = selectedCamera;
         _cameraController = controller;
         _isCameraLoading = false;
       });
@@ -3735,6 +3905,27 @@ class _PunchInSelfieDialogState extends State<PunchInSelfieDialog>
         });
       }
     }
+  }
+
+  Future<void> _switchCamera() async {
+    if (_cameras.length < 2 || _isCameraLoading || _isCapturing) return;
+    final current = _selectedCamera;
+    final backCamera = _cameras.firstWhere(
+      (camera) => camera.lensDirection == CameraLensDirection.back,
+      orElse: () => _cameras.first,
+    );
+    final frontCamera = _cameras.firstWhere(
+      (camera) => camera.lensDirection == CameraLensDirection.front,
+      orElse: () => _cameras.first,
+    );
+    final nextCamera = current?.lensDirection == CameraLensDirection.back
+        ? frontCamera
+        : backCamera;
+    setState(() {
+      _imagePath = null;
+      _preview = null;
+    });
+    await _startCamera(camera: nextCamera);
   }
 
   Future<void> _capture() async {
@@ -3776,20 +3967,19 @@ class _PunchInSelfieDialogState extends State<PunchInSelfieDialog>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    final controller = _cameraController;
-    if (controller == null || !controller.value.isInitialized) return;
     if (state == AppLifecycleState.inactive) {
-      controller.dispose();
-      _cameraController = null;
+      _disposeCameraController();
     } else if (state == AppLifecycleState.resumed) {
-      _startCamera();
+      _startCamera(camera: _selectedCamera);
     }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _cameraController?.dispose();
+    final controller = _cameraController;
+    _cameraController = null;
+    controller?.dispose();
     super.dispose();
   }
 
@@ -3821,7 +4011,7 @@ class _PunchInSelfieDialogState extends State<PunchInSelfieDialog>
                         ),
                         SizedBox(height: 7.h),
                         Text(
-                          'Take a clear front-camera photo, review it, and confirm to complete today’s punch in.',
+                          'Take a clear photo, switch cameras if needed, review it, and confirm to complete today’s punch in.',
                           style: GoogleFonts.inter(
                             fontSize: 12.sp,
                             color: const Color(0xFF64748B),
@@ -3857,7 +4047,12 @@ class _PunchInSelfieDialogState extends State<PunchInSelfieDialog>
                             Image.memory(_preview!, fit: BoxFit.cover)
                           else if (_cameraController?.value.isInitialized ??
                               false)
-                            CameraPreview(_cameraController!)
+                            CameraPreview(
+                              _cameraController!,
+                              key: ValueKey(
+                                _selectedCamera?.name ?? 'camera-preview',
+                              ),
+                            )
                           else
                             Center(
                               child: _isCameraLoading
@@ -3883,6 +4078,49 @@ class _PunchInSelfieDialogState extends State<PunchInSelfieDialog>
                                   border: Border.all(
                                     color: Colors.white,
                                     width: 2,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          if (_preview == null && _cameras.length > 1)
+                            Positioned(
+                              top: 12.h,
+                              right: 12.w,
+                              child: Material(
+                                color: Colors.black.withValues(alpha: .46),
+                                borderRadius: BorderRadius.circular(999.r),
+                                child: InkWell(
+                                  onTap: _isCameraLoading || _isCapturing
+                                      ? null
+                                      : _switchCamera,
+                                  borderRadius: BorderRadius.circular(999.r),
+                                  child: Padding(
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: 10.w,
+                                      vertical: 8.h,
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.cameraswitch_rounded,
+                                          size: 18.sp,
+                                          color: Colors.white,
+                                        ),
+                                        SizedBox(width: 6.w),
+                                        Text(
+                                          _selectedCamera?.lensDirection ==
+                                                  CameraLensDirection.back
+                                              ? 'Back'
+                                              : 'Front',
+                                          style: GoogleFonts.inter(
+                                            color: Colors.white,
+                                            fontSize: 11.sp,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
@@ -3916,7 +4154,7 @@ class _PunchInSelfieDialogState extends State<PunchInSelfieDialog>
                           icon: Icons.camera_alt_outlined,
                           title: 'Capture a clear selfie',
                           description:
-                              'Use the front camera in a well-lit area and keep your face centred.',
+                              'Use the front or back camera in a well-lit area and keep your face centred.',
                         ),
                         if (_error != null) ...[
                           SizedBox(height: 12.h),

@@ -582,87 +582,58 @@ class _FieldExecutiveDashboardViewState
 
   @override
   Widget build(BuildContext context) {
+    final employeeName = _data.employeeName.isEmpty
+        ? 'Field Executive'
+        : _data.employeeName;
     return RefreshIndicator(
       color: AppColors.orangeDeep,
       onRefresh: _load,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: EdgeInsets.only(bottom: widget.bottomSpacing.h),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (_loading) const LinearProgressIndicator(),
+            Stack(
+              children: [
+                SizedBox(
+                  height: 300.h,
+                  width: double.infinity,
+                  child: _FieldDashboardHeader(
+                    employeeName: employeeName,
+                    onMenuTap: widget.onMenuTap,
+                  ),
+                ),
+                Padding(
+                  padding: EdgeInsets.only(top: 180.h, left: 16.w, right: 16.w),
+                  child: Column(
+                    children: [
+                      _FieldAttendanceCard(
+                        data: _attendance,
+                        isLoading: _attendanceActionLoading,
+                        onPunchIn: _punchIn,
+                        onPunchOut: _punchOut,
+                      ),
+                      SizedBox(height: 14.h),
+                      _FieldMetricsPanel(data: _data),
+                    ],
+                  ),
+                ),
+              ],
+            ),
             Padding(
-              padding: EdgeInsets.fromLTRB(8.w, 14.h, 8.w, 0),
+              padding: EdgeInsets.fromLTRB(
+                16.w,
+                14.h,
+                16.w,
+                widget.bottomSpacing.h,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 8.w),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        if (widget.onMenuTap != null) ...[
-                          Material(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(10.r),
-                            child: InkWell(
-                              onTap: widget.onMenuTap,
-                              borderRadius: BorderRadius.circular(10.r),
-                              child: Container(
-                                width: 42.w,
-                                height: 42.w,
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
-                                  border: Border.all(
-                                    color: const Color(0xFFDDE3EC),
-                                  ),
-                                  borderRadius: BorderRadius.circular(10.r),
-                                ),
-                                child: Icon(
-                                  Icons.menu_rounded,
-                                  size: 23.sp,
-                                  color: const Color(0xFF103F75),
-                                ),
-                              ),
-                            ),
-                          ),
-                          SizedBox(width: 12.w),
-                        ],
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Dashboard',
-                                style: GoogleFonts.inter(
-                                  fontSize: 22.sp,
-                                  fontWeight: FontWeight.w800,
-                                  color: const Color(0xFF101828),
-                                ),
-                              ),
-                              SizedBox(height: 4.h),
-                              Text(
-                                _data.employeeName.isEmpty
-                                    ? 'Your field operations overview.'
-                                    : 'Field operations overview for ${_data.employeeName}.',
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: GoogleFonts.inter(
-                                  fontSize: 13.5.sp,
-                                  fontWeight: FontWeight.w500,
-                                  color: const Color(0xFF667085),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
                   if (_error != null) ...[
-                    SizedBox(height: 14.h),
                     _ExecutiveErrorCard(message: _error!, onRetry: _load),
+                    SizedBox(height: 14.h),
                   ],
                   if (!_loaded && _loading)
                     const Padding(
@@ -670,16 +641,6 @@ class _FieldExecutiveDashboardViewState
                       child: AppListSkeleton(itemCount: 3, itemHeight: 116),
                     )
                   else ...[
-                    SizedBox(height: 16.h),
-                    _FieldAttendanceCard(
-                      data: _attendance,
-                      isLoading: _attendanceActionLoading,
-                      onPunchIn: _punchIn,
-                      onPunchOut: _punchOut,
-                    ),
-                    SizedBox(height: 14.h),
-                    _ExecutiveMetrics(data: _data),
-                    SizedBox(height: 14.h),
                     _PerformanceRankingCard(
                       data: _rankings,
                       selectedRange: _rankingRange,
@@ -755,6 +716,137 @@ class _FieldExecutiveDashboardViewState
           ],
         ),
       ),
+    );
+  }
+}
+
+class _FieldDashboardHeader extends StatelessWidget {
+  const _FieldDashboardHeader({
+    required this.employeeName,
+    required this.onMenuTap,
+  });
+
+  final String employeeName;
+  final VoidCallback? onMenuTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppColors.navy,
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(26.r),
+          bottomRight: Radius.circular(26.r),
+        ),
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: double.infinity,
+            height: 64.h,
+            padding: EdgeInsets.symmetric(horizontal: 16.w),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              border: Border(bottom: BorderSide(color: Color(0xFFE5EAF2))),
+            ),
+            child: Row(
+              children: [
+                InkWell(
+                  onTap: onMenuTap,
+                  borderRadius: BorderRadius.circular(8.r),
+                  child: SizedBox(
+                    width: 38.w,
+                    height: 38.h,
+                    child: Icon(
+                      Icons.menu_rounded,
+                      color: AppColors.navy,
+                      size: 27.sp,
+                    ),
+                  ),
+                ),
+                SizedBox(width: 4.w),
+                SizedBox(
+                  width: 112.w,
+                  child: Image.asset(
+                    'assets/app_icon.png',
+                    fit: BoxFit.contain,
+                    alignment: Alignment.centerLeft,
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  width: 38.w,
+                  height: 38.w,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF4F6FA),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: const Color(0xFFE1E7F0)),
+                  ),
+                  child: Icon(
+                    Icons.engineering_outlined,
+                    color: AppColors.navy,
+                    size: 21.sp,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            width: double.infinity,
+            padding: EdgeInsets.fromLTRB(16.w, 26.h, 16.w, 28.h),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Field Executive Dashboard',
+                  style: GoogleFonts.inter(
+                    fontSize: 27.sp,
+                    fontWeight: FontWeight.bold,
+                    height: 1,
+                    color: Colors.white,
+                  ),
+                ),
+                SizedBox(height: 7.h),
+                Text(
+                  "Welcome back, $employeeName. Here's today's overview.",
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.inter(
+                    fontSize: 15.sp,
+                    height: 1.35,
+                    color: Colors.white.withValues(alpha: .9),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FieldMetricsPanel extends StatelessWidget {
+  const _FieldMetricsPanel({required this.data});
+
+  final _FieldDashboardData data;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.all(14.r),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(26.r),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x140F172A),
+            blurRadius: 22,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: _ExecutiveMetrics(data: data),
     );
   }
 }
@@ -1269,11 +1361,11 @@ class _ExecutiveMetricCard extends StatelessWidget {
     return Container(
       width: double.infinity,
       constraints: BoxConstraints(minHeight: 118.h),
-      padding: EdgeInsets.fromLTRB(14.w, 14.h, 14.w, 14.h),
+      padding: EdgeInsets.fromLTRB(14.w, 13.h, 14.w, 12.h),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16.r),
-        border: Border.all(color: const Color(0xFFD9E2EE)),
+        borderRadius: BorderRadius.circular(18.r),
+        border: Border.all(color: const Color(0xFFD9E3EF)),
         boxShadow: const [
           BoxShadow(
             color: Color(0x0A0F172A),
@@ -1286,32 +1378,32 @@ class _ExecutiveMetricCard extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(data.icon, size: 25.sp, color: data.iconColor),
-              SizedBox(width: 10.w),
-              Expanded(
-                child: Text(
-                  data.title,
-                  maxLines: 2,
-                  style: GoogleFonts.inter(
-                    fontSize: 14.sp,
-                    fontWeight: FontWeight.w600,
-                    height: 1.25,
-                    color: const Color(0xFF6B7280),
-                  ),
+          Icon(data.icon, size: 24.sp, color: data.iconColor),
+          SizedBox(height: 10.h),
+          ConstrainedBox(
+            constraints: BoxConstraints(minHeight: 34.h),
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: Text(
+                data.title.toUpperCase(),
+                maxLines: 2,
+                style: GoogleFonts.inter(
+                  fontSize: 11.sp,
+                  fontWeight: FontWeight.w600,
+                  height: 1.35,
+                  letterSpacing: -.15,
+                  color: const Color(0xFF2D2C2C),
                 ),
               ),
-            ],
+            ),
           ),
-          SizedBox(height: 12.h),
+          SizedBox(height: 5.h),
           Text(
             data.value,
             style: GoogleFonts.inter(
-              fontSize: 26.sp,
+              fontSize: 24.sp,
               fontWeight: FontWeight.w800,
-              color: const Color(0xFF111827),
+              color: AppColors.navy,
             ),
           ),
         ],
@@ -1383,9 +1475,9 @@ class _ExecutiveMetrics extends StatelessWidget {
       itemCount: metrics.length,
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
-        crossAxisSpacing: 8.w,
-        mainAxisSpacing: 8.h,
-        mainAxisExtent: 122.h,
+        crossAxisSpacing: 10.w,
+        mainAxisSpacing: 10.h,
+        mainAxisExtent: 140.h,
       ),
       itemBuilder: (_, index) => _ExecutiveMetricCard(data: metrics[index]),
     );

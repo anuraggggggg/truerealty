@@ -109,18 +109,22 @@ class _LoginCard extends StatelessWidget {
     final authProvider = context.watch<AuthProvider>();
 
     Future<void> loginWithEmailAndPassword() async {
-      final email = emailController.text.trim();
+      final identifier = emailController.text.trim();
       final password = passwordController.text;
 
-      if (email.isEmpty || password.isEmpty) {
+      if (identifier.isEmpty || password.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please enter email and password.')),
+          const SnackBar(
+            content: Text('Please enter email/mobile and password.'),
+          ),
         );
         return;
       }
 
-      final response = await context.read<AuthProvider>().login(
-        email: email,
+      final auth = context.read<AuthProvider>();
+      final response = await auth.login(
+        email: identifier.contains('@') ? identifier : null,
+        mobile: identifier.contains('@') ? null : identifier,
         password: password,
       );
 
@@ -128,12 +132,17 @@ class _LoginCard extends StatelessWidget {
         return;
       }
 
-      if (response != null) {
+      if (response != null && auth.requiresOtp) {
+        Navigator.of(context).pushNamed(AppRouter.otpVerification);
+        return;
+      }
+
+      if (response != null && auth.isAuthenticated) {
         Navigator.of(context).pushReplacementNamed(AppRouter.dashboard);
         return;
       }
 
-      final error = context.read<AuthProvider>().loginError;
+      final error = auth.loginError;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(error ?? 'Login failed. Please try again.')),
       );
@@ -179,13 +188,13 @@ class _LoginCard extends StatelessWidget {
           ),
 
           SizedBox(height: 26.h),
-          CommonWidgets.fieldLabel('Email Address'),
+          CommonWidgets.fieldLabel('Email / Mobile Number'),
           SizedBox(height: 10.h),
           _LoginInputField(
-            icon: Icons.email_outlined,
-            hint: 'Enter your registered email',
+            icon: Icons.person_outline_rounded,
+            hint: 'Enter registered email or mobile',
             controller: emailController,
-            keyboardType: TextInputType.emailAddress,
+            keyboardType: TextInputType.text,
             textInputAction: TextInputAction.next,
             enabled: !authProvider.isLoading,
           ),

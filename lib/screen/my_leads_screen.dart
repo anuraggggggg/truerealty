@@ -1,15 +1,12 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:truerealtycrm/constant/colors_screen.dart';
 import 'package:truerealtycrm/provider/leads_provider.dart';
 import 'package:truerealtycrm/router/app_router.dart';
 import 'package:truerealtycrm/screen/my_leads_filter_screen.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class MyLeadsScreen extends StatefulWidget {
   const MyLeadsScreen({super.key, this.onMenuTap});
@@ -317,7 +314,6 @@ class _MyLeadsScreenState extends State<MyLeadsScreen> {
   int _currentPage = 1;
   int _rowsPerPage = 8;
   bool _isLoading = true;
-  bool _isExporting = false;
   String? _error;
   MyLeadsFilterResult _filters = const MyLeadsFilterResult();
   final Set<String> _selectedLeadIds = {};
@@ -357,10 +353,12 @@ class _MyLeadsScreenState extends State<MyLeadsScreen> {
     final response = await provider.fetchLeads(
       page: _currentPage,
       limit: _rowsPerPage,
-      source: _filters.source,
       status: _filters.status,
       leadType: _filters.leadType,
+      configuration: _filters.configuration,
       project: _filters.project,
+      dateFrom: _dateKey(_filters.dateFrom),
+      dateTo: _dateKey(_filters.dateTo),
     );
     final leadError = provider.error;
     final followUpsResponse = await provider.fetchFollowUps(limit: 500);
@@ -386,8 +384,8 @@ class _MyLeadsScreenState extends State<MyLeadsScreen> {
         builder: (_) => MyLeadsFilterScreen(
           initial: _filters,
           projects: _distinctValues((lead) => lead.project),
-          sources: _distinctValues((lead) => lead.source),
           statuses: _distinctValues((lead) => lead.status),
+          configurations: _distinctValues((lead) => lead.configuration),
         ),
       ),
     );
@@ -428,83 +426,9 @@ class _MyLeadsScreenState extends State<MyLeadsScreen> {
         .toList();
   }
 
-  Future<void> _exportLeads() async {
-    final exportLeads = _selectedLeadIds.isEmpty
-        ? _leads
-        : _leads
-              .where((lead) => _selectedLeadIds.contains(lead.apiId))
-              .toList();
-    if (exportLeads.isEmpty || _isExporting) return;
-    setState(() => _isExporting = true);
-    try {
-      const headers = [
-        'Lead ID',
-        'Name',
-        'Mobile',
-        'Alternate Mobile',
-        'Email',
-        'Source',
-        'Status',
-        'Temperature',
-        'Project',
-        'Location',
-        'Budget',
-        'Property Type',
-        'Assigned To',
-        'Last Follow-up',
-        'Next Follow-up',
-        'Created On',
-        'Updated On',
-      ];
-      final rows = <List<String>>[
-        headers,
-        ...exportLeads.map(
-          (lead) => [
-            lead.leadId,
-            lead.name,
-            lead.phone,
-            lead.alternateNumber,
-            lead.email,
-            lead.source,
-            lead.status,
-            lead.temperature,
-            lead.project,
-            lead.location,
-            lead.budget,
-            lead.propertyType,
-            lead.assignedTo,
-            lead.lastFollowUp,
-            lead.nextFollowUp,
-            lead.createdOn,
-            lead.updatedOn,
-          ],
-        ),
-      ];
-      final csv = rows.map((row) => row.map(_csvCell).join(',')).join('\r\n');
-      final directory = await getTemporaryDirectory();
-      final date = DateTime.now().toIso8601String().split('T').first;
-      final file = File('${directory.path}/leads-export-$date.csv');
-      await file.writeAsString('\uFEFF$csv');
-      await Share.shareXFiles(
-        [XFile(file.path, mimeType: 'text/csv')],
-        subject: 'TrueRoot Realty leads export',
-        text:
-            '${exportLeads.length} lead${exportLeads.length == 1 ? '' : 's'} exported.',
-      );
-    } catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Unable to export leads: $error')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isExporting = false);
-    }
-  }
-
-  String _csvCell(String value) {
-    return '"${value.replaceAll('"', '""')}"';
-  }
+  String? _dateKey(DateTime? value) => value == null
+      ? null
+      : '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
 
   List<_LeadSummaryData> get _summaryCards {
     return [
@@ -760,37 +684,6 @@ class _MyLeadsScreenState extends State<MyLeadsScreen> {
                   label: Text(_filters.isEmpty ? 'Filter' : 'Filtered'),
                 ),
               ),
-              SizedBox(width: 6.w),
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: _isExporting ? null : _exportLeads,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.orangeStrong,
-                    foregroundColor: Colors.white,
-                    minimumSize: Size(0, 38.h),
-                    padding: EdgeInsets.symmetric(horizontal: 4.w),
-                    textStyle: GoogleFonts.inter(
-                      fontSize: 10.sp,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  icon: _isExporting
-                      ? SizedBox(
-                          width: 14.w,
-                          height: 14.w,
-                          child: const CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : Icon(Icons.download_rounded, size: 15.sp),
-                  label: Text(
-                    _selectedLeadIds.isEmpty
-                        ? 'Export all'
-                        : 'Export (${_selectedLeadIds.length})',
-                  ),
-                ),
-              ),
             ],
           ),
           SizedBox(height: 14.h),
@@ -814,7 +707,7 @@ class _MyLeadsScreenState extends State<MyLeadsScreen> {
                     crossAxisCount: columns,
                     crossAxisSpacing: 14.w,
                     mainAxisSpacing: 14.h,
-                    mainAxisExtent: 224.h,
+                    mainAxisExtent: 268.h,
                   ),
                   itemBuilder: (context, i) {
                     final lead = _leads[i];
@@ -1987,7 +1880,7 @@ class _NewLeadCard extends StatelessWidget {
         onTap: () => _showLeadActions(context),
         borderRadius: BorderRadius.circular(12.r),
         child: Container(
-          padding: EdgeInsets.fromLTRB(14.w, 12.h, 14.w, 11.h),
+          padding: EdgeInsets.fromLTRB(14.w, 10.h, 14.w, 10.h),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12.r),
             border: Border.all(color: const Color(0xFFD2D9E4)),
@@ -1996,105 +1889,84 @@ class _NewLeadCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  SizedBox(
-                    width: 22.w,
-                    height: 22.w,
-                    child: Checkbox(
-                      value: selected,
-                      onChanged: (value) => onSelected(value ?? false),
-                      activeColor: AppColors.orangeStrong,
-                      side: const BorderSide(color: Color(0xFFC7CFDB)),
-                      visualDensity: VisualDensity.compact,
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(4.r),
-                      ),
-                    ),
-                  ),
-                  SizedBox(width: 10.w),
-                  Flexible(
-                    child: Text(
-                      data.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.inter(
-                        fontSize: 15.sp,
-                        fontWeight: FontWeight.w800,
-                        color: const Color(0xFF0B1735),
-                      ),
-                    ),
-                  ),
-                  SizedBox(width: 7.w),
-                  _LeadCardBadge(
-                    label: data.leadId,
-                    foreground: const Color(0xFF586174),
-                    background: const Color(0xFFF0F2F6),
-                  ),
-                  const Spacer(),
-                  SizedBox(width: 6.w),
-                  _LeadCardBadge(
-                    label: temperature,
-                    foreground: const Color(0xFFFF641A),
-                    background: const Color(0xFFFFF1E8),
-                    borderColor: const Color(0xFFFFC8AA),
-                  ),
-                ],
-              ),
-              SizedBox(height: 14.h),
-              Row(
-                children: [
-                  Icon(
-                    Icons.phone_outlined,
-                    size: 17.sp,
-                    color: const Color(0xFF00B66B),
-                  ),
-                  SizedBox(width: 7.w),
-                  Expanded(
-                    child: Text(
-                      data.phone,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: _leadCardValueStyle,
-                    ),
-                  ),
-                  SizedBox(width: 10.w),
-                  Icon(
-                    Icons.apartment_rounded,
-                    size: 17.sp,
-                    color: const Color(0xFF4B5563),
-                  ),
-                  SizedBox(width: 7.w),
-                  Flexible(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          data.project,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: _leadCardValueStyle,
+                  Padding(
+                    padding: EdgeInsets.only(top: 1.h),
+                    child: SizedBox(
+                      width: 22.w,
+                      height: 22.w,
+                      child: Checkbox(
+                        value: selected,
+                        onChanged: (value) => onSelected(value ?? false),
+                        activeColor: AppColors.orangeStrong,
+                        side: const BorderSide(color: Color(0xFFC7CFDB)),
+                        visualDensity: VisualDensity.compact,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4.r),
                         ),
-                        if (data.location != '-' &&
-                            data.location.trim().isNotEmpty)
-                          Text(
-                            data.location,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.inter(
-                              fontSize: 11.sp,
-                              color: const Color(0xFF4B4F59),
-                            ),
-                          ),
-                      ],
+                      ),
                     ),
+                  ),
+                  SizedBox(width: 10.w),
+                  Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.only(top: 2.h),
+                      child: Text(
+                        data.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.inter(
+                          fontSize: 15.sp,
+                          fontWeight: FontWeight.w800,
+                          height: 1.18,
+                          color: const Color(0xFF0B1735),
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(width: 8.w),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      _LeadCardBadge(
+                        label: temperature,
+                        foreground: const Color(0xFFFF641A),
+                        background: const Color(0xFFFFF1E8),
+                        borderColor: const Color(0xFFFFC8AA),
+                      ),
+                      SizedBox(height: 5.h),
+                      _LeadCardBadge(
+                        label: slaLabel,
+                        foreground: slaColor,
+                        background: slaColor.withValues(alpha: 0.08),
+                        borderColor: slaColor.withValues(alpha: 0.35),
+                      ),
+                    ],
                   ),
                 ],
               ),
-              SizedBox(height: 11.h),
+              SizedBox(height: 10.h),
+              _LeadCardInfoLine(
+                icon: Icons.phone_outlined,
+                iconColor: const Color(0xFF00B66B),
+                title: data.phone,
+              ),
+              SizedBox(height: 7.h),
+              _LeadCardInfoLine(
+                icon: Icons.apartment_rounded,
+                iconColor: const Color(0xFF4B5563),
+                title: data.project,
+                subtitle:
+                    data.location != '-' && data.location.trim().isNotEmpty
+                    ? data.location
+                    : null,
+              ),
+              SizedBox(height: 9.h),
               Container(
                 width: double.infinity,
-                padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.h),
+                padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 7.h),
                 decoration: BoxDecoration(
                   color: const Color(0xFFF8F9FC),
                   borderRadius: BorderRadius.circular(8.r),
@@ -2103,30 +1975,21 @@ class _NewLeadCard extends StatelessWidget {
                   ),
                 ),
                 child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Expanded(
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.payments_outlined,
-                            size: 16.sp,
-                            color: const Color(0xFF4B5563),
-                          ),
-                          SizedBox(width: 6.w),
-                          Expanded(
-                            child: Text(
-                              data.budget,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.inter(
-                                fontSize: 12.sp,
-                                fontWeight: FontWeight.w700,
-                                color: const Color(0xFF111A32),
-                              ),
-                            ),
-                          ),
-                        ],
+                      child: _LeadCardInfoLine(
+                        icon: Icons.payments_outlined,
+                        iconColor: const Color(0xFF4B5563),
+                        title: data.budget,
+                        dense: true,
                       ),
+                    ),
+                    SizedBox(width: 8.w),
+                    Container(
+                      width: 1,
+                      height: 28.h,
+                      color: const Color(0xFFE0E5EC),
                     ),
                     SizedBox(width: 8.w),
                     Expanded(
@@ -2164,37 +2027,20 @@ class _NewLeadCard extends StatelessWidget {
               const Spacer(),
               Row(
                 children: [
-                  Text(
-                    'Source: ',
-                    style: GoogleFonts.inter(
-                      fontSize: 11.5.sp,
-                      color: const Color(0xFF4B4F59),
-                    ),
-                  ),
                   Expanded(
-                    child: Text(
-                      data.source,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.inter(
-                        fontSize: 11.5.sp,
-                        fontWeight: FontWeight.w700,
-                        color: const Color(0xFF111A32),
-                      ),
+                    child: _LeadCardActionButton(
+                      icon: Icons.call_rounded,
+                      label: 'Call',
+                      onPressed: () => _callLead(data.phone),
                     ),
                   ),
-                  Text(
-                    'SLA: ',
-                    style: GoogleFonts.inter(
-                      fontSize: 11.5.sp,
-                      color: const Color(0xFF4B4F59),
+                  SizedBox(width: 8.w),
+                  Expanded(
+                    child: _LeadCardActionButton(
+                      icon: Icons.chat_outlined,
+                      label: 'WhatsApp',
+                      onPressed: () => _openWhatsApp(data.phone),
                     ),
-                  ),
-                  _LeadCardBadge(
-                    label: slaLabel,
-                    foreground: slaColor,
-                    background: slaColor.withValues(alpha: 0.08),
-                    borderColor: slaColor.withValues(alpha: 0.35),
                   ),
                 ],
               ),
@@ -2245,6 +2091,24 @@ class _NewLeadCard extends StatelessWidget {
     return 'Due in ${difference.inDays} day';
   }
 
+  void _callLead(String phone) {
+    final value = phone.trim();
+    if (value.isEmpty || value == '-') return;
+    launchUrl(
+      Uri(scheme: 'tel', path: value),
+      mode: LaunchMode.externalApplication,
+    );
+  }
+
+  void _openWhatsApp(String phone) {
+    final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isEmpty) return;
+    launchUrl(
+      Uri.parse('https://wa.me/$digits'),
+      mode: LaunchMode.externalApplication,
+    );
+  }
+
   void _showLeadActions(BuildContext context) {
     showModalBottomSheet<void>(
       context: context,
@@ -2252,6 +2116,96 @@ class _NewLeadCard extends StatelessWidget {
       builder: (sheetContext) {
         return _LeadActionsSheet(data: data);
       },
+    );
+  }
+}
+
+class _LeadCardActionButton extends StatelessWidget {
+  const _LeadCardActionButton({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      onPressed: onPressed,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: const Color(0xFF159447),
+        side: const BorderSide(color: Color(0xFFB8E6C8)),
+        minimumSize: Size(0, 32.h),
+        padding: EdgeInsets.symmetric(horizontal: 8.w),
+        textStyle: GoogleFonts.inter(
+          fontSize: 11.sp,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+      icon: Icon(icon, size: 14.sp),
+      label: Text(label),
+    );
+  }
+}
+
+class _LeadCardInfoLine extends StatelessWidget {
+  const _LeadCardInfoLine({
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    this.subtitle,
+    this.dense = false,
+  });
+
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final String? subtitle;
+  final bool dense;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: subtitle == null
+          ? CrossAxisAlignment.center
+          : CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 18.w,
+          child: Icon(icon, size: (dense ? 15 : 17).sp, color: iconColor),
+        ),
+        SizedBox(width: 7.w),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: _leadCardValueStyle,
+              ),
+              if (subtitle != null) ...[
+                SizedBox(height: 1.h),
+                Text(
+                  subtitle!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.inter(
+                    fontSize: 11.sp,
+                    height: 1.15,
+                    color: const Color(0xFF4B4F59),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -2311,6 +2265,7 @@ class _NewLeadData {
     required this.occupation,
     required this.source,
     required this.budget,
+    required this.configuration,
     required this.propertyType,
     required this.project,
     required this.carpetArea,
@@ -2402,6 +2357,7 @@ class _NewLeadData {
       occupation: _apiText(requirement['occupation']),
       source: lead.source ?? '-',
       budget: budget.isEmpty ? '-' : budget,
+      configuration: _apiText(requirement['configuration']),
       propertyType: [
         _apiText(requirement['configuration'], fallback: ''),
         _apiText(requirement['propertyType'], fallback: ''),
@@ -2477,6 +2433,7 @@ class _NewLeadData {
   final String occupation;
   final String source;
   final String budget;
+  final String configuration;
   final String propertyType;
   final String project;
   final String carpetArea;
@@ -4059,24 +4016,10 @@ class _LeadSlaSummaryCard extends StatelessWidget {
                   ],
                 ),
                 SizedBox(height: 18.h),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: _LeadViewStatBlock(
-                        label: 'Owner',
-                        value: data.ownerName,
-                      ),
-                    ),
-                    SizedBox(width: 18.w),
-                    Expanded(
-                      child: _LeadViewStatBlock(
-                        label: 'Status',
-                        value: data.slaStatus,
-                        valueColor: const Color(0xFFD92D20),
-                      ),
-                    ),
-                  ],
+                _LeadViewStatBlock(
+                  label: 'Status',
+                  value: data.slaStatus,
+                  valueColor: const Color(0xFFD92D20),
                 ),
                 SizedBox(height: 18.h),
                 _LeadViewStatBlock(label: 'Activity', value: data.slaActivity),

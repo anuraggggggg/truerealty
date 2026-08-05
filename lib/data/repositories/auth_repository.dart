@@ -19,16 +19,48 @@ class AuthRepository {
     );
     final session = AuthSession.fromJson(response.data);
     final cookieTokens = _tokensFromSetCookie(response.headers['set-cookie']);
-    await _tokenStore.saveTokens(
+    final resolved = session.copyWith(
       accessToken: session.accessToken ?? cookieTokens.accessToken,
       refreshToken: session.refreshToken ?? cookieTokens.refreshToken,
     );
-    return response.copyWithData(
-      session.copyWith(
-        accessToken: session.accessToken ?? cookieTokens.accessToken,
-        refreshToken: session.refreshToken ?? cookieTokens.refreshToken,
-      ),
+
+    // Backend may return an OTP challenge instead of tokens.
+    if (resolved.requiresOtp || !resolved.hasTokens) {
+      return response.copyWithData(resolved);
+    }
+
+    await _tokenStore.saveTokens(
+      accessToken: resolved.accessToken,
+      refreshToken: resolved.refreshToken,
     );
+    return response.copyWithData(resolved);
+  }
+
+  Future<ApiResponse<AuthSession>> verifyOtp(VerifyOtpRequest request) async {
+    final response = await _apiClient.post(
+      '/auth/otp/verify',
+      body: request.toJson(),
+      requiresAuth: false,
+    );
+    final session = AuthSession.fromJson(response.data);
+    final cookieTokens = _tokensFromSetCookie(response.headers['set-cookie']);
+    final resolved = session.copyWith(
+      accessToken: session.accessToken ?? cookieTokens.accessToken,
+      refreshToken: session.refreshToken ?? cookieTokens.refreshToken,
+      requiresOtp: false,
+    );
+    if (resolved.hasTokens) {
+      await _tokenStore.saveTokens(
+        accessToken: resolved.accessToken,
+        refreshToken: resolved.refreshToken,
+      );
+    }
+    return response.copyWithData(resolved);
+  }
+
+  /// Resend is performed by re-calling login with the same credentials.
+  Future<ApiResponse<AuthSession>> resendOtp(LoginRequest request) {
+    return login(request);
   }
 
   Future<ApiResponse<AuthSession>> refresh() async {
