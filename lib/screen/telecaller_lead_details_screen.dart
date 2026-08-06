@@ -1,13 +1,67 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 import 'package:truerealtycrm/constant/colors_screen.dart';
+import 'package:truerealtycrm/provider/leads_provider.dart';
 
-class TelecallerLeadDetailsScreen extends StatelessWidget {
-  const TelecallerLeadDetailsScreen({super.key});
+class TelecallerLeadDetailsScreen extends StatefulWidget {
+  const TelecallerLeadDetailsScreen({super.key, this.lead});
+
+  final LeadModel? lead;
+
+  @override
+  State<TelecallerLeadDetailsScreen> createState() =>
+      _TelecallerLeadDetailsScreenState();
+}
+
+class _TelecallerLeadDetailsScreenState
+    extends State<TelecallerLeadDetailsScreen> {
+  Map<String, dynamic>? _lead;
+  bool _loading = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _lead = widget.lead?.raw;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadLead());
+  }
+
+  Future<void> _loadLead() async {
+    final id =
+        widget.lead?.id ?? _value(_lead ?? const {}, const ['id', '_id']);
+    if (id == '—' || id.isEmpty) {
+      if (_lead == null && mounted) {
+        setState(() => _error = 'Lead details are not available.');
+      }
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    final response = await context.read<LeadProvider>().fetchLead(id);
+    if (!mounted) return;
+    final payload = response?.data;
+    final outer = payload is Map
+        ? Map<String, dynamic>.from(payload)
+        : <String, dynamic>{};
+    final nested = outer['data'];
+    setState(() {
+      if (nested is Map) {
+        _lead = Map<String, dynamic>.from(nested);
+      } else if (outer.isNotEmpty) {
+        _lead = outer;
+      }
+      _loading = false;
+      if (_lead == null) _error = 'Unable to load this lead.';
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
+    final data = _lead ?? widget.lead?.raw ?? const <String, dynamic>{};
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FB),
       body: SafeArea(
@@ -15,6 +69,7 @@ class TelecallerLeadDetailsScreen extends StatelessWidget {
           padding: EdgeInsets.only(bottom: 24.h),
           child: Column(
             children: [
+              if (_loading) const LinearProgressIndicator(minHeight: 2),
               Container(
                 width: double.infinity,
                 height: 156.h,
@@ -72,12 +127,20 @@ class TelecallerLeadDetailsScreen extends StatelessWidget {
                 child: Padding(
                   padding: EdgeInsets.fromLTRB(12.w, 0, 12.w, 0),
                   child: Column(
-                    children: const [
-                      _RequirementsCard(),
-                      _CustomerInformationCard(),
-                      _LeadTimelineCard(),
-                      _CommunicationHistoryCard(),
-                      _DetailsQuickActionsCard(),
+                    children: [
+                      if (_error != null)
+                        Padding(
+                          padding: EdgeInsets.only(bottom: 12.h),
+                          child: Text(
+                            _error!,
+                            style: const TextStyle(color: Colors.red),
+                          ),
+                        ),
+                      _RequirementsCard(data: data),
+                      _CustomerInformationCard(data: data),
+                      _LeadTimelineCard(data: data),
+                      _CommunicationHistoryCard(data: data),
+                      const _DetailsQuickActionsCard(),
                     ],
                   ),
                 ),
@@ -94,10 +157,12 @@ class _DetailsCardShell extends StatelessWidget {
   const _DetailsCardShell({
     required this.title,
     required this.child,
+    this.showEdit = true,
   });
 
   final String title;
   final Widget child;
+  final bool showEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -133,32 +198,36 @@ class _DetailsCardShell extends StatelessWidget {
                   ),
                 ),
               ),
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF1F5FF),
-                  borderRadius: BorderRadius.circular(10.r),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.edit_outlined,
-                      size: 13.sp,
-                      color: AppColors.blueBright,
-                    ),
-                    SizedBox(width: 4.w),
-                    Text(
-                      'Edit',
-                      style: GoogleFonts.inter(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
+              if (showEdit)
+                Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 12.w,
+                    vertical: 6.h,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5FF),
+                    borderRadius: BorderRadius.circular(10.r),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.edit_outlined,
+                        size: 13.sp,
                         color: AppColors.blueBright,
                       ),
-                    ),
-                  ],
+                      SizedBox(width: 4.w),
+                      Text(
+                        'Edit',
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: AppColors.blueBright,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
             ],
           ),
           SizedBox(height: 16.h),
@@ -170,35 +239,58 @@ class _DetailsCardShell extends StatelessWidget {
 }
 
 class _RequirementsCard extends StatelessWidget {
-  const _RequirementsCard();
+  const _RequirementsCard({required this.data});
+
+  final Map<String, dynamic> data;
 
   @override
   Widget build(BuildContext context) {
-    const items = [
+    final requirement = _map(data['requirement']);
+    final items = [
       _RequirementItem(
         icon: Icons.apartment_rounded,
         title: 'Property\nType',
-        value: 'Apartment',
+        value: _valueFrom(
+          [requirement, data],
+          const ['propertyTypeName', 'propertyType', 'property_type'],
+        ),
       ),
       _RequirementItem(
         icon: Icons.bed_rounded,
         title: 'BHK',
-        value: '3\nBHK',
+        value: _valueFrom(
+          [requirement, data],
+          const ['configurationName', 'configuration', 'bhk', 'unitType'],
+        ),
       ),
       _RequirementItem(
         icon: Icons.calendar_today_rounded,
         title: 'Possession\nWithin',
-        value: '6\nMonths',
+        value: _valueFrom(
+          [requirement, data],
+          const ['possessionWithin', 'possession', 'possessionStatus'],
+        ),
       ),
       _RequirementItem(
         icon: Icons.place_rounded,
         title: 'Preferred Area',
-        value: 'Noida\nExtension',
+        value: _valueFrom(
+          [requirement, data],
+          const [
+            'preferredLocation',
+            'preferredArea',
+            'location',
+            'projectArea',
+          ],
+        ),
       ),
       _RequirementItem(
         icon: Icons.layers_rounded,
         title: 'Floor\nPreference',
-        value: 'Mid Floor',
+        value: _valueFrom(
+          [requirement, data],
+          const ['floorPreference', 'preferredFloor', 'floor'],
+        ),
       ),
     ];
 
@@ -233,7 +325,10 @@ class _RequirementsCard extends StatelessWidget {
           ),
           SizedBox(height: 6.h),
           Text(
-            'Looking for a spacious 3 BHK with good connectivity to metro.',
+            _valueFrom(
+              [requirement, data],
+              const ['remarks', 'remark', 'notes', 'description'],
+            ),
             style: GoogleFonts.inter(
               fontSize: 14,
               fontWeight: FontWeight.w400,
@@ -297,40 +392,58 @@ class _RequirementTile extends StatelessWidget {
 }
 
 class _CustomerInformationCard extends StatelessWidget {
-  const _CustomerInformationCard();
+  const _CustomerInformationCard({required this.data});
+
+  final Map<String, dynamic> data;
 
   @override
   Widget build(BuildContext context) {
-    const items = [
+    final requirement = _map(data['requirement']);
+    final items = [
       _CustomerInfoItem(
         icon: Icons.call_rounded,
         title: 'Mobile Number',
-        value: '+91 98765 43210',
+        value: _value(data, const ['mobile', 'phone', 'phoneNumber', 'number']),
       ),
       _CustomerInfoItem(
         icon: Icons.work_rounded,
         title: 'Profession',
-        value: 'Software Engineer',
+        value: _valueFrom(
+          [data, requirement],
+          const ['profession', 'occupation', 'jobTitle'],
+        ),
       ),
       _CustomerInfoItem(
         icon: Icons.email_rounded,
         title: 'Email Address',
-        value: 'rahulmehta@gmail.\ncom',
+        value: _value(data, const ['email', 'emailAddress']),
       ),
       _CustomerInfoItem(
         icon: Icons.group_rounded,
         title: 'Family Size',
-        value: '4 Members',
+        value: _valueFrom(
+          [data, requirement],
+          const ['familySize', 'familyMembers'],
+        ),
       ),
       _CustomerInfoItem(
         icon: Icons.place_rounded,
         title: 'Location',
-        value: 'Noida, Uttar\nPradesh',
+        value: _valueFrom(
+          [data, requirement],
+          const [
+            'address',
+            'location',
+            'city',
+            'preferredLocation',
+            'projectArea',
+          ],
+        ),
       ),
       _CustomerInfoItem(
         icon: Icons.currency_rupee_rounded,
         title: 'Budget',
-        value: '75 L - 90 L',
+        value: _budget(requirement, data),
       ),
     ];
 
@@ -414,51 +527,90 @@ class _CustomerInfoTile extends StatelessWidget {
   }
 }
 
-class _LeadTimelineCard extends StatelessWidget {
-  const _LeadTimelineCard();
+class _LeadTimelineCard extends StatefulWidget {
+  const _LeadTimelineCard({required this.data});
+
+  final Map<String, dynamic> data;
+
+  @override
+  State<_LeadTimelineCard> createState() => _LeadTimelineCardState();
+}
+
+class _LeadTimelineCardState extends State<_LeadTimelineCard> {
+  bool _expanded = false;
 
   @override
   Widget build(BuildContext context) {
-    const items = [
-      _TimelineItem(
-        dotColor: Color(0xFF22C55E),
-        icon: Icons.call_rounded,
-        iconColor: Color(0xFF64748B),
-        title: 'New Lead Assigned',
-        time: '22 May 2025 • 10:30 AM',
-        status: 'Completed',
-        statusColor: Color(0xFF22C55E),
-        statusBg: Color(0xFFEAFBF2),
-      ),
-      _TimelineItem(
-        dotColor: Color(0xFFF97316),
-        icon: Icons.call_rounded,
-        iconColor: Color(0xFFF97316),
-        title: 'First Call',
-        time: '22 May 2025 • 11:15 AM',
-        status: 'Completed',
-        statusColor: Color(0xFFF97316),
-        statusBg: Color(0xFFFFF1E8),
-      ),
-      _TimelineItem(
-        dotColor: Color(0xFF3B82F6),
-        icon: Icons.calendar_today_rounded,
-        iconColor: Color(0xFF3B82F6),
-        title: 'Follow-up Scheduled',
-        time: '23 May 2025 • 11:00 AM',
-        status: 'Upcoming',
-        statusColor: Color(0xFF3B82F6),
-        statusBg: Color(0xFFEAF2FF),
-      ),
-    ];
+    final items =
+        _listFrom(widget.data, const [
+          'timeline',
+          'activities',
+          'activityTimeline',
+          'leadActivities',
+        ]).map((raw) {
+          final status = _value(raw, const ['statusName', 'status']);
+          final upcoming =
+              status.toLowerCase().contains('upcoming') ||
+              status.toLowerCase().contains('scheduled');
+          final color = upcoming
+              ? const Color(0xFF3B82F6)
+              : const Color(0xFF22C55E);
+          return _TimelineItem(
+            dotColor: color,
+            icon: _activityIcon(
+              _value(raw, const ['type', 'activityType', 'title']),
+            ),
+            iconColor: color,
+            title: _value(raw, const ['title', 'name', 'activityType', 'type']),
+            time: _dateTime(
+              _value(raw, const [
+                'createdAt',
+                'updatedAt',
+                'performedAt',
+                'activityAt',
+                'scheduledAt',
+                'date',
+                'timestamp',
+              ]),
+            ),
+            status: status,
+            statusColor: color,
+            statusBg: upcoming
+                ? const Color(0xFFEAF2FF)
+                : const Color(0xFFEAFBF2),
+          );
+        }).toList();
+    final visibleItems = _expanded ? items : items.take(5).toList();
 
     return _DetailsCardShell(
       title: 'Lead Timeline',
-      child: Column(
-        children: items
-            .map((item) => _TimelineRow(item: item))
-            .toList(),
-      ),
+      showEdit: false,
+      child: items.isEmpty
+          ? const Text('No timeline activity available.')
+          : Column(
+              children: [
+                for (var i = 0; i < visibleItems.length; i++) ...[
+                  _TimelineRow(item: visibleItems[i]),
+                  if (i < visibleItems.length - 1)
+                    const Divider(color: Color(0xFFF0F3F7), height: 1),
+                ],
+                if (items.length > 5) ...[
+                  SizedBox(height: 6.h),
+                  TextButton.icon(
+                    onPressed: () => setState(() => _expanded = !_expanded),
+                    icon: Icon(
+                      _expanded ? Icons.expand_less : Icons.expand_more,
+                      size: 18.sp,
+                    ),
+                    label: Text(
+                      _expanded
+                          ? 'Show less'
+                          : 'View all ${items.length} activities',
+                    ),
+                  ),
+                ],
+              ],
+            ),
     );
   }
 }
@@ -543,21 +695,22 @@ class _TimelineRow extends StatelessWidget {
               ],
             ),
           ),
-          Container(
-            padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
-            decoration: BoxDecoration(
-              color: item.statusBg,
-              borderRadius: BorderRadius.circular(8.r),
-            ),
-            child: Text(
-              item.status,
-              style: GoogleFonts.inter(
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
-                color: item.statusColor,
+          if (item.status != '—')
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
+              decoration: BoxDecoration(
+                color: item.statusBg,
+                borderRadius: BorderRadius.circular(8.r),
+              ),
+              child: Text(
+                item.status,
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  color: item.statusColor,
+                ),
               ),
             ),
-          ),
         ],
       ),
     );
@@ -565,34 +718,47 @@ class _TimelineRow extends StatelessWidget {
 }
 
 class _CommunicationHistoryCard extends StatelessWidget {
-  const _CommunicationHistoryCard();
+  const _CommunicationHistoryCard({required this.data});
+
+  final Map<String, dynamic> data;
 
   @override
   Widget build(BuildContext context) {
+    final rows = _listFrom(data, const [
+      'communications',
+      'communicationHistory',
+      'callLogs',
+      'interactions',
+    ]);
     return _DetailsCardShell(
       title: 'Communication History',
-      child: Column(
-        children: const [
-          _CommunicationRow(
-            icon: Icons.call_rounded,
-            iconColor: Color(0xFF22C55E),
-            title: 'Call',
-            subtitle: '22 May 2025 • 11:15 AM',
-            trailingTextTop: 'Duration',
-            trailingTextBottom: '04:32',
-            showPlayButton: true,
-          ),
-          Divider(color: Color(0xFFE7EDF4), height: 24),
-          _CommunicationRow(
-            icon: Icons.whatshot,
-            iconColor: Color(0xFF22C55E),
-            title: 'WhatsApp',
-            subtitle: '22 May 2025 • 11:45 AM',
-            trailingTextBottom: '2 Messages',
-            showChevron: true,
-          ),
-        ],
-      ),
+      showEdit: false,
+      child: rows.isEmpty
+          ? const Text('No communication history available.')
+          : Column(
+              children: [
+                for (var i = 0; i < rows.length; i++) ...[
+                  if (i > 0)
+                    const Divider(color: Color(0xFFE7EDF4), height: 24),
+                  _CommunicationRow(
+                    icon: _activityIcon(
+                      _value(rows[i], const ['type', 'channel']),
+                    ),
+                    iconColor: const Color(0xFF22C55E),
+                    title: _value(rows[i], const ['title', 'type', 'channel']),
+                    subtitle: _value(rows[i], const [
+                      'createdAt',
+                      'date',
+                      'timestamp',
+                    ]),
+                    trailingTextBottom: _value(rows[i], const [
+                      'duration',
+                      'messageCount',
+                    ]),
+                  ),
+                ],
+              ],
+            ),
     );
   }
 }
@@ -603,20 +769,14 @@ class _CommunicationRow extends StatelessWidget {
     required this.iconColor,
     required this.title,
     required this.subtitle,
-    this.trailingTextTop,
     this.trailingTextBottom,
-    this.showPlayButton = false,
-    this.showChevron = false,
   });
 
   final IconData icon;
   final Color iconColor;
   final String title;
   final String subtitle;
-  final String? trailingTextTop;
   final String? trailingTextBottom;
-  final bool showPlayButton;
-  final bool showChevron;
 
   @override
   Widget build(BuildContext context) {
@@ -659,15 +819,6 @@ class _CommunicationRow extends StatelessWidget {
         Column(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            if (trailingTextTop != null)
-              Text(
-                trailingTextTop!,
-                style: GoogleFonts.inter(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w400,
-                  color: const Color(0xFF334155),
-                ),
-              ),
             if (trailingTextBottom != null) ...[
               SizedBox(height: 2.h),
               Row(
@@ -681,35 +832,11 @@ class _CommunicationRow extends StatelessWidget {
                       color: const Color(0xFF1E293B),
                     ),
                   ),
-                  if (showChevron) ...[
-                    SizedBox(width: 4.w),
-                    Icon(
-                      Icons.chevron_right_rounded,
-                      size: 16.sp,
-                      color: const Color(0xFF64748B),
-                    ),
-                  ],
                 ],
               ),
             ],
           ],
         ),
-        if (showPlayButton) ...[
-          SizedBox(width: 10.w),
-          Container(
-            width: 32.w,
-            height: 32.w,
-            decoration: const BoxDecoration(
-              color: AppColors.navy,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.play_arrow_rounded,
-              size: 18.sp,
-              color: Colors.white,
-            ),
-          ),
-        ],
       ],
     );
   }
@@ -814,4 +941,97 @@ class _QuickActionIconTile extends StatelessWidget {
       ],
     );
   }
+}
+
+Map<String, dynamic> _map(dynamic value) =>
+    value is Map ? Map<String, dynamic>.from(value) : const {};
+
+String _value(Map<String, dynamic> map, List<String> keys) {
+  for (final key in keys) {
+    final raw = map[key];
+    if (raw == null || raw is Map || raw is List) continue;
+    final text = raw.toString().trim();
+    if (text.isNotEmpty && text.toLowerCase() != 'null') return text;
+  }
+  return '—';
+}
+
+String _valueFrom(List<Map<String, dynamic>> maps, List<String> keys) {
+  for (final map in maps) {
+    final value = _value(map, keys);
+    if (value != '—') return value;
+  }
+  return '—';
+}
+
+String _budget(Map<String, dynamic> requirement, Map<String, dynamic> data) {
+  final range = _valueFrom(
+    [requirement, data],
+    const ['budgetRange', 'budget', 'budgetLabel'],
+  );
+  if (range != '—') return range;
+  final minimum = _valueFrom(
+    [requirement, data],
+    const ['minimumBudget', 'minBudget', 'budgetMin'],
+  );
+  final maximum = _valueFrom(
+    [requirement, data],
+    const ['maximumBudget', 'maxBudget', 'budgetMax'],
+  );
+  if (minimum == '—' && maximum == '—') return '—';
+  if (minimum == '—') return maximum;
+  if (maximum == '—') return minimum;
+  return '$minimum – $maximum';
+}
+
+List<Map<String, dynamic>> _listFrom(
+  Map<String, dynamic> data,
+  List<String> keys,
+) {
+  for (final key in keys) {
+    final value = data[key];
+    if (value is List) {
+      return value
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
+    }
+  }
+  return const [];
+}
+
+IconData _activityIcon(String type) {
+  final normalized = type.toLowerCase();
+  if (normalized.contains('whatsapp') || normalized.contains('message')) {
+    return Icons.chat_rounded;
+  }
+  if (normalized.contains('email')) return Icons.email_rounded;
+  if (normalized.contains('follow') || normalized.contains('schedule')) {
+    return Icons.calendar_today_rounded;
+  }
+  return Icons.call_rounded;
+}
+
+String _dateTime(String value) {
+  if (value == '—') return '';
+  final parsed = DateTime.tryParse(value)?.toLocal();
+  if (parsed == null) return value;
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  final hour = parsed.hour % 12 == 0 ? 12 : parsed.hour % 12;
+  final minute = parsed.minute.toString().padLeft(2, '0');
+  final period = parsed.hour >= 12 ? 'PM' : 'AM';
+  return '${parsed.day} ${months[parsed.month - 1]} ${parsed.year} • $hour:$minute $period';
 }

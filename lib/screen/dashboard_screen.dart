@@ -8185,9 +8185,9 @@ class _BottomNavigation extends StatelessWidget {
   const _BottomNavigation({required this.selectedIndex, required this.onTap});
 
   static const double _defaultNavIconSize = 22;
-  static const double _telecallerNavIconSize = 25;
+  static const double _telecallerNavIconSize = 23;
   static const double _defaultNavLabelSize = 12.5;
-  static const double _telecallerNavLabelSize = 10;
+  static const double _telecallerNavLabelSize = 11;
 
   final int selectedIndex;
   final ValueChanged<int> onTap;
@@ -8247,8 +8247,8 @@ class _BottomNavigation extends StatelessWidget {
               elevation: 0,
               selectedItemColor: AppColors.navy,
               unselectedItemColor: AppColors.textSecondary,
-              showSelectedLabels: role != UserRole.telecaller,
-              showUnselectedLabels: role != UserRole.telecaller,
+              showSelectedLabels: true,
+              showUnselectedLabels: true,
               selectedFontSize: navLabelSize,
               unselectedFontSize: navLabelSize,
               selectedLabelStyle: TextStyle(
@@ -8515,6 +8515,12 @@ class _NavigationDrawerState extends State<_NavigationDrawer> {
                       label: 'Follow-Ups',
                       selected: false,
                       onTap: () => _openRoute(AppRouter.myFollowUps),
+                    ),
+                    _DrawerItem(
+                      icon: Icons.workspace_premium_outlined,
+                      label: 'My Commissions',
+                      selected: false,
+                      onTap: () => _openRoute(AppRouter.myCommissions),
                     ),
                     _DrawerItem(
                       icon: Icons.person_outline,

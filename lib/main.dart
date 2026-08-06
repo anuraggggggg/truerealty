@@ -9,6 +9,7 @@ import 'package:truerealtycrm/provider/attendance_provider.dart';
 import 'package:truerealtycrm/provider/auth_provider.dart';
 import 'package:truerealtycrm/provider/auto_assignment_provider.dart';
 import 'package:truerealtycrm/provider/contact_lead_provider.dart';
+import 'package:truerealtycrm/provider/commission_provider.dart';
 import 'package:truerealtycrm/provider/employee_provider.dart';
 import 'package:truerealtycrm/provider/follow_ups_provider.dart';
 import 'package:truerealtycrm/provider/integration_provider.dart';
@@ -48,6 +49,7 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => LeadProvider()),
         ChangeNotifierProvider(create: (_) => FollowUpsProvider()),
         ChangeNotifierProvider(create: (_) => ContactLeadProvider()),
+        ChangeNotifierProvider(create: (_) => CommissionProvider()),
         ChangeNotifierProvider(create: (_) => LeadMasterProvider()),
         ChangeNotifierProvider(create: (_) => AutoAssignmentProvider()),
         ChangeNotifierProvider(create: (_) => ProjectProvider()),

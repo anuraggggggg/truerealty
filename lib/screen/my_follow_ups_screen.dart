@@ -92,10 +92,9 @@ class _MyFollowUpsScreenState extends State<MyFollowUpsScreen> {
   void _openLead(FollowUpModel item) {
     final lead = item.leadRaw;
     if (lead == null) return;
-    Navigator.of(context).pushNamed(
-      AppRouter.leadDetail,
-      arguments: LeadModel.fromJson(lead),
-    );
+    Navigator.of(
+      context,
+    ).pushNamed(AppRouter.leadDetail, arguments: LeadModel.fromJson(lead));
   }
 
   @override
@@ -233,13 +232,11 @@ class _MyFollowUpsScreenState extends State<MyFollowUpsScreen> {
 }
 
 class _SummaryMetricsGrid extends StatelessWidget {
-  const _SummaryMetricsGrid({
-    required this.summary,
-    required this.onSelect,
-  });
+  const _SummaryMetricsGrid({required this.summary, required this.onSelect});
 
   final FollowUpQueueSummary summary;
   final ValueChanged<FollowUpListFilter> onSelect;
+  static const double _cardHeight = 190;
 
   @override
   Widget build(BuildContext context) {
@@ -290,6 +287,7 @@ class _SummaryMetricsGrid extends StatelessWidget {
                 for (var i = 0; i < cards.length; i++)
                   SizedBox(
                     width: width,
+                    height: _cardHeight.h,
                     child: FollowUpMetricCard(
                       data: cards[i],
                       onTap: () => onSelect(switch (i) {
@@ -305,16 +303,19 @@ class _SummaryMetricsGrid extends StatelessWidget {
           },
         ),
         SizedBox(height: 12.h),
-        FollowUpMetricCard(
-          data: FollowUpMetricCardData(
-            title: 'Pending Queue',
-            value: '${summary.pendingCount}',
-            subtitle: 'Open follow-up workload',
-            footer: '${summary.pendingCount} total',
-            icon: Icons.assignment_late_outlined,
-            iconColor: AppColors.blueBright,
+        SizedBox(
+          height: _cardHeight.h,
+          child: FollowUpMetricCard(
+            data: FollowUpMetricCardData(
+              title: 'Pending Queue',
+              value: '${summary.pendingCount}',
+              subtitle: 'Open follow-up workload',
+              footer: '${summary.pendingCount} total',
+              icon: Icons.assignment_late_outlined,
+              iconColor: AppColors.blueBright,
+            ),
+            onTap: () => onSelect(FollowUpListFilter.all),
           ),
-          onTap: () => onSelect(FollowUpListFilter.all),
         ),
       ],
     );

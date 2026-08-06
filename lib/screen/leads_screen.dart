@@ -1,7 +1,13 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:truerealtycrm/constant/colors_screen.dart';
 import 'package:truerealtycrm/provider/project_provider.dart';
 import 'package:truerealtycrm/router/app_router.dart';
@@ -27,6 +33,9 @@ class _LeadListWidgetState extends State<LeadListWidget> {
   String _selectedTab = 'All';
   bool _showFilters = false;
   bool _loadingFilters = false;
+  bool _exportingPdf = false;
+  bool _selectionMode = false;
+  final Set<String> _selectedLeadIds = <String>{};
   String? _leadType;
   String? _configuration;
   String? _dateRange;
@@ -280,7 +289,6 @@ class _LeadListWidgetState extends State<LeadListWidget> {
               height: 1.4,
               color: const Color(0xFF0F172A),
             ),
-
             overflow: TextOverflow.ellipsis,
           ),
         ),
@@ -410,51 +418,157 @@ class _LeadListWidgetState extends State<LeadListWidget> {
   }
 
   Widget _buildSearchAndActions(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final buttonWidth = constraints.maxWidth < 430
-            ? double.infinity
-            : 190.w;
-        return Align(
-          alignment: Alignment.centerRight,
-          child: SizedBox(
-            width: buttonWidth,
-            height: 50.h,
-            child: OutlinedButton.icon(
-              onPressed: () => setState(() => _showFilters = !_showFilters),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.navy,
-                backgroundColor: _showFilters
-                    ? const Color(0xFFFFF4ED)
-                    : Colors.white,
-                side: BorderSide(
-                  color: _showFilters
-                      ? AppColors.orangeStrong
-                      : const Color(0xFFCBD5E1),
-                  width: 1.2,
-                ),
-                padding: EdgeInsets.symmetric(horizontal: 16.w),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12.r),
-                ),
+    final leads = context.watch<LeadProvider>().leads;
+    final selectedCount = _selectedLeadIds.length;
+
+    Widget actionButton({
+      required String label,
+      required IconData icon,
+      required VoidCallback? onTap,
+      Color? foreground,
+      Color? borderColor,
+      Color? background,
+      Widget? trailing,
+    }) {
+      return Expanded(
+        child: SizedBox(
+          height: 44.h,
+          child: OutlinedButton.icon(
+            onPressed: onTap,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: foreground ?? AppColors.navy,
+              backgroundColor: background ?? Colors.white,
+              side: BorderSide(
+                color: borderColor ?? const Color(0xFFCBD5E1),
+                width: 1.2,
               ),
-              icon: Icon(
-                _showFilters
-                    ? Icons.keyboard_arrow_up_rounded
-                    : Icons.filter_alt_rounded,
-                size: 22.sp,
+              padding: EdgeInsets.symmetric(horizontal: 8.w),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12.r),
               ),
-              label: Text(
-                _showFilters ? 'Hide filters' : 'All filters',
-                style: GoogleFonts.inter(
-                  fontSize: 14.sp,
-                  fontWeight: FontWeight.w800,
-                ),
+            ),
+            icon: Icon(icon, size: 18.sp),
+            label: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    label,
+                    style: GoogleFonts.inter(
+                      fontSize: 12.5.sp,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  if (trailing != null) ...[SizedBox(width: 4.w), trailing],
+                ],
               ),
             ),
           ),
-        );
-      },
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            actionButton(
+              label: _selectionMode ? 'Cancel' : 'Select',
+              icon: _selectionMode
+                  ? Icons.close_rounded
+                  : Icons.check_box_outlined,
+              onTap: () {
+                setState(() {
+                  _selectionMode = !_selectionMode;
+                  if (!_selectionMode) _selectedLeadIds.clear();
+                });
+              },
+              foreground: _selectionMode
+                  ? const Color(0xFFB42318)
+                  : AppColors.navy,
+              borderColor: _selectionMode
+                  ? const Color(0xFFFECACA)
+                  : const Color(0xFFCBD5E1),
+              background: _selectionMode
+                  ? const Color(0xFFFFF1F0)
+                  : Colors.white,
+            ),
+            SizedBox(width: 8.w),
+            actionButton(
+              label: _exportingPdf ? '...' : 'Export',
+              icon: Icons.picture_as_pdf_outlined,
+              onTap: _exportingPdf ? null : _exportLeadsPdf,
+              foreground: const Color(0xFFDC2626),
+              borderColor: const Color(0xFFFECACA),
+              background: const Color(0xFFFFF5F5),
+            ),
+            SizedBox(width: 8.w),
+            actionButton(
+              label: _showFilters ? 'Hide' : 'Filter',
+              icon: _showFilters
+                  ? Icons.keyboard_arrow_up_rounded
+                  : Icons.filter_alt_rounded,
+              onTap: () => setState(() => _showFilters = !_showFilters),
+              foreground: _showFilters ? AppColors.orangeStrong : AppColors.navy,
+              borderColor: _showFilters
+                  ? AppColors.orangeStrong
+                  : const Color(0xFFCBD5E1),
+              background: _showFilters
+                  ? const Color(0xFFFFF4ED)
+                  : Colors.white,
+            ),
+          ],
+        ),
+        if (_selectionMode) ...[
+          SizedBox(height: 10.h),
+          Row(
+            children: [
+              Text(
+                selectedCount == 0
+                    ? 'Select leads to export'
+                    : '$selectedCount selected',
+                style: GoogleFonts.inter(
+                  fontSize: 12.5.sp,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF64748B),
+                ),
+              ),
+              const Spacer(),
+              TextButton(
+                onPressed: leads.isEmpty
+                    ? null
+                    : () {
+                        setState(() {
+                          if (_selectedLeadIds.length == leads.length) {
+                            _selectedLeadIds.clear();
+                          } else {
+                            _selectedLeadIds
+                              ..clear()
+                              ..addAll(
+                                leads
+                                    .map((lead) => lead.id ?? lead.phone)
+                                    .whereType<String>(),
+                              );
+                          }
+                        });
+                      },
+                child: Text(
+                  _selectedLeadIds.length == leads.length && leads.isNotEmpty
+                      ? 'Clear all'
+                      : 'Select all',
+                  style: GoogleFonts.inter(
+                    fontSize: 12.5.sp,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.orangeDeep,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
     );
   }
 
@@ -704,20 +818,37 @@ class _LeadListWidgetState extends State<LeadListWidget> {
     final location = lead.location?.trim().isNotEmpty == true
         ? lead.location!
         : '-';
+    final leadKey = lead.id ?? lead.phone;
+    final isSelected = _selectedLeadIds.contains(leadKey);
 
     return Material(
       color: Colors.white,
       borderRadius: BorderRadius.circular(14.r),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () =>
-            Navigator.pushNamed(context, AppRouter.leadDetail, arguments: lead),
+        onTap: () {
+          if (_selectionMode) {
+            setState(() {
+              if (isSelected) {
+                _selectedLeadIds.remove(leadKey);
+              } else {
+                _selectedLeadIds.add(leadKey);
+              }
+            });
+            return;
+          }
+          Navigator.pushNamed(context, AppRouter.leadDetail, arguments: lead);
+        },
         child: Container(
           padding: EdgeInsets.fromLTRB(14.w, 13.h, 14.w, 12.h),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: isSelected ? const Color(0xFFFFF8F3) : Colors.white,
             borderRadius: BorderRadius.circular(14.r),
-            border: Border.all(color: const Color(0xFFD5DDE8)),
+            border: Border.all(
+              color: isSelected
+                  ? AppColors.orangeStrong
+                  : const Color(0xFFD5DDE8),
+            ),
             boxShadow: const [
               BoxShadow(
                 color: Color(0x0A0F172A),
@@ -731,6 +862,24 @@ class _LeadListWidgetState extends State<LeadListWidget> {
             children: [
               Row(
                 children: [
+                  if (_selectionMode) ...[
+                    Checkbox(
+                      value: isSelected,
+                      onChanged: (value) {
+                        setState(() {
+                          if (value == true) {
+                            _selectedLeadIds.add(leadKey);
+                          } else {
+                            _selectedLeadIds.remove(leadKey);
+                          }
+                        });
+                      },
+                      activeColor: AppColors.orangeStrong,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    SizedBox(width: 4.w),
+                  ],
                   CircleAvatar(
                     radius: 20.r,
                     backgroundColor: const Color(0xFF10213D),
@@ -763,19 +912,21 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                     background: statusColors.$2,
                     borderColor: statusColors.$3,
                   ),
-                  SizedBox(width: 2.w),
-                  IconButton(
-                    tooltip: 'Lead actions',
-                    visualDensity: VisualDensity.compact,
-                    padding: EdgeInsets.zero,
-                    constraints: BoxConstraints.tight(Size(32.w, 32.h)),
-                    onPressed: () => _showLeadActionsSheet(context, lead),
-                    icon: Icon(
-                      Icons.more_horiz_rounded,
-                      size: 20.sp,
-                      color: const Color(0xFF667085),
+                  if (!_selectionMode) ...[
+                    SizedBox(width: 2.w),
+                    IconButton(
+                      tooltip: 'Lead actions',
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      constraints: BoxConstraints.tight(Size(32.w, 32.h)),
+                      onPressed: () => _showLeadActionsSheet(context, lead),
+                      icon: Icon(
+                        Icons.more_horiz_rounded,
+                        size: 20.sp,
+                        color: const Color(0xFF667085),
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
               SizedBox(height: 14.h),
@@ -963,6 +1114,129 @@ class _LeadListWidgetState extends State<LeadListWidget> {
         content: Text('Unable to open WhatsApp. Please install WhatsApp.'),
       ),
     );
+  }
+
+  Future<void> _exportLeadsPdf() async {
+    final allLeads = context.read<LeadProvider>().leads;
+    final leads = _selectionMode && _selectedLeadIds.isNotEmpty
+        ? allLeads
+              .where(
+                (lead) => _selectedLeadIds.contains(lead.id ?? lead.phone),
+              )
+              .toList()
+        : allLeads;
+
+    if (leads.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _selectionMode
+                ? 'Select at least one lead to export.'
+                : 'No leads available to export.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _exportingPdf = true);
+    try {
+      final doc = pw.Document();
+      final now = DateTime.now();
+      final stamp =
+          '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+
+      String clean(String? value) {
+        final text = (value ?? '-').trim();
+        if (text.isEmpty) return '-';
+        return text
+            .replaceAll('—', '-')
+            .replaceAll('–', '-')
+            .replaceAll('•', '-')
+            .replaceAll(RegExp(r'[^\x20-\x7E]'), ' ');
+      }
+
+      doc.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4.landscape,
+          margin: const pw.EdgeInsets.all(24),
+          build: (context) => [
+            pw.Text(
+              'TrueRoot Realty - Lead List',
+              style: pw.TextStyle(
+                fontSize: 18,
+                fontWeight: pw.FontWeight.bold,
+              ),
+            ),
+            pw.SizedBox(height: 4),
+            pw.Text(
+              'Exported on $stamp | $_selectedTab tab | ${leads.length} leads',
+              style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
+            ),
+            pw.SizedBox(height: 14),
+            pw.TableHelper.fromTextArray(
+              headers: const [
+                'Name',
+                'Phone',
+                'Status',
+                'Type',
+                'Project',
+                'Location',
+                'Owner',
+              ],
+              data: leads
+                  .map(
+                    (lead) => [
+                      clean(lead.name),
+                      clean(lead.phone),
+                      clean(lead.status),
+                      clean(lead.leadType),
+                      clean(lead.project),
+                      clean(lead.location),
+                      clean(lead.assignedTo),
+                    ],
+                  )
+                  .toList(),
+              headerStyle: pw.TextStyle(
+                fontWeight: pw.FontWeight.bold,
+                fontSize: 9,
+                color: PdfColors.white,
+              ),
+              headerDecoration: const pw.BoxDecoration(
+                color: PdfColor.fromInt(0xFF0F2B57),
+              ),
+              cellStyle: const pw.TextStyle(fontSize: 8),
+              cellAlignment: pw.Alignment.centerLeft,
+              cellPadding: const pw.EdgeInsets.symmetric(
+                horizontal: 4,
+                vertical: 5,
+              ),
+              border: pw.TableBorder.all(
+                color: PdfColors.grey300,
+                width: 0.4,
+              ),
+            ),
+          ],
+        ),
+      );
+
+      final directory = await getTemporaryDirectory();
+      final file = File('${directory.path}/TrueRoot-Leads-$stamp.pdf');
+      await file.writeAsBytes(await doc.save());
+      await Share.shareXFiles(
+        [XFile(file.path, mimeType: 'application/pdf')],
+        subject: 'TrueRoot Realty lead list',
+        text: '${leads.length} leads exported as PDF.',
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Unable to export PDF: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _exportingPdf = false);
+    }
   }
 
   Future<void> _showLeadActionsSheet(BuildContext context, LeadModel lead) {

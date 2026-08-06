@@ -6,11 +6,7 @@ import 'package:truerealtycrm/data/models/follow_up_model.dart';
 
 /// Shared dashboard-style surface used across Follow-Up sections.
 class FollowUpSectionCard extends StatelessWidget {
-  const FollowUpSectionCard({
-    super.key,
-    required this.child,
-    this.padding,
-  });
+  const FollowUpSectionCard({super.key, required this.child, this.padding});
 
   final Widget child;
   final EdgeInsetsGeometry? padding;
@@ -57,11 +53,7 @@ class FollowUpMetricCardData {
 
 /// Metric card matching Dashboard card language (white, soft border, shadow).
 class FollowUpMetricCard extends StatelessWidget {
-  const FollowUpMetricCard({
-    super.key,
-    required this.data,
-    this.onTap,
-  });
+  const FollowUpMetricCard({super.key, required this.data, this.onTap});
 
   final FollowUpMetricCardData data;
   final VoidCallback? onTap;
@@ -78,27 +70,30 @@ class FollowUpMetricCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(data.icon, color: data.iconColor, size: 22.sp),
-                  SizedBox(width: 8.w),
-                  Expanded(
-                    child: Text(
-                      data.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.inter(
-                        fontSize: 13.sp,
-                        fontWeight: FontWeight.w600,
-                        height: 1.3,
-                        color: const Color(0xFF374151),
+              SizedBox(
+                height: 43.h,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(data.icon, color: data.iconColor, size: 22.sp),
+                    SizedBox(width: 8.w),
+                    Expanded(
+                      child: Text(
+                        data.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.inter(
+                          fontSize: 13.sp,
+                          fontWeight: FontWeight.w600,
+                          height: 1.3,
+                          color: const Color(0xFF374151),
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-              SizedBox(height: 10.h),
+              const Spacer(),
               Text(
                 data.value,
                 style: GoogleFonts.inter(

@@ -6,6 +6,8 @@ import 'package:truerealtycrm/constant/colors_screen.dart';
 class FollowUpTestScreen extends StatelessWidget {
   const FollowUpTestScreen({super.key});
 
+  static const double _metricCardHeight = 210;
+
   static const List<_FollowUpMetric> _topMetrics = [
     _FollowUpMetric(
       title: "Today's\nFollow-Ups",
@@ -145,14 +147,17 @@ class FollowUpTestScreen extends StatelessWidget {
                   crossAxisCount: 2,
                   mainAxisSpacing: 12.h,
                   crossAxisSpacing: 12.w,
-                  childAspectRatio: 0.92,
+                  mainAxisExtent: _metricCardHeight.h,
                 ),
                 itemBuilder: (context, index) {
                   return _FollowUpMetricCard(data: _topMetrics[index]);
                 },
               ),
               SizedBox(height: 12.h),
-              _FollowUpMetricCard(data: _queueMetric, fullWidth: true),
+              SizedBox(
+                height: _metricCardHeight.h,
+                child: _FollowUpMetricCard(data: _queueMetric, fullWidth: true),
+              ),
               SizedBox(height: 14.h),
               const _QueueSlaSnapshotCard(),
               SizedBox(height: 14.h),
@@ -1614,6 +1619,8 @@ class _FollowUpMetricCard extends StatelessWidget {
           SizedBox(height: fullWidth ? 16.h : 14.h),
           Text(
             data.subtitle,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               fontFamily: 'Inter',
               fontSize: 12,
@@ -1622,7 +1629,7 @@ class _FollowUpMetricCard extends StatelessWidget {
               color: Color(0xFF44474E),
             ),
           ),
-          SizedBox(height: 6.h),
+          const Spacer(),
           Text(
             data.footer,
             style: const TextStyle(

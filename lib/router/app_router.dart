@@ -28,6 +28,7 @@ import 'package:truerealtycrm/screen/notifications_screen.dart';
 import 'package:truerealtycrm/screen/personal_settings_screen.dart';
 import 'package:truerealtycrm/screen/profile_screen.dart';
 import 'package:truerealtycrm/screen/employment_records_screen.dart';
+import 'package:truerealtycrm/screen/my_commissions_screen.dart';
 
 import '../screen/my_leads_screen.dart';
 
@@ -61,6 +62,7 @@ class AppRouter {
   static const String myLeave = '/my-leave';
   static const String myPayslips = '/my-payslips';
   static const String holidays = '/holidays';
+  static const String myCommissions = '/my-commissions';
 
   static Route<dynamic> generateRoute(RouteSettings settings) {
     switch (settings.name) {
@@ -139,8 +141,11 @@ class AppRouter {
         );
 
       case telecallerLeadDetails:
+        final lead = settings.arguments is LeadModel
+            ? settings.arguments as LeadModel
+            : null;
         return MaterialPageRoute(
-          builder: (_) => const TelecallerLeadDetailsScreen(),
+          builder: (_) => TelecallerLeadDetailsScreen(lead: lead),
         );
       case telecallerCommunication:
         return MaterialPageRoute(
@@ -174,6 +179,8 @@ class AppRouter {
           builder: (_) =>
               const EmploymentRecordsScreen(type: EmploymentRecordType.holiday),
         );
+      case myCommissions:
+        return MaterialPageRoute(builder: (_) => const MyCommissionsScreen());
       default:
         return MaterialPageRoute(
           builder: (_) => Scaffold(
@@ -197,7 +204,7 @@ class _LeadDetailRouteWrapper extends StatelessWidget {
   Widget build(BuildContext context) {
     final role = context.read<AuthProvider>().role;
     if (role == UserRole.telecaller) {
-      return const TelecallerLeadDetailsScreen();
+      return TelecallerLeadDetailsScreen(lead: lead);
     }
     return LeadDetailScreen(initialTabIndex: initialTabIndex, lead: lead);
   }

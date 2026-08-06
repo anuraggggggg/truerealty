@@ -1,7 +1,13 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:truerealtycrm/provider/employee_provider.dart';
 import 'package:truerealtycrm/provider/auth_provider.dart';
 import 'package:truerealtycrm/provider/leads_provider.dart';
@@ -50,6 +56,9 @@ class _SiteVisitDetailsScreenState extends State<SiteVisitDetailsScreen> {
   final TextEditingController _searchController = TextEditingController();
   List<_VisitOption> _executives = const [];
   bool _loadingExecutives = false;
+  bool _exportingPdf = false;
+  bool _selectionMode = false;
+  final Set<String> _selectedVisitIds = <String>{};
 
   @override
   void initState() {
@@ -199,6 +208,8 @@ class _SiteVisitDetailsScreenState extends State<SiteVisitDetailsScreen> {
                         else ...[
                           _MetricsStrip(provider: provider),
                           SizedBox(height: 14.h),
+                          _buildSelectExportRow(visible),
+                          SizedBox(height: 12.h),
                           _FilterTabs(provider: provider),
                           SizedBox(height: 12.h),
                         ],
@@ -232,7 +243,22 @@ class _SiteVisitDetailsScreenState extends State<SiteVisitDetailsScreen> {
                         itemCount: visible.length,
                         separatorBuilder: (_, _) => SizedBox(height: 12.h),
                         itemBuilder: (context, index) {
-                          return _SiteVisitMobileCard(visit: visible[index]);
+                          final visit = visible[index];
+                          final selected = _selectedVisitIds.contains(visit.id);
+                          return _SiteVisitMobileCard(
+                            visit: visit,
+                            selectionMode: _selectionMode,
+                            selected: selected,
+                            onToggleSelect: () {
+                              setState(() {
+                                if (selected) {
+                                  _selectedVisitIds.remove(visit.id);
+                                } else {
+                                  _selectedVisitIds.add(visit.id);
+                                }
+                              });
+                            },
+                          );
                         },
                       ),
                     ),
@@ -257,6 +283,258 @@ class _SiteVisitDetailsScreenState extends State<SiteVisitDetailsScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildSelectExportRow(List<SiteVisitModel> visible) {
+    final selectedCount = _selectedVisitIds.length;
+
+    Widget actionButton({
+      required String label,
+      required IconData icon,
+      required VoidCallback? onTap,
+      Color? foreground,
+      Color? borderColor,
+      Color? background,
+    }) {
+      return Expanded(
+        child: SizedBox(
+          height: 44.h,
+          child: OutlinedButton.icon(
+            onPressed: onTap,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: foreground ?? _title,
+              backgroundColor: background ?? Colors.white,
+              side: BorderSide(
+                color: borderColor ?? _cardBorder,
+                width: 1.2,
+              ),
+              padding: EdgeInsets.symmetric(horizontal: 8.w),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12.r),
+              ),
+            ),
+            icon: Icon(icon, size: 18.sp),
+            label: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                label,
+                style: GoogleFonts.inter(
+                  fontSize: 12.5.sp,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            actionButton(
+              label: _selectionMode ? 'Cancel' : 'Select',
+              icon: _selectionMode
+                  ? Icons.close_rounded
+                  : Icons.check_box_outlined,
+              onTap: () {
+                setState(() {
+                  _selectionMode = !_selectionMode;
+                  if (!_selectionMode) _selectedVisitIds.clear();
+                });
+              },
+              foreground: _selectionMode
+                  ? const Color(0xFFB42318)
+                  : _title,
+              borderColor: _selectionMode
+                  ? const Color(0xFFFECACA)
+                  : _cardBorder,
+              background: _selectionMode
+                  ? const Color(0xFFFFF1F0)
+                  : Colors.white,
+            ),
+            SizedBox(width: 8.w),
+            actionButton(
+              label: _exportingPdf ? '...' : 'Export',
+              icon: Icons.picture_as_pdf_outlined,
+              onTap: _exportingPdf ? null : () => _exportVisitsPdf(visible),
+              foreground: const Color(0xFFDC2626),
+              borderColor: const Color(0xFFFECACA),
+              background: const Color(0xFFFFF5F5),
+            ),
+          ],
+        ),
+        if (_selectionMode) ...[
+          SizedBox(height: 10.h),
+          Row(
+            children: [
+              Text(
+                selectedCount == 0
+                    ? 'Select visits to export'
+                    : '$selectedCount selected',
+                style: GoogleFonts.inter(
+                  fontSize: 12.5.sp,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF64748B),
+                ),
+              ),
+              const Spacer(),
+              TextButton(
+                onPressed: visible.isEmpty
+                    ? null
+                    : () {
+                        setState(() {
+                          if (_selectedVisitIds.length == visible.length) {
+                            _selectedVisitIds.clear();
+                          } else {
+                            _selectedVisitIds
+                              ..clear()
+                              ..addAll(visible.map((visit) => visit.id));
+                          }
+                        });
+                      },
+                child: Text(
+                  _selectedVisitIds.length == visible.length &&
+                          visible.isNotEmpty
+                      ? 'Clear all'
+                      : 'Select all',
+                  style: GoogleFonts.inter(
+                    fontSize: 12.5.sp,
+                    fontWeight: FontWeight.w700,
+                    color: _orange,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  Future<void> _exportVisitsPdf(List<SiteVisitModel> visible) async {
+    final visits = _selectionMode && _selectedVisitIds.isNotEmpty
+        ? visible
+              .where((visit) => _selectedVisitIds.contains(visit.id))
+              .toList()
+        : visible;
+
+    if (visits.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _selectionMode
+                ? 'Select at least one site visit to export.'
+                : 'No site visits available to export.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _exportingPdf = true);
+    try {
+      String clean(String? value) {
+        final text = (value ?? '-').trim();
+        if (text.isEmpty) return '-';
+        return text
+            .replaceAll('—', '-')
+            .replaceAll('–', '-')
+            .replaceAll('•', '-')
+            .replaceAll(RegExp(r'[^\x20-\x7E]'), ' ');
+      }
+
+      final provider = context.read<SiteVisitProvider>();
+      final now = DateTime.now();
+      final stamp =
+          '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+      final doc = pw.Document();
+
+      doc.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4.landscape,
+          margin: const pw.EdgeInsets.all(24),
+          build: (context) => [
+            pw.Text(
+              'TrueRoot Realty - Site Visits',
+              style: pw.TextStyle(
+                fontSize: 18,
+                fontWeight: pw.FontWeight.bold,
+              ),
+            ),
+            pw.SizedBox(height: 4),
+            pw.Text(
+              'Exported on $stamp | ${provider.filter.label} | ${visits.length} visits',
+              style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
+            ),
+            pw.SizedBox(height: 14),
+            pw.TableHelper.fromTextArray(
+              headers: const [
+                'Lead',
+                'Phone',
+                'Project',
+                'Unit',
+                'Schedule',
+                'Type',
+                'Status',
+                'Executive',
+              ],
+              data: visits
+                  .map(
+                    (visit) => [
+                      clean(visit.leadName),
+                      clean(visit.formattedPhone),
+                      clean(visit.project),
+                      clean(visit.unitLabel),
+                      clean('${visit.date} ${visit.time}'),
+                      clean(visit.type),
+                      clean(visit.status),
+                      clean(visit.executiveName),
+                    ],
+                  )
+                  .toList(),
+              headerStyle: pw.TextStyle(
+                fontWeight: pw.FontWeight.bold,
+                fontSize: 9,
+                color: PdfColors.white,
+              ),
+              headerDecoration: const pw.BoxDecoration(
+                color: PdfColor.fromInt(0xFF0F2B57),
+              ),
+              cellStyle: const pw.TextStyle(fontSize: 8),
+              cellAlignment: pw.Alignment.centerLeft,
+              cellPadding: const pw.EdgeInsets.symmetric(
+                horizontal: 4,
+                vertical: 5,
+              ),
+              border: pw.TableBorder.all(
+                color: PdfColors.grey300,
+                width: 0.4,
+              ),
+            ),
+          ],
+        ),
+      );
+
+      final directory = await getTemporaryDirectory();
+      final file = File('${directory.path}/TrueRoot-SiteVisits-$stamp.pdf');
+      await file.writeAsBytes(await doc.save());
+      await Share.shareXFiles(
+        [XFile(file.path, mimeType: 'application/pdf')],
+        subject: 'TrueRoot Realty site visits',
+        text: '${visits.length} site visits exported as PDF.',
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Unable to export PDF: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _exportingPdf = false);
+    }
   }
 
   Widget _buildHeader(SiteVisitProvider provider) {
@@ -532,9 +810,17 @@ class _FilterTabs extends StatelessWidget {
 }
 
 class _SiteVisitMobileCard extends StatelessWidget {
-  const _SiteVisitMobileCard({required this.visit});
+  const _SiteVisitMobileCard({
+    required this.visit,
+    this.selectionMode = false,
+    this.selected = false,
+    this.onToggleSelect,
+  });
 
   final SiteVisitModel visit;
+  final bool selectionMode;
+  final bool selected;
+  final VoidCallback? onToggleSelect;
 
   Future<void> _callLead(BuildContext context) async {
     final digits = visit.phone.replaceAll(RegExp(r'[^0-9+]'), '');
@@ -550,91 +836,101 @@ class _SiteVisitMobileCard extends StatelessWidget {
     final statusColors = _statusColors(visit.status);
     final typeColors = _typeColors(visit.type);
 
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.fromLTRB(14.w, 14.h, 14.w, 14.h),
-      decoration: BoxDecoration(
-        color: Colors.white,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: selectionMode ? onToggleSelect : null,
         borderRadius: BorderRadius.circular(16.r),
-        border: Border.all(color: SiteVisitDetailsScreen._cardBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+        child: Container(
+          width: double.infinity,
+          padding: EdgeInsets.fromLTRB(14.w, 14.h, 14.w, 14.h),
+          decoration: BoxDecoration(
+            color: selected ? const Color(0xFFFFF8F3) : Colors.white,
+            borderRadius: BorderRadius.circular(16.r),
+            border: Border.all(
+              color: selected
+                  ? SiteVisitDetailsScreen._orange
+                  : SiteVisitDetailsScreen._cardBorder,
+            ),
+          ),
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              CircleAvatar(
-                radius: 22.r,
-                backgroundColor: const Color(0xFFE9EEF8),
-                child: Text(
-                  _initials(visit.leadName),
-                  style: GoogleFonts.inter(
-                    fontSize: 13.sp,
-                    fontWeight: FontWeight.w800,
-                    color: const Color(0xFF173A6D),
-                  ),
-                ),
-              ),
-              SizedBox(width: 10.w),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      visit.leadName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (selectionMode) ...[
+                    Checkbox(
+                      value: selected,
+                      onChanged: (_) => onToggleSelect?.call(),
+                      activeColor: SiteVisitDetailsScreen._orange,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    SizedBox(width: 4.w),
+                  ],
+                  CircleAvatar(
+                    radius: 22.r,
+                    backgroundColor: const Color(0xFFE9EEF8),
+                    child: Text(
+                      _initials(visit.leadName),
                       style: GoogleFonts.inter(
-                        fontSize: 15.sp,
+                        fontSize: 13.sp,
                         fontWeight: FontWeight.w800,
                         color: const Color(0xFF173A6D),
                       ),
                     ),
-                    SizedBox(height: 2.h),
-                    InkWell(
-                      onTap: () => _callLead(context),
-                      child: Text(
-                        visit.formattedPhone,
-                        style: GoogleFonts.inter(
-                          fontSize: 12.5.sp,
-                          color: const Color(0xFF2563EB),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                    SizedBox(height: 2.h),
-                    Text(
-                      visit.leadDisplayId.isEmpty
-                          ? (visit.displayId.isEmpty ? '-' : visit.displayId)
-                          : '#${visit.leadDisplayId}',
-                      style: GoogleFonts.inter(
-                        fontSize: 11.5.sp,
-                        color: const Color(0xFF98A2B3),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  _Pill(
-                    label: visit.status,
-                    foreground: statusColors.$1,
-                    background: statusColors.$2,
                   ),
-                  SizedBox(height: 6.h),
-                  _Pill(
-                    label: visit.type,
-                    foreground: typeColors.$1,
-                    background: typeColors.$2,
+                  SizedBox(width: 10.w),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          visit.leadName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.inter(
+                            fontSize: 15.sp,
+                            fontWeight: FontWeight.w800,
+                            color: const Color(0xFF173A6D),
+                          ),
+                        ),
+                        SizedBox(height: 2.h),
+                        InkWell(
+                          onTap: selectionMode
+                              ? null
+                              : () => _callLead(context),
+                          child: Text(
+                            visit.formattedPhone,
+                            style: GoogleFonts.inter(
+                              fontSize: 12.5.sp,
+                              color: const Color(0xFF2563EB),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      _Pill(
+                        label: visit.status,
+                        foreground: statusColors.$1,
+                        background: statusColors.$2,
+                      ),
+                      SizedBox(height: 6.h),
+                      _Pill(
+                        label: visit.type,
+                        foreground: typeColors.$1,
+                        background: typeColors.$2,
+                      ),
+                    ],
                   ),
                 ],
               ),
-            ],
-          ),
           SizedBox(height: 12.h),
           Row(
             children: [
@@ -785,6 +1081,8 @@ class _SiteVisitMobileCard extends StatelessWidget {
             ],
           ),
         ],
+      ),
+        ),
       ),
     );
   }
