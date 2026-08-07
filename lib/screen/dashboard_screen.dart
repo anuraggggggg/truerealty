@@ -18,8 +18,8 @@ import 'package:truerealtycrm/screen/projects_screen.dart';
 import 'package:truerealtycrm/screen/site_visits_screen.dart';
 import 'package:truerealtycrm/screen/telecaller_dashboard_screen.dart';
 import 'package:truerealtycrm/screen/telecaller_documents_screen.dart';
-
-import 'my_leads_screen.dart';
+import 'package:truerealtycrm/widget/todays_follow_ups_fab.dart';
+import 'package:truerealtycrm/screen/my_leads_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -45,6 +45,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       key: _scaffoldKey,
       backgroundColor: AppColors.white,
       drawer: const _NavigationDrawer(),
+      floatingActionButton: _showFollowUpsFab(selectedTab, role)
+          ? TodaysFollowUpsFab(
+              onPressed: () => context.read<DashboardProvider>().selectTab(2),
+            )
+          : null,
       bottomNavigationBar: _BottomNavigation(
         selectedIndex: selectedTab,
         onTap: context.read<DashboardProvider>().selectTab,
@@ -53,6 +58,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         child: _buildBody(context, selectedTab, role, dashboardProvider),
       ),
     );
+  }
+
+  bool _showFollowUpsFab(int selectedTab, UserRole role) {
+    if (selectedTab == 1) return true;
+    return selectedTab == 0 &&
+        (role == UserRole.telecaller || role == UserRole.fieldExecutive);
   }
 
   Widget _buildBody(
@@ -80,12 +91,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     if (selectedTab == 1) {
-      // return const MyLeadsScreen();
-      // Navigator.of(context).pushNamed(AppRouter.myleads);
-
       return role == UserRole.telecaller
           ? MyLeadsScreen(onMenuTap: _openDrawer)
-          // const _TelecallerLeadOverviewScreen()
           : LeadListWidget(isInsideScrollView: true, onMenuTap: _openDrawer);
     }
 
@@ -8515,6 +8522,30 @@ class _NavigationDrawerState extends State<_NavigationDrawer> {
                       label: 'Follow-Ups',
                       selected: false,
                       onTap: () => _openRoute(AppRouter.myFollowUps),
+                    ),
+                    _DrawerItem(
+                      icon: Icons.contact_page_outlined,
+                      label: 'Contact Lead',
+                      selected: false,
+                      onTap: () => _openRoute(AppRouter.contactLeads),
+                    ),
+                    _DrawerItem(
+                      icon: Icons.phone_in_talk_outlined,
+                      label: 'Call History',
+                      selected: false,
+                      onTap: () => _openRoute(AppRouter.callHistory),
+                    ),
+                    _DrawerItem(
+                      icon: Icons.notifications_none_rounded,
+                      label: 'Notifications',
+                      selected: false,
+                      onTap: () => _openRoute(AppRouter.notifications),
+                    ),
+                    _DrawerItem(
+                      icon: Icons.insights_outlined,
+                      label: 'My Performance',
+                      selected: false,
+                      onTap: () => _openRoute(AppRouter.myPerformance),
                     ),
                     _DrawerItem(
                       icon: Icons.workspace_premium_outlined,

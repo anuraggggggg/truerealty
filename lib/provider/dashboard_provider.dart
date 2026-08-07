@@ -93,6 +93,7 @@ class DashboardProvider extends ApiProviderBase {
     String teamId = 'all',
     String userId = 'all',
     String activityType = 'all',
+    String search = '',
     int page = 1,
     int limit = 20,
   }) {
@@ -104,6 +105,7 @@ class DashboardProvider extends ApiProviderBase {
         teamId: teamId,
         userId: userId,
         activityType: activityType,
+        search: search,
         page: page,
         limit: limit,
       ),

@@ -37,7 +37,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     });
 
     final provider = context.read<NotificationProvider>();
-    final response = await provider.fetchNotifications(limit: 100);
+    final response = await provider.fetchNotifications(limit: 200);
 
     if (!mounted) {
       return;
@@ -77,6 +77,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       _isMarkingAllRead = false;
       _error = null;
     });
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('All notifications marked as read.')),
+    );
   }
 
   Future<void> _markRead(_NotificationItem notification) async {

@@ -48,6 +48,7 @@ class DashboardRepository {
     String teamId = 'all',
     String userId = 'all',
     String activityType = 'all',
+    String search = '',
     int page = 1,
     int limit = 20,
   }) {
@@ -60,6 +61,7 @@ class DashboardRepository {
         'teamId': teamId,
         'userId': userId,
         'activityType': activityType,
+        'search': search,
         'page': page,
         'limit': limit,
       },

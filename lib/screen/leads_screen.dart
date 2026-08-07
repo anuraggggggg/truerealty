@@ -15,6 +15,7 @@ import 'package:truerealtycrm/provider/project_provider.dart';
 import 'package:truerealtycrm/router/app_router.dart';
 import '../provider/leads_provider.dart';
 import 'package:truerealtycrm/widget/app_loading.dart';
+import 'package:truerealtycrm/widget/todays_follow_ups_fab.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class LeadListWidget extends StatefulWidget {
@@ -22,9 +23,13 @@ class LeadListWidget extends StatefulWidget {
     super.key,
     this.isInsideScrollView = false,
     this.onMenuTap,
+    this.statusTabs,
   });
   final bool isInsideScrollView;
   final VoidCallback? onMenuTap;
+
+  /// When set, replaces dynamic status chips with these fixed pipeline tabs.
+  final List<String>? statusTabs;
 
   @override
   State<LeadListWidget> createState() => _LeadListWidgetState();
@@ -32,7 +37,7 @@ class LeadListWidget extends StatefulWidget {
 
 class _LeadListWidgetState extends State<LeadListWidget> {
   int _page = 1;
-  String _selectedTab = 'All';
+  late String _selectedTab;
   bool _showFilters = false;
   bool _loadingFilters = false;
   // Kept for backwards-compatible helper code; export is no longer exposed.
@@ -80,9 +85,22 @@ class _LeadListWidgetState extends State<LeadListWidget> {
   static const double _sectionGap = 18;
   static const double _cardGap = 14;
 
+  bool get _usesPresetTabs =>
+      widget.statusTabs != null && widget.statusTabs!.isNotEmpty;
+
+  String get _defaultTab {
+    if (!_usesPresetTabs) return 'All';
+    final tabs = widget.statusTabs!;
+    for (final tab in tabs) {
+      if (tab.trim().toLowerCase() == 'all') return tab;
+    }
+    return tabs.first;
+  }
+
   @override
   void initState() {
     super.initState();
+    _selectedTab = _defaultTab;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _fetchLeads();
@@ -93,14 +111,15 @@ class _LeadListWidgetState extends State<LeadListWidget> {
 
   Future<void> _fetchLeads({int page = 1}) async {
     _page = page;
+    final tabFilter = _filtersForSelectedTab();
     await context.read<LeadProvider>().fetchLeads(
       page: page,
       limit: 10,
       search: _searchController.text.trim().isEmpty
           ? null
           : _searchController.text.trim(),
-      status: _leadStatus ?? _statusFilterForTab(_selectedTab),
-      leadType: _leadType,
+      status: _leadStatus ?? tabFilter.status,
+      leadType: _leadType ?? tabFilter.leadType,
       configuration: _configuration,
       propertyType: _propertyType,
       assignedTo: _assignedTo,
@@ -341,6 +360,9 @@ class _LeadListWidgetState extends State<LeadListWidget> {
 
     return Scaffold(
       backgroundColor: AppColors.leadListBg,
+      floatingActionButton: TodaysFollowUpsFab(
+        onPressed: () => Navigator.pushNamed(context, AppRouter.myFollowUps),
+      ),
       body: SafeArea(
         child: Container(
           color: AppColors.leadListBg,
@@ -601,26 +623,31 @@ class _LeadListWidgetState extends State<LeadListWidget> {
   }
 
   Widget _buildTabs(LeadProvider leadProvider) {
-    final statusNames = leadProvider.statusNames
-        .where((status) => !_isLostStatus(status))
-        .toList();
+    final tabs = _usesPresetTabs
+        ? widget.statusTabs!
+        : leadProvider.statusNames
+              .where((status) => !_isLostStatus(status))
+              .toList();
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
         children: [
-          _tabChip(
-            'All (${_formatCount(leadProvider.totalLeads)})',
-            isSelected: _selectedTab == 'All',
-            onTap: () => _selectTab('All'),
-          ),
-          for (final status in statusNames) ...[
-            SizedBox(width: 8.w),
+          if (!_usesPresetTabs) ...[
             _tabChip(
-              '$status (${_formatCount(leadProvider.countForStatus(status))})',
-              isSelected: _selectedTab == status,
-              textColor: _tabTextColor(status),
-              backgroundColor: _tabBackgroundColor(status),
-              onTap: () => _selectTab(status),
+              'All (${_formatCount(leadProvider.totalLeads)})',
+              isSelected: _selectedTab == 'All',
+              onTap: () => _selectTab('All'),
+            ),
+            if (tabs.isNotEmpty) SizedBox(width: 8.w),
+          ],
+          for (var i = 0; i < tabs.length; i++) ...[
+            if (i > 0) SizedBox(width: 8.w),
+            _tabChip(
+              '${tabs[i]} (${_formatCount(_tabCount(leadProvider, tabs[i]))})',
+              isSelected: _selectedTab == tabs[i],
+              textColor: _tabTextColor(tabs[i]),
+              backgroundColor: _tabBackgroundColor(tabs[i]),
+              onTap: () => _selectTab(tabs[i]),
             ),
           ],
         ],
@@ -715,7 +742,7 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                       width,
                       (v) => setState(() {
                         _leadStatus = v;
-                        if (v != null) _selectedTab = 'All';
+                        if (v != null) _selectedTab = _defaultTab;
                       }),
                     ),
                     _filterDropdown(
@@ -936,7 +963,7 @@ class _LeadListWidgetState extends State<LeadListWidget> {
       _area = null;
       _slaStatus = null;
       _dateRange = null;
-      _selectedTab = 'All';
+      _selectedTab = _defaultTab;
     });
     await _fetchLeads(page: 1);
   }
@@ -946,8 +973,7 @@ class _LeadListWidgetState extends State<LeadListWidget> {
     final requirement = raw['requirement'] is Map
         ? Map<String, dynamic>.from(raw['requirement'] as Map)
         : const <String, dynamic>{};
-    final status = _normalizeStatus(lead.status);
-    final statusColors = _leadStatusColors(status);
+    final statusLabels = _cardStatusLabels(lead);
     final budget = _leadBudget(requirement);
     final rawRemark = raw['remarks']?.toString().trim() ?? '';
     final remark = rawRemark.isEmpty ? 'No remark added' : rawRemark;
@@ -1044,11 +1070,21 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                     ),
                   ),
                   SizedBox(width: 7.w),
-                  _CompactLeadBadge(
-                    text: status,
-                    foreground: statusColors.$1,
-                    background: statusColors.$2,
-                    borderColor: statusColors.$3,
+                  Flexible(
+                    child: Wrap(
+                      spacing: 6.w,
+                      runSpacing: 4.h,
+                      alignment: WrapAlignment.end,
+                      children: [
+                        for (final label in statusLabels)
+                          _CompactLeadBadge(
+                            text: label,
+                            foreground: _leadStatusColors(label).$1,
+                            background: _leadStatusColors(label).$2,
+                            borderColor: _leadStatusColors(label).$3,
+                          ),
+                      ],
+                    ),
                   ),
                   if (!_selectionMode) ...[
                     SizedBox(width: 6.w),
@@ -2089,6 +2125,13 @@ class _LeadListWidgetState extends State<LeadListWidget> {
         const Color(0xFFFFC8AA),
       );
     }
+    if (value.contains('not interest')) {
+      return (
+        const Color(0xFF7C3AED),
+        const Color(0xFFF3E8FF),
+        const Color(0xFFE9D5FF),
+      );
+    }
     if (value.contains('book') || value.contains('convert')) {
       return (
         const Color(0xFF168553),
@@ -2096,11 +2139,39 @@ class _LeadListWidgetState extends State<LeadListWidget> {
         const Color(0xFFA7F3D0),
       );
     }
+    if (value.contains('obm') || value.contains('re-visit') || value.contains('revisit')) {
+      return (
+        const Color(0xFF0F766E),
+        const Color(0xFFCCFBF1),
+        const Color(0xFF99F6E4),
+      );
+    }
+    if (value.contains('site visit')) {
+      return (
+        const Color(0xFF2563EB),
+        const Color(0xFFEFF6FF),
+        const Color(0xFFBFDBFE),
+      );
+    }
+    if (value.contains('follow')) {
+      return (
+        const Color(0xFFF97316),
+        const Color(0xFFFFF7ED),
+        const Color(0xFFFED7AA),
+      );
+    }
     if (value.contains('interest') || value.contains('qualif')) {
       return (
         const Color(0xFF7C3AED),
         const Color(0xFFF5F3FF),
         const Color(0xFFDDD6FE),
+      );
+    }
+    if (value.contains('new')) {
+      return (
+        const Color(0xFF16A34A),
+        const Color(0xFFECFDF3),
+        const Color(0xFFBBF7D0),
       );
     }
     return (
@@ -2436,9 +2507,148 @@ class _LeadListWidgetState extends State<LeadListWidget> {
     return normalized;
   }
 
+  List<String> _cardStatusLabels(LeadModel lead) {
+    if (!_usesPresetTabs) {
+      return [_normalizeStatus(lead.status)];
+    }
+
+    final labels = <String>[_pipelineStatusLabel(lead)];
+    if (_isHotTemperature(lead) &&
+        !labels.any((label) => label.toLowerCase().contains('hot'))) {
+      labels.add('Hot Lead');
+    }
+    return labels;
+  }
+
+  String _pipelineStatusLabel(LeadModel lead) {
+    final text =
+        '${lead.status} ${lead.stage ?? ''} ${lead.leadType ?? ''} '
+                '${lead.raw?['statusName'] ?? ''} '
+                '${lead.raw?['temperatureName'] ?? ''}'
+            .toLowerCase();
+
+    if (text.contains('not interested')) return 'Not Interested';
+    if (text.contains('booking') ||
+        text.contains('booked') ||
+        text.contains('converted') ||
+        lead.raw?['convertedAt'] != null) {
+      return 'Booking Done';
+    }
+    if (text.contains('obm')) return 'OBM Done';
+    if ((text.contains('re-visit') ||
+            text.contains('revisit') ||
+            text.contains('re visit')) &&
+        (text.contains('done') || text.contains('complete'))) {
+      return 'Re-Visit Done';
+    }
+    if (text.contains('site visit') &&
+        (text.contains('schedule') || text.contains('scheduled'))) {
+      return 'Site Visit Schedule';
+    }
+    if (text.contains('follow up') || text.contains('follow-up')) {
+      return 'Follow Up';
+    }
+    if (text.contains('hot')) return 'Hot Lead';
+    if (text.contains('interested')) return 'Interested';
+    if (text.contains('new')) return 'New Lead';
+
+    final raw = lead.status.trim();
+    if (raw.isEmpty || raw.toLowerCase() == 'new') return 'New Lead';
+    return raw;
+  }
+
+  bool _isHotTemperature(LeadModel lead) {
+    final text =
+        '${lead.leadType ?? ''} ${lead.raw?['temperatureName'] ?? ''} '
+                '${lead.raw?['temperature'] ?? ''} ${lead.status}'
+            .toLowerCase();
+    return text.contains('hot');
+  }
+
+  ({String? status, String? leadType}) _filtersForSelectedTab() {
+    if (!_usesPresetTabs) {
+      return (status: _statusFilterForTab(_selectedTab), leadType: null);
+    }
+
+    final lower = _selectedTab.trim().toLowerCase();
+    if (lower == 'all') {
+      return (status: null, leadType: null);
+    }
+    if (lower == 'hot lead' || lower == 'hot') {
+      return (status: null, leadType: 'Hot');
+    }
+    return (status: _selectedTab, leadType: null);
+  }
+
   String? _statusFilterForTab(String tab) {
     if (tab == 'All' || _isLostStatus(tab)) return null;
     return tab;
+  }
+
+  int _tabCount(LeadProvider provider, String tab) {
+    final lower = tab.trim().toLowerCase();
+    if (lower == 'all') {
+      return provider.totalLeads;
+    }
+    if (lower == 'hot lead' || lower == 'hot') {
+      return provider.leads.where(_isHotTemperature).length;
+    }
+
+    var total = 0;
+    for (final status in provider.statusNames) {
+      if (_tabMatchesLeadStatus(tab, status)) {
+        total += provider.countForStatus(status);
+      }
+    }
+    if (total > 0) return total;
+
+    return provider.leads
+        .where((lead) => _tabMatchesLeadStatus(tab, lead.status))
+        .length;
+  }
+
+  bool _tabMatchesLeadStatus(String tab, String leadStatus) {
+    final selected = tab.trim().toLowerCase();
+    final lead = leadStatus.trim().toLowerCase();
+    if (selected.isEmpty || lead.isEmpty) return false;
+    if (selected == lead) return true;
+
+    String compact(String value) =>
+        value.replaceAll(RegExp(r'[\s\-_/]+'), '');
+    if (compact(selected) == compact(lead)) return true;
+
+    if (selected.contains('not interested')) {
+      return lead.contains('not interested');
+    }
+    if (selected == 'interested' || selected == 'interested lead') {
+      return lead.contains('interested') && !lead.contains('not interested');
+    }
+    if (selected.contains('new')) {
+      return lead == 'new' || lead.contains('new lead') || lead.contains('new');
+    }
+    if (selected.contains('site visit') && selected.contains('schedule')) {
+      return lead.contains('site visit') &&
+          (lead.contains('schedule') || lead.contains('scheduled'));
+    }
+    if (selected.contains('re-visit') || selected.contains('revisit')) {
+      return (lead.contains('re-visit') ||
+              lead.contains('revisit') ||
+              lead.contains('re visit')) &&
+          (lead.contains('done') || lead.contains('complete'));
+    }
+    if (selected.contains('follow up') || selected.contains('follow-up')) {
+      return lead.contains('follow up') || lead.contains('follow-up');
+    }
+    if (selected.contains('obm')) {
+      return lead.contains('obm');
+    }
+    if (selected.contains('booking')) {
+      return lead.contains('booking') ||
+          lead.contains('booked') ||
+          lead.contains('converted');
+    }
+
+    return lead.contains(selected) || selected.contains(lead);
   }
 
   bool _isLostStatus(String status) {
@@ -2447,25 +2657,41 @@ class _LeadListWidgetState extends State<LeadListWidget> {
 
   Color? _tabTextColor(String status) {
     final lower = status.toLowerCase();
-    if (lower.contains('contact')) return AppColors.orangeDeep;
-    if (lower.contains('visit')) return AppColors.blueBright;
+    if (lower.contains('hot')) return const Color(0xFFDC2626);
+    if (lower.contains('contact') || lower.contains('follow')) {
+      return AppColors.orangeDeep;
+    }
+    if (lower.contains('visit') || lower.contains('obm')) {
+      return AppColors.blueBright;
+    }
     if (lower.contains('book')) return AppColors.greenDeep;
+    if (lower.contains('not interest')) return const Color(0xFF7C3AED);
     if (lower.contains('interest') || lower.contains('qualif')) {
       return AppColors.purpleDeep;
     }
-    if (lower.contains('pending')) return AppColors.blueBright;
+    if (lower.contains('pending') || lower.contains('new')) {
+      return AppColors.blueBright;
+    }
     return AppColors.textSecondary;
   }
 
   Color? _tabBackgroundColor(String status) {
     final lower = status.toLowerCase();
-    if (lower.contains('contact')) return AppColors.orangeSoft;
-    if (lower.contains('visit')) return AppColors.windowBlue;
+    if (lower.contains('hot')) return const Color(0xFFFEE2E2);
+    if (lower.contains('contact') || lower.contains('follow')) {
+      return AppColors.orangeSoft;
+    }
+    if (lower.contains('visit') || lower.contains('obm')) {
+      return AppColors.windowBlue;
+    }
     if (lower.contains('book')) return AppColors.greenBg;
+    if (lower.contains('not interest')) return const Color(0xFFF3E8FF);
     if (lower.contains('interest') || lower.contains('qualif')) {
       return AppColors.purpleSoft;
     }
-    if (lower.contains('pending')) return AppColors.windowBlue;
+    if (lower.contains('pending') || lower.contains('new')) {
+      return AppColors.windowBlue;
+    }
     return AppColors.white;
   }
 }

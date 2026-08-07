@@ -615,6 +615,47 @@ String _cleanStatus(String status) {
 }
 
 bool _statusMatches(String leadStatus, String selectedStatus) {
-  return _cleanStatus(leadStatus).toLowerCase() ==
-      _cleanStatus(selectedStatus).toLowerCase();
+  final lead = _cleanStatus(leadStatus).toLowerCase();
+  final selected = _cleanStatus(selectedStatus).toLowerCase();
+  if (lead.isEmpty || selected.isEmpty) return false;
+  if (lead == selected) return true;
+
+  String compact(String value) => value.replaceAll(RegExp(r'[\s\-_/]+'), '');
+  if (compact(lead) == compact(selected)) return true;
+
+  if (selected.contains('not interested')) {
+    return lead.contains('not interested');
+  }
+  if (selected == 'interested' || selected == 'interested lead') {
+    return lead.contains('interested') && !lead.contains('not interested');
+  }
+  if (selected.contains('new')) {
+    return lead == 'new' || lead.contains('new lead') || lead.contains('new');
+  }
+  if (selected.contains('site visit') && selected.contains('schedule')) {
+    return lead.contains('site visit') &&
+        (lead.contains('schedule') || lead.contains('scheduled'));
+  }
+  if (selected.contains('re-visit') || selected.contains('revisit')) {
+    return (lead.contains('re-visit') ||
+            lead.contains('revisit') ||
+            lead.contains('re visit')) &&
+        (lead.contains('done') || lead.contains('complete'));
+  }
+  if (selected.contains('follow up') || selected.contains('follow-up')) {
+    return lead.contains('follow up') || lead.contains('follow-up');
+  }
+  if (selected.contains('obm')) {
+    return lead.contains('obm');
+  }
+  if (selected.contains('booking')) {
+    return lead.contains('booking') ||
+        lead.contains('booked') ||
+        lead.contains('converted');
+  }
+  if (selected.contains('hot')) {
+    return lead.contains('hot');
+  }
+
+  return lead.contains(selected) || selected.contains(lead);
 }

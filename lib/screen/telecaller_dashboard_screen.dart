@@ -7,15 +7,18 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:truerealtycrm/constant/colors_screen.dart';
+import 'package:truerealtycrm/data/models/api_response.dart';
 import 'package:truerealtycrm/provider/auth_provider.dart';
 import 'package:truerealtycrm/provider/attendance_provider.dart';
 import 'package:truerealtycrm/provider/dashboard_provider.dart';
+import 'package:truerealtycrm/provider/lead_master_provider.dart';
 import 'package:truerealtycrm/provider/leads_provider.dart';
 import 'package:truerealtycrm/provider/notification_provider.dart';
 import 'package:truerealtycrm/provider/site_visits_provider.dart';
 import 'package:truerealtycrm/provider/upload_provider.dart';
 import 'package:truerealtycrm/router/app_router.dart';
 import 'package:truerealtycrm/screen/telecaller_activities_screen.dart';
+import 'package:truerealtycrm/widget/todays_follow_ups_fab.dart';
 
 const double _telecallerMetricIconSize = 24;
 const double _telecallerSectionIconSize = 26;
@@ -26,9 +29,12 @@ class TelecallerDashboardScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
+    return Scaffold(
       backgroundColor: Color(0xFFF4F6FB),
-      body: SafeArea(child: TelecallerDashboardView()),
+      floatingActionButton: TodaysFollowUpsFab(
+        onPressed: () => Navigator.pushNamed(context, AppRouter.myFollowUps),
+      ),
+      body: const SafeArea(child: TelecallerDashboardView()),
     );
   }
 }
@@ -138,6 +144,8 @@ class _TelecallerDashboardViewState extends State<TelecallerDashboardView> {
   List<_TelecallerNotificationItem> _notifications = const [];
   List<SiteVisitModel> _siteVisits = const [];
   Map<String, dynamic> _apiKpi = const {};
+  Map<String, String> _statusById = const {};
+  Map<String, String> _temperatureById = const {};
   bool _isLoading = true;
   bool _hasLoaded = false;
   bool _attendanceActionLoading = false;
@@ -169,6 +177,7 @@ class _TelecallerDashboardViewState extends State<TelecallerDashboardView> {
     final attendanceProvider = context.read<AttendanceProvider>();
     final dashboardProvider = context.read<DashboardProvider>();
     final siteVisitProvider = context.read<SiteVisitProvider>();
+    final leadMasterProvider = context.read<LeadMasterProvider>();
 
     final results = await Future.wait([
       leadProvider.fetchLeads(limit: 500),
@@ -177,18 +186,30 @@ class _TelecallerDashboardViewState extends State<TelecallerDashboardView> {
       attendanceProvider.fetchTodayAttendance(),
       dashboardProvider.fetchTelecallerDashboard(),
       siteVisitProvider.fetchSiteVisits(limit: 100),
+      _loadMasterLookup(leadMasterProvider, const [
+        'status',
+        'lead_status',
+        'lead-status',
+      ]),
+      _loadMasterLookup(leadMasterProvider, const [
+        'temperature',
+        'lead_temperature',
+        'lead-temperature',
+      ]),
     ]);
 
     if (!mounted) {
       return;
     }
 
-    final leadsResponse = results[0];
-    final followUpsResponse = results[1];
-    final notificationsResponse = results[2];
-    final attendanceResponse = results[3];
-    final dashboardResponse = results[4];
-    final siteVisitsResponse = results[5];
+    final leadsResponse = results[0] as ApiResponse<dynamic>?;
+    final followUpsResponse = results[1] as ApiResponse<dynamic>?;
+    final notificationsResponse = results[2] as ApiResponse<dynamic>?;
+    final attendanceResponse = results[3] as ApiResponse<dynamic>?;
+    final dashboardResponse = results[4] as ApiResponse<dynamic>?;
+    final siteVisitsResponse = results[5] as ApiResponse<dynamic>?;
+    final statusLookup = results[6] as Map<String, String>;
+    final temperatureLookup = results[7] as Map<String, String>;
 
     final parsedLeads = leadsResponse == null
         ? leadProvider.leads
@@ -216,6 +237,8 @@ class _TelecallerDashboardViewState extends State<TelecallerDashboardView> {
       _notifications = parsedNotifications;
       _siteVisits = List<SiteVisitModel>.from(parsedSiteVisits);
       _apiKpi = kpi;
+      _statusById = statusLookup;
+      _temperatureById = temperatureLookup;
       _todayAttendance = _TodayAttendanceData.fromApi(attendanceResponse?.data);
       _error =
           leadsResponse == null ||
@@ -231,12 +254,30 @@ class _TelecallerDashboardViewState extends State<TelecallerDashboardView> {
     });
   }
 
+  Future<Map<String, String>> _loadMasterLookup(
+    LeadMasterProvider provider,
+    List<String> categories,
+  ) async {
+    for (final category in categories) {
+      final response = await provider.fetchMasterValues(
+        masterCategory: category,
+      );
+      final lookup = _masterLookupFromApi(response?.data);
+      if (lookup.isNotEmpty) {
+        return lookup;
+      }
+    }
+    return const {};
+  }
+
   _TelecallerDashboardSummary get _summary {
     return _TelecallerDashboardSummary.fromData(
       leads: _leads,
       followUps: _followUps,
       siteVisits: _siteVisits,
       apiKpi: _apiKpi,
+      statusById: _statusById,
+      temperatureById: _temperatureById,
       now: DateTime.now(),
     );
   }
@@ -245,9 +286,13 @@ class _TelecallerDashboardViewState extends State<TelecallerDashboardView> {
     List<_MetricCardData> templates,
     Map<String, int> values,
   ) {
-    return templates
-        .map((item) => item.copyWith(value: _formatCount(values[item.title])))
-        .toList();
+    return templates.map((item) {
+      final badge = _kpiBadge(_apiKpi, _kpiKeysForTitle(item.title));
+      return item.copyWith(
+        value: _formatCount(values[item.title]),
+        badge: badge ?? item.badge,
+      );
+    }).toList();
   }
 
   @override
@@ -838,6 +883,98 @@ class _FollowUpListTile extends StatelessWidget {
   }
 }
 
+/// Reuses the telecaller dashboard's feature cards on role-specific dashboards.
+///
+/// Keeping this composition here ensures visual changes to the telecaller cards
+/// are reflected everywhere they are shared.
+class TelecallerDashboardFeatureSections extends StatelessWidget {
+  const TelecallerDashboardFeatureSections({
+    super.key,
+    this.totalLeads = 0,
+    this.newLeads = 0,
+    this.todayFollowUps = 0,
+    this.missedFollowUps = 0,
+    this.interestedLeads = 0,
+    this.notInterestedLeads = 0,
+    this.siteVisitScheduledLeads = 0,
+    this.siteVisitDoneLeads = 0,
+    this.bookingsDone = 0,
+    this.todayCallFollowUps = 0,
+    this.dueNextHour = 0,
+    this.missedSla = 0,
+    this.needsImmediateResponse = 0,
+  });
+
+  final int totalLeads;
+  final int newLeads;
+  final int todayFollowUps;
+  final int missedFollowUps;
+  final int interestedLeads;
+  final int notInterestedLeads;
+  final int siteVisitScheduledLeads;
+  final int siteVisitDoneLeads;
+  final int bookingsDone;
+  final int todayCallFollowUps;
+  final int dueNextHour;
+  final int missedSla;
+  final int needsImmediateResponse;
+
+  @override
+  Widget build(BuildContext context) {
+    final summary = _TelecallerDashboardSummary(
+      totalLeads: totalLeads,
+      newLeads: newLeads,
+      todayFollowUps: todayFollowUps,
+      missedFollowUps: missedFollowUps,
+      hotLeads: 0,
+      coldLeads: 0,
+      interestedLeads: interestedLeads,
+      notInterestedLeads: notInterestedLeads,
+      siteVisitScheduledLeads: siteVisitScheduledLeads,
+      siteVisitDoneLeads: siteVisitDoneLeads,
+      reVisitDone: 0,
+      bookingsDone: bookingsDone,
+      convertedLeads: bookingsDone,
+      todayCallFollowUps: todayCallFollowUps,
+      dueNextHour: dueNextHour,
+      missedSla: missedSla,
+      needsImmediateResponse: needsImmediateResponse,
+      upcomingFollowUps: const [],
+    );
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _LeadStatusDistributionSection(summary: summary),
+        const _SectionGap(),
+        _ConversionFunnelSection(summary: summary),
+        const _SectionGap(),
+        _TodayTasksSection(summary: summary),
+        const _SectionGap(),
+        const _SiteVisitsSection(),
+        const _SectionGap(),
+        _UpcomingFollowUpsSection(items: summary.upcomingFollowUps),
+        const _SectionGap(),
+        _ActionOnlySection(
+          title: 'Recent Activities',
+          actionText: 'View All Activities',
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const TelecallerActivitiesScreen(),
+            ),
+          ),
+        ),
+        const _SectionGap(),
+        _PerformanceSection(summary: summary),
+        const _SectionGap(),
+        _SlaActionQueueSection(summary: summary),
+        const _SectionGap(),
+        const _DailyCallingTrendSection(),
+      ],
+    );
+  }
+}
+
 class _TelecallerDashboardSummary {
   const _TelecallerDashboardSummary({
     required this.totalLeads,
@@ -892,6 +1029,8 @@ class _TelecallerDashboardSummary {
     required List<_FollowUpDashboardItem> followUps,
     required List<SiteVisitModel> siteVisits,
     required Map<String, dynamic> apiKpi,
+    Map<String, String> statusById = const {},
+    Map<String, String> temperatureById = const {},
     required DateTime now,
   }) {
     final todayStart = DateTime(now.year, now.month, now.day);
@@ -937,42 +1076,68 @@ class _TelecallerDashboardSummary {
             .toList()
           ..sort((a, b) => a.scheduledAt!.compareTo(b.scheduledAt!));
 
-    final computedSiteVisitDone = leads.where(_isSiteVisitDoneLead).length;
-    final computedReVisitDone = siteVisits.where(_isReVisitDone).length;
-    final computedBookings = leads.where(_isBookingDoneLead).length;
+    bool matches(LeadModel lead, bool Function(LeadModel) predicate) {
+      return predicate(
+        _leadWithResolvedMasters(
+          lead,
+          statusById: statusById,
+          temperatureById: temperatureById,
+        ),
+      );
+    }
 
-    final totalLeads = _kpiInt(
-      apiKpi['totalAssignedLeads'],
-      fallback: leads.length,
+    final computedSiteVisitDone = [
+      leads.where((lead) => matches(lead, _isSiteVisitDoneLead)).length,
+      siteVisits.where(_isPrimarySiteVisitDone).length,
+    ].reduce((a, b) => a > b ? a : b);
+    final computedReVisitDone = [
+      leads.where((lead) => matches(lead, _isReVisitDoneLead)).length,
+      siteVisits.where(_isReVisitDone).length,
+    ].reduce((a, b) => a > b ? a : b);
+    final computedBookings = leads
+        .where((lead) => matches(lead, _isBookingDoneLead))
+        .length;
+
+    final totalLeads = _kpiIntAny(apiKpi, const [
+      'totalAssignedLeads',
+      'totalLeads',
+      'assignedLeads',
+    ], fallback: leads.length);
+    final newLeads = _kpiIntAny(apiKpi, const [
+      'newLeads',
+      'new',
+    ], fallback: leads.where((lead) => matches(lead, _isNewLead)).length);
+    final todayFollowUps = _kpiIntAny(apiKpi, const [
+      'todaysFollowUps',
+      'todayFollowUps',
+      'todayFollowUp',
+    ], fallback: computedTodayFollowUps);
+    final missedFollowUps = _kpiIntAny(apiKpi, const [
+      'missedFollowUps',
+      'missedFollowUp',
+      'overdueFollowUps',
+    ], fallback: computedMissedFollowUps);
+    final interestedLeads = _kpiIntAny(
+      apiKpi,
+      const ['interestedLeads', 'interested'],
+      fallback: leads.where((lead) => matches(lead, _isInterestedLead)).length,
     );
-    final newLeads = _kpiInt(
-      apiKpi['newLeads'],
-      fallback: leads.where(_isNewLead).length,
+    final notInterestedLeads = _kpiIntAny(
+      apiKpi,
+      const ['notInterestedLeads', 'notInterested'],
+      fallback: leads
+          .where((lead) => matches(lead, _isNotInterestedLead))
+          .length,
     );
-    final todayFollowUps = _kpiInt(
-      apiKpi['todaysFollowUps'],
-      fallback: computedTodayFollowUps,
-    );
-    final missedFollowUps = _kpiInt(
-      apiKpi['missedFollowUps'],
-      fallback: computedMissedFollowUps,
-    );
-    final interestedLeads = _kpiInt(
-      apiKpi['interestedLeads'],
-      fallback: leads.where(_isInterestedLead).length,
-    );
-    final notInterestedLeads = _kpiInt(
-      apiKpi['notInterestedLeads'],
-      fallback: leads.where(_isNotInterestedLead).length,
-    );
-    final hotLeads = _kpiInt(
-      apiKpi['hotLeads'],
-      fallback: leads.where(_isHotLead).length,
-    );
-    final bookingsDone = _kpiInt(
-      apiKpi['bookingsDone'],
-      fallback: _kpiInt(apiKpi['convertedLeads'], fallback: computedBookings),
-    );
+    final hotLeads = _kpiIntAny(apiKpi, const [
+      'hotLeads',
+      'hot',
+    ], fallback: leads.where((lead) => matches(lead, _isHotLead)).length);
+    final bookingsDone = _kpiIntAny(apiKpi, const [
+      'bookingsDone',
+      'bookingDone',
+      'convertedLeads',
+    ], fallback: computedBookings);
 
     return _TelecallerDashboardSummary(
       totalLeads: totalLeads,
@@ -980,24 +1145,32 @@ class _TelecallerDashboardSummary {
       todayFollowUps: todayFollowUps,
       missedFollowUps: missedFollowUps,
       hotLeads: hotLeads,
-      coldLeads: _kpiInt(
-        apiKpi['coldLeads'],
-        fallback: leads.where(_isColdLead).length,
-      ),
+      coldLeads: _kpiIntAny(apiKpi, const [
+        'coldLeads',
+        'cold',
+      ], fallback: leads.where((lead) => matches(lead, _isColdLead)).length),
       interestedLeads: interestedLeads,
       notInterestedLeads: notInterestedLeads,
-      siteVisitScheduledLeads: _kpiInt(
-        apiKpi['siteVisitScheduled'],
-        fallback: leads.where(_isSiteVisitScheduledLead).length,
+      siteVisitScheduledLeads: _kpiIntAny(
+        apiKpi,
+        const ['siteVisitScheduled', 'siteVisitsScheduled'],
+        fallback: leads
+            .where((lead) => matches(lead, _isSiteVisitScheduledLead))
+            .length,
       ),
-      siteVisitDoneLeads: _kpiInt(
-        apiKpi['siteVisitDone'],
-        fallback: computedSiteVisitDone,
-      ),
-      reVisitDone: _kpiInt(
-        apiKpi['reVisitDone'],
-        fallback: computedReVisitDone,
-      ),
+      siteVisitDoneLeads: _kpiIntAny(apiKpi, const [
+        'siteVisitDone',
+        'siteVisitsDone',
+        'siteVisitCompleted',
+        'siteVisitsCompleted',
+      ], fallback: computedSiteVisitDone),
+      reVisitDone: _kpiIntAny(apiKpi, const [
+        'reVisitDone',
+        'reVisitsDone',
+        'revisitDone',
+        'revisitsDone',
+        'reVisitCompleted',
+      ], fallback: computedReVisitDone),
       bookingsDone: bookingsDone,
       convertedLeads: bookingsDone,
       todayCallFollowUps: activeFollowUps
@@ -2052,13 +2225,13 @@ class _MetricCardData {
   final double? minHeight;
   final double? cardHeight;
 
-  _MetricCardData copyWith({String? value}) {
+  _MetricCardData copyWith({String? value, String? badge}) {
     return _MetricCardData(
       title: title,
       value: value ?? this.value,
       icon: icon,
       color: color,
-      badge: badge,
+      badge: badge ?? this.badge,
       badgeBackground: badgeBackground,
       minHeight: minHeight,
       cardHeight: cardHeight,
@@ -3282,9 +3455,9 @@ String? _readString(Map<String, dynamic>? map, List<String> keys) {
   }
 
   for (final key in keys) {
-    final value = _readValue(map, key);
-    if (value != null && value.toString().trim().isNotEmpty) {
-      return value.toString().trim();
+    final text = _stringifyApiValue(_readValue(map, key));
+    if (text != null && text.isNotEmpty) {
+      return text;
     }
   }
   return null;
@@ -3341,7 +3514,10 @@ bool _isNotInterestedLead(LeadModel lead) {
 
 bool _isNewLead(LeadModel lead) {
   final text = _leadText(lead);
-  return text.contains('new lead') || text == 'new' || text.contains('new-lead');
+  return text.contains('new lead') ||
+      text == 'new' ||
+      text.contains('new-lead') ||
+      RegExp(r'(^|\s)new(\s|$)').hasMatch(text);
 }
 
 bool _isSiteVisitScheduledLead(LeadModel lead) {
@@ -3353,7 +3529,22 @@ bool _isSiteVisitScheduledLead(LeadModel lead) {
 bool _isSiteVisitDoneLead(LeadModel lead) {
   final text = _leadText(lead);
   return text.contains('site visit done') ||
-      (text.contains('site visit') && text.contains('done'));
+      (text.contains('site visit') &&
+          (text.contains('done') ||
+              text.contains('completed') ||
+              text.contains('complete')));
+}
+
+bool _isReVisitDoneLead(LeadModel lead) {
+  final text = _leadText(lead);
+  final isRevisit =
+      text.contains('re-visit') ||
+      text.contains('revisit') ||
+      text.contains('re visit');
+  return isRevisit &&
+      (text.contains('done') ||
+          text.contains('completed') ||
+          text.contains('complete'));
 }
 
 bool _isBookingDoneLead(LeadModel lead) {
@@ -3367,18 +3558,215 @@ bool _isBookingDoneLead(LeadModel lead) {
 bool _isReVisitDone(SiteVisitModel visit) {
   final type = visit.type.toLowerCase();
   final status = visit.status.toLowerCase();
-  final isRevisit = type.contains('re-visit') ||
+  final isRevisit =
+      type.contains('re-visit') ||
       type.contains('revisit') ||
       type.contains('re visit');
-  return isRevisit && status.contains('completed');
+  return isRevisit && (status.contains('completed') || status.contains('done'));
+}
+
+bool _isPrimarySiteVisitDone(SiteVisitModel visit) {
+  final type = visit.type.toLowerCase();
+  final status = visit.status.toLowerCase();
+  final isRevisit =
+      type.contains('re-visit') ||
+      type.contains('revisit') ||
+      type.contains('re visit');
+  return !isRevisit &&
+      (status.contains('completed') || status.contains('done'));
+}
+
+LeadModel _leadWithResolvedMasters(
+  LeadModel lead, {
+  required Map<String, String> statusById,
+  required Map<String, String> temperatureById,
+}) {
+  final raw = lead.raw == null
+      ? <String, dynamic>{}
+      : Map<String, dynamic>.from(lead.raw!);
+  final statusId = raw['statusId']?.toString();
+  final temperatureId = raw['temperatureId']?.toString();
+  final resolvedStatus =
+      (statusId != null ? statusById[statusId] : null) ??
+      _stringifyApiValue(raw['status']) ??
+      _stringifyApiValue(raw['statusName']) ??
+      lead.status;
+  final resolvedTemperature =
+      (temperatureId != null ? temperatureById[temperatureId] : null) ??
+      _stringifyApiValue(raw['temperature']) ??
+      _stringifyApiValue(raw['temperatureName']) ??
+      lead.leadType;
+
+  if (resolvedStatus == lead.status && resolvedTemperature == lead.leadType) {
+    return lead;
+  }
+
+  raw['statusName'] = resolvedStatus;
+  if (resolvedTemperature != null && resolvedTemperature.isNotEmpty) {
+    raw['temperatureName'] = resolvedTemperature;
+  }
+
+  return LeadModel(
+    id: lead.id,
+    displayId: lead.displayId,
+    name: lead.name,
+    email: lead.email,
+    phone: lead.phone,
+    status: resolvedStatus,
+    stage: lead.stage,
+    source: lead.source,
+    leadType: resolvedTemperature ?? lead.leadType,
+    configuration: lead.configuration,
+    propertyType: lead.propertyType,
+    project: lead.project,
+    location: lead.location,
+    assignedTo: lead.assignedTo,
+    dueLabel: lead.dueLabel,
+    createdLabel: lead.createdLabel,
+    createdAt: lead.createdAt,
+    raw: raw,
+  );
+}
+
+Map<String, String> _masterLookupFromApi(Object? source) {
+  final lookup = <String, String>{};
+  for (final item in _extractApiList(source)) {
+    if (item is! Map) continue;
+    final map = Map<String, dynamic>.from(item);
+    final id = _readString(map, const [
+      'id',
+      '_id',
+      'value',
+      'slug',
+      'key',
+      'masterValueId',
+    ]);
+    final label = _readString(map, const [
+      'name',
+      'label',
+      'title',
+      'displayName',
+      'value',
+      'masterValue',
+    ]);
+    if (id == null || label == null || id.isEmpty || label.isEmpty) continue;
+    lookup[id] = label;
+  }
+  return lookup;
+}
+
+List<String> _kpiKeysForTitle(String title) {
+  switch (title) {
+    case 'TOTAL LEADS':
+      return const ['totalAssignedLeads', 'totalLeads', 'assignedLeads'];
+    case 'NEW LEADS':
+      return const ['newLeads', 'new'];
+    case 'TODAY FOLLOW UP':
+      return const ['todaysFollowUps', 'todayFollowUps', 'todayFollowUp'];
+    case 'MISSED FOLLOW UP':
+      return const ['missedFollowUps', 'missedFollowUp', 'overdueFollowUps'];
+    case 'INTERESTED LEADS':
+      return const ['interestedLeads', 'interested'];
+    case 'NOT INTERESTED':
+      return const ['notInterestedLeads', 'notInterested'];
+    case 'HOT LEADS':
+      return const ['hotLeads', 'hot'];
+    case 'SITE VISIT DONE':
+      return const [
+        'siteVisitDone',
+        'siteVisitsDone',
+        'siteVisitCompleted',
+        'siteVisitsCompleted',
+      ];
+    case 'RE-VISIT DONE':
+      return const [
+        'reVisitDone',
+        'reVisitsDone',
+        'revisitDone',
+        'revisitsDone',
+        'reVisitCompleted',
+      ];
+    case 'BOOKING DONE':
+      return const ['bookingsDone', 'bookingDone', 'convertedLeads'];
+    default:
+      return const [];
+  }
+}
+
+String? _kpiBadge(Map<String, dynamic> apiKpi, List<String> keys) {
+  for (final key in keys) {
+    final value = apiKpi[key];
+    if (value is Map) {
+      final badge = value['badge'] ?? value['label'] ?? value['tag'];
+      final text = badge?.toString().trim();
+      if (text != null && text.isNotEmpty) {
+        return text;
+      }
+    }
+  }
+  return null;
 }
 
 Map<String, dynamic> _extractTelecallerKpi(Object? source) {
   if (source is! Map) return const {};
   final root = Map<String, dynamic>.from(source);
-  final kpi = root['kpi'];
-  if (kpi is Map) return Map<String, dynamic>.from(kpi);
-  return root;
+  final kpiSource = root['kpi'] ?? root['kpis'] ?? root;
+  final kpi = kpiSource is Map
+      ? Map<String, dynamic>.from(kpiSource)
+      : <String, dynamic>{};
+
+  final distribution = root['leadDistribution'] ?? root['lead_distribution'];
+  if (distribution is List) {
+    const nameToKey = <String, String>{
+      'new leads': 'newLeads',
+      'new': 'newLeads',
+      'interested': 'interestedLeads',
+      'interested leads': 'interestedLeads',
+      'not interested': 'notInterestedLeads',
+      'not interested leads': 'notInterestedLeads',
+      'hot': 'hotLeads',
+      'hot leads': 'hotLeads',
+      'site visit done': 'siteVisitDone',
+      'site visits done': 'siteVisitDone',
+      're-visit done': 'reVisitDone',
+      'revisit done': 'reVisitDone',
+      're visits done': 'reVisitDone',
+      'bookings done': 'bookingsDone',
+      'booking done': 'bookingsDone',
+      'converted': 'convertedLeads',
+      'converted leads': 'convertedLeads',
+    };
+    for (final item in distribution) {
+      if (item is! Map) continue;
+      final map = Map<String, dynamic>.from(item);
+      final name = (_readString(map, const ['name', 'label', 'title']) ?? '')
+          .toLowerCase()
+          .trim();
+      final key = nameToKey[name];
+      if (key == null || kpi.containsKey(key)) continue;
+      if (map.containsKey('value')) {
+        kpi[key] = map['value'];
+      } else if (map.containsKey('count')) {
+        kpi[key] = map['count'];
+      } else if (map.containsKey('total')) {
+        kpi[key] = map['total'];
+      }
+    }
+  }
+
+  return kpi;
+}
+
+int _kpiIntAny(
+  Map<String, dynamic> apiKpi,
+  List<String> keys, {
+  int fallback = 0,
+}) {
+  for (final key in keys) {
+    if (!apiKpi.containsKey(key) || apiKpi[key] == null) continue;
+    return _kpiInt(apiKpi[key], fallback: fallback);
+  }
+  return fallback;
 }
 
 int _kpiInt(Object? value, {int fallback = 0}) {
@@ -3394,22 +3782,48 @@ int _kpiInt(Object? value, {int fallback = 0}) {
   return parsed ?? fallback;
 }
 
+String? _stringifyApiValue(Object? value) {
+  if (value == null) return null;
+  if (value is Map) {
+    final nested = Map<String, dynamic>.from(value);
+    return _readString(nested, const [
+      'name',
+      'label',
+      'title',
+      'displayName',
+      'value',
+      'statusName',
+      'temperatureName',
+    ]);
+  }
+  final text = value.toString().trim();
+  if (text.isEmpty || text.toLowerCase() == 'null') return null;
+  return text;
+}
+
 String _leadText(LeadModel lead) {
   final raw = lead.raw;
   final rawStatus = raw == null
       ? ''
       : [
-          _readString(raw, const ['statusName', 'status', 'leadStatus']),
-          _readString(raw, const ['stageName', 'stage']),
-          _readString(raw, const ['temperatureName', 'temperature']),
-          _readString(raw, const ['priorityName', 'priority']),
-          _readString(raw, const ['leadType']),
+          _stringifyApiValue(raw['statusName']) ??
+              _stringifyApiValue(raw['status']) ??
+              _stringifyApiValue(raw['leadStatus']),
+          _stringifyApiValue(raw['stageName']) ??
+              _stringifyApiValue(raw['stage']),
+          _stringifyApiValue(raw['temperatureName']) ??
+              _stringifyApiValue(raw['temperature']),
+          _stringifyApiValue(raw['priorityName']) ??
+              _stringifyApiValue(raw['priority']),
+          _stringifyApiValue(raw['leadType']),
+          _stringifyApiValue(raw['interestLevel']),
         ].whereType<String>().join(' ');
 
   return [
     lead.status,
     lead.stage,
     lead.source,
+    lead.leadType,
     rawStatus,
   ].whereType<String>().join(' ').trim().toLowerCase();
 }

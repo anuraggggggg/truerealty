@@ -578,7 +578,15 @@ class ApiClient {
   String? _readMessage(Object? body) {
     if (body is Map<String, dynamic>) {
       final message = body['message'] ?? body['error'] ?? body['detail'];
-      return message?.toString();
+      final text = message?.toString();
+      if (text == null) return null;
+      final normalized = text.toLowerCase();
+      if (normalized.contains('insufficient') &&
+          normalized.contains('module') &&
+          normalized.contains('access')) {
+        return 'Access denied. You are not allowed to access this module.';
+      }
+      return text;
     }
     return null;
   }
@@ -604,7 +612,7 @@ class ApiClient {
       case 401:
         return 'Unauthorized. Please log in again.';
       case 403:
-        return 'You do not have permission to perform this action.';
+        return 'Access denied. You are not allowed to perform this action.';
       case 404:
         return 'Requested resource was not found.';
     }

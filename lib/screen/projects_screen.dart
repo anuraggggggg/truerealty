@@ -1,5 +1,9 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -69,7 +73,9 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
     if (!project.hasBrochure) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Brochure not uploaded for this project.')),
+        const SnackBar(
+          content: Text('Brochure not uploaded for this project.'),
+        ),
       );
       return;
     }
@@ -90,6 +96,19 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
         onShare: () => _shareProject(project),
       ),
     );
+  }
+
+  Future<void> _showCreateProject() async {
+    final created = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const _CreateProjectSheet(),
+    );
+    if (created == true && mounted) {
+      await _refresh();
+    }
   }
 
   @override
@@ -149,15 +168,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton.icon(
-                        onPressed: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                'Add Project is available from the admin web console.',
-                              ),
-                            ),
-                          );
-                        },
+                        onPressed: _showCreateProject,
                         icon: const Icon(Icons.add_rounded),
                         label: const Text('Add Project'),
                         style: ElevatedButton.styleFrom(
@@ -235,6 +246,546 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _CreateProjectSheet extends StatefulWidget {
+  const _CreateProjectSheet();
+
+  @override
+  State<_CreateProjectSheet> createState() => _CreateProjectSheetState();
+}
+
+class _CreateProjectSheetState extends State<_CreateProjectSheet> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _locationController = TextEditingController();
+  final _developerController = TextEditingController();
+  final _possessionController = TextEditingController();
+  final _reraController = TextEditingController();
+  final _configurationsController = TextEditingController();
+  final _priceMinController = TextEditingController();
+  final _priceMaxController = TextEditingController();
+  final _amenitiesController = TextEditingController();
+  final _highlightsController = TextEditingController();
+  final _descriptionController = TextEditingController();
+  final _imageUrlController = TextEditingController();
+  final _salesOwnerController = TextEditingController();
+  final _radiusController = TextEditingController(text: '150');
+  static const _defaultMapCenter = LatLng(19.0760, 72.8777);
+  GoogleMapController? _mapController;
+  LatLng? _selectedPosition;
+  bool _locating = false;
+  String _priceMinUnit = 'Cr';
+  String _priceMaxUnit = 'Cr';
+  String _status = 'Active';
+  bool _submitting = false;
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _locationController.dispose();
+    _developerController.dispose();
+    _possessionController.dispose();
+    _reraController.dispose();
+    _configurationsController.dispose();
+    _priceMinController.dispose();
+    _priceMaxController.dispose();
+    _amenitiesController.dispose();
+    _highlightsController.dispose();
+    _descriptionController.dispose();
+    _imageUrlController.dispose();
+    _salesOwnerController.dispose();
+    _mapController?.dispose();
+    _radiusController.dispose();
+    super.dispose();
+  }
+
+  List<String> _listValue(TextEditingController controller) => controller.text
+      .split(RegExp(r'[,\n]'))
+      .map((value) => value.trim())
+      .where((value) => value.isNotEmpty)
+      .toList(growable: false);
+
+  num? _priceValue(TextEditingController controller, String unit) {
+    final value = double.tryParse(controller.text.trim());
+    if (value == null) return null;
+    return value * (unit == 'Cr' ? 10000000 : 100000);
+  }
+
+  bool _alreadyExists() {
+    String normalize(String value) =>
+        value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+    final name = normalize(_nameController.text);
+    final location = normalize(_locationController.text);
+    return context.read<ProjectProvider>().projects.any(
+      (project) =>
+          normalize(project.name) == name &&
+          normalize(project.location) == location,
+    );
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate() || _submitting) return;
+    final minimumPrice = _priceValue(_priceMinController, _priceMinUnit);
+    final maximumPrice = _priceValue(_priceMaxController, _priceMaxUnit);
+    if (minimumPrice == null ||
+        maximumPrice == null ||
+        maximumPrice < minimumPrice) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Maximum price must be greater than minimum price.'),
+        ),
+      );
+      return;
+    }
+    if (_alreadyExists()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'A project with this name and location already exists.',
+          ),
+        ),
+      );
+      return;
+    }
+    setState(() => _submitting = true);
+
+    final body = <String, dynamic>{
+      'name': _nameController.text.trim(),
+      'location': _locationController.text.trim(),
+      'developer': _developerController.text.trim(),
+      'status': _status,
+      'possession': _possessionController.text.trim(),
+      'priceMin': _priceMinController.text.trim(),
+      'priceMinUnit': _priceMinUnit,
+      'priceMax': _priceMaxController.text.trim(),
+      'priceMaxUnit': _priceMaxUnit,
+      'configurations': _listValue(_configurationsController),
+      'amenities': _listValue(_amenitiesController),
+      'highlights': _listValue(_highlightsController),
+      'description': _descriptionController.text.trim(),
+      'reraNumber': _reraController.text.trim(),
+      'imageUrl': _imageUrlController.text.trim(),
+      'imageGallery': <String>[],
+      'brochures': <dynamic>[],
+      'geofenceRadiusM': _radiusController.text.trim(),
+    };
+    if (_salesOwnerController.text.trim().isNotEmpty) {
+      body['salesOwnerId'] = _salesOwnerController.text.trim();
+    }
+    if (_selectedPosition != null) {
+      body['latitude'] = _selectedPosition!.latitude;
+      body['longitude'] = _selectedPosition!.longitude;
+    }
+
+    final projectProvider = context.read<ProjectProvider>();
+    final response = await projectProvider.createProject(body);
+
+    if (!mounted) return;
+    setState(() => _submitting = false);
+    if (response?.isSuccess == true) {
+      Navigator.of(context).pop(true);
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          response?.message ??
+              projectProvider.error ??
+              'Unable to add project.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _useCurrentLocation() async {
+    if (_locating) return;
+    setState(() => _locating = true);
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        throw Exception('Please enable location services.');
+      }
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        throw Exception(
+          'Location permission is required to use your position.',
+        );
+      }
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
+      );
+      final point = LatLng(position.latitude, position.longitude);
+      if (!mounted) return;
+      setState(() => _selectedPosition = point);
+      await _mapController?.animateCamera(
+        CameraUpdate.newLatLngZoom(point, 17),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Exception: ', '')),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _locating = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FractionallySizedBox(
+      heightFactor: 0.96,
+      child: Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(context).bottom,
+        ),
+        child: Material(
+          clipBehavior: Clip.antiAlias,
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24.r)),
+          child: SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: EdgeInsets.fromLTRB(16.w, 18.h, 16.w, 24.h),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Add Project',
+                          style: GoogleFonts.inter(
+                            fontSize: 20.sp,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.navy,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: _submitting
+                            ? null
+                            : () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 14.h),
+                  _projectField(
+                    controller: _nameController,
+                    label: 'Project name',
+                    hint: 'Enter project name',
+                    required: true,
+                  ),
+                  SizedBox(height: 14.h),
+                  _projectField(
+                    controller: _locationController,
+                    label: 'Location',
+                    hint: 'Enter project location',
+                    required: true,
+                  ),
+                  SizedBox(height: 14.h),
+                  _projectField(
+                    controller: _developerController,
+                    label: 'Developer',
+                    hint: 'Enter developer name',
+                    required: true,
+                  ),
+                  SizedBox(height: 14.h),
+                  _projectField(
+                    controller: _possessionController,
+                    label: 'Possession',
+                    hint: 'Ready by Aug 2026',
+                    required: true,
+                  ),
+                  SizedBox(height: 14.h),
+                  _projectField(
+                    controller: _reraController,
+                    label: 'RERA number',
+                    hint: 'Enter RERA number',
+                  ),
+                  SizedBox(height: 14.h),
+                  _projectField(
+                    controller: _configurationsController,
+                    label: 'Configurations',
+                    hint: '2 BHK, 3 BHK',
+                    required: true,
+                  ),
+                  SizedBox(height: 14.h),
+                  _priceField(
+                    controller: _priceMinController,
+                    label: 'Minimum price',
+                    hint: '2.5',
+                    unit: _priceMinUnit,
+                    onUnitChanged: (value) =>
+                        setState(() => _priceMinUnit = value!),
+                  ),
+                  SizedBox(height: 14.h),
+                  _priceField(
+                    controller: _priceMaxController,
+                    label: 'Maximum price',
+                    hint: '3.5',
+                    unit: _priceMaxUnit,
+                    onUnitChanged: (value) =>
+                        setState(() => _priceMaxUnit = value!),
+                  ),
+                  SizedBox(height: 14.h),
+                  DropdownButtonFormField<String>(
+                    initialValue: _status,
+                    decoration: _inputDecoration('Status', null),
+                    items: const ['Active', 'Upcoming', 'Completed', 'Inactive']
+                        .map(
+                          (status) => DropdownMenuItem(
+                            value: status,
+                            child: Text(status),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) => setState(() => _status = value!),
+                  ),
+                  SizedBox(height: 14.h),
+                  _projectField(
+                    controller: _amenitiesController,
+                    label: 'Amenities',
+                    hint: 'Pool, Gym, Clubhouse',
+                  ),
+                  SizedBox(height: 14.h),
+                  _projectField(
+                    controller: _highlightsController,
+                    label: 'Project highlights',
+                    hint: 'Separate highlights with commas or new lines',
+                    maxLines: 3,
+                  ),
+                  SizedBox(height: 14.h),
+                  _projectField(
+                    controller: _descriptionController,
+                    label: 'Description',
+                    hint: 'Short project positioning note',
+                    maxLines: 4,
+                  ),
+                  SizedBox(height: 14.h),
+                  _projectField(
+                    controller: _imageUrlController,
+                    label: 'Project image URL',
+                    hint: 'https://...',
+                    keyboardType: TextInputType.url,
+                  ),
+                  SizedBox(height: 14.h),
+                  _projectField(
+                    controller: _salesOwnerController,
+                    label: 'Sales owner ID',
+                    hint: 'Optional employee ID',
+                  ),
+                  SizedBox(height: 14.h),
+                  Text(
+                    'Visit geofence (optional)',
+                    style: GoogleFonts.inter(
+                      fontSize: 14.sp,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.navy,
+                    ),
+                  ),
+                  SizedBox(height: 10.h),
+                  Container(
+                    height: 260.h.clamp(220.0, 300.0),
+                    clipBehavior: Clip.antiAlias,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12.r),
+                      border: Border.all(color: const Color(0xFFD0D5DD)),
+                    ),
+                    child: GoogleMap(
+                      initialCameraPosition: const CameraPosition(
+                        target: _defaultMapCenter,
+                        zoom: 12,
+                      ),
+                      onMapCreated: (controller) => _mapController = controller,
+                      onTap: (point) =>
+                          setState(() => _selectedPosition = point),
+                      markers: _selectedPosition == null
+                          ? const <Marker>{}
+                          : {
+                              Marker(
+                                markerId: const MarkerId('project_location'),
+                                position: _selectedPosition!,
+                              ),
+                            },
+                      myLocationButtonEnabled: false,
+                      myLocationEnabled: false,
+                      zoomControlsEnabled: false,
+                      gestureRecognizers: {
+                        Factory<OneSequenceGestureRecognizer>(
+                          () => EagerGestureRecognizer(),
+                        ),
+                      },
+                    ),
+                  ),
+                  SizedBox(height: 10.h),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: _locating ? null : _useCurrentLocation,
+                      icon: _locating
+                          ? SizedBox(
+                              width: 18.r,
+                              height: 18.r,
+                              child: const CircularProgressIndicator(
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : const Icon(Icons.my_location_rounded),
+                      label: Text(
+                        _selectedPosition == null
+                            ? 'Use current location or tap the map'
+                            : 'Location pinned',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: 14.h),
+                  _projectField(
+                    controller: _radiusController,
+                    label: 'Geofence radius (m)',
+                    hint: '150',
+                    keyboardType: TextInputType.number,
+                  ),
+                  SizedBox(height: 20.h),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _submitting ? null : _submit,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.orangeDeep,
+                        foregroundColor: Colors.white,
+                        padding: EdgeInsets.symmetric(vertical: 13.h),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12.r),
+                        ),
+                      ),
+                      child: _submitting
+                          ? SizedBox(
+                              width: 20.r,
+                              height: 20.r,
+                              child: const CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : Text(
+                              'Add Project',
+                              style: GoogleFonts.inter(
+                                fontSize: 14.sp,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _projectField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    bool required = false,
+    int maxLines = 1,
+    TextInputType? keyboardType,
+  }) {
+    return TextFormField(
+      controller: controller,
+      textInputAction: maxLines == 1
+          ? TextInputAction.next
+          : TextInputAction.newline,
+      keyboardType: keyboardType,
+      maxLines: maxLines,
+      decoration: _inputDecoration(label, hint),
+      validator: required
+          ? (value) => value == null || value.trim().isEmpty
+                ? '$label is required'
+                : null
+          : null,
+    );
+  }
+
+  InputDecoration _inputDecoration(String label, String? hint) {
+    return InputDecoration(
+      labelText: label,
+      hintText: hint,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12.r)),
+    );
+  }
+
+  Widget _unitDropdown({
+    required String value,
+    required ValueChanged<String?> onChanged,
+  }) {
+    return SizedBox(
+      width: 88,
+      child: DropdownButtonFormField<String>(
+        initialValue: value,
+        decoration: _inputDecoration('Unit', null),
+        items: const ['Cr', 'L']
+            .map((unit) => DropdownMenuItem(value: unit, child: Text(unit)))
+            .toList(),
+        onChanged: onChanged,
+      ),
+    );
+  }
+
+  Widget _priceField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    required String unit,
+    required ValueChanged<String?> onUnitChanged,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final valueField = _projectField(
+          controller: controller,
+          label: label,
+          hint: hint,
+          required: true,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        );
+        if (constraints.maxWidth < 300) {
+          return Column(
+            children: [
+              valueField,
+              SizedBox(height: 8.h),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: _unitDropdown(value: unit, onChanged: onUnitChanged),
+              ),
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: valueField),
+            SizedBox(width: 8.w),
+            _unitDropdown(value: unit, onChanged: onUnitChanged),
+          ],
+        );
+      },
     );
   }
 }
@@ -436,10 +987,7 @@ class _FilterTabs extends StatelessWidget {
 }
 
 class _SearchField extends StatelessWidget {
-  const _SearchField({
-    required this.controller,
-    required this.onChanged,
-  });
+  const _SearchField({required this.controller, required this.onChanged});
 
   final TextEditingController controller;
   final ValueChanged<String> onChanged;
@@ -691,7 +1239,7 @@ class _ProjectCard extends StatelessWidget {
                                 Text(
                                   project.hasBrochure
                                       ? (project.brochureFileName ??
-                                          'Brochure.pdf')
+                                            'Brochure.pdf')
                                       : 'Not uploaded',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,

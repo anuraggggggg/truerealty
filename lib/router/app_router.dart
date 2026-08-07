@@ -29,6 +29,7 @@ import 'package:truerealtycrm/screen/personal_settings_screen.dart';
 import 'package:truerealtycrm/screen/profile_screen.dart';
 import 'package:truerealtycrm/screen/employment_records_screen.dart';
 import 'package:truerealtycrm/screen/my_commissions_screen.dart';
+import 'package:truerealtycrm/screen/contact_leads_screen.dart';
 
 import '../screen/my_leads_screen.dart';
 
@@ -56,6 +57,8 @@ class AppRouter {
   static const String myPerformance = '/my-performance';
   static const String employeeDirectory = '/employee-directory';
   static const String telecallerCommunication = '/telecaller-communication';
+  static const String callHistory = '/call-history';
+  static const String contactLeads = '/contact-leads';
   static const String notifications = '/notifications';
   static const String personalSettings = '/personal-settings';
   static const String profile = '/profile';
@@ -148,9 +151,12 @@ class AppRouter {
           builder: (_) => TelecallerLeadDetailsScreen(lead: lead),
         );
       case telecallerCommunication:
+      case callHistory:
         return MaterialPageRoute(
           builder: (_) => const TelecallerCommunicationScreen(),
         );
+      case contactLeads:
+        return MaterialPageRoute(builder: (_) => const ContactLeadsScreen());
       case notifications:
         return MaterialPageRoute(builder: (_) => const NotificationsScreen());
       case personalSettings:

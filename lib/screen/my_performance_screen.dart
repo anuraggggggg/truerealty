@@ -7,14 +7,22 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:truerealtycrm/constant/colors_screen.dart';
 import 'package:truerealtycrm/provider/dashboard_provider.dart';
 import 'package:truerealtycrm/provider/leads_provider.dart';
 import 'package:truerealtycrm/provider/reports_provider.dart';
 
 class MyPerformanceScreen extends StatefulWidget {
-  const MyPerformanceScreen({super.key});
+  const MyPerformanceScreen({
+    super.key,
+    this.title = 'My Performance',
+    this.subtitle = 'Track calls, follow-ups and conversion.',
+  });
 
-  static const Color pageBackground = Color(0xFFF8FAFD);
+  final String title;
+  final String subtitle;
+
+  static const Color pageBackground = Color(0xFFF4F6FB);
 
   @override
   State<MyPerformanceScreen> createState() => _MyPerformanceScreenState();
@@ -224,21 +232,142 @@ class _MyPerformanceScreenState extends State<MyPerformanceScreen> {
     }
   }
 
-  List<Object?> get _metricSource => [_dashboardData, _performanceData];
+  List<Object?> get _metricSource => [_kpiMap, _performanceMap, _dashboardData];
 
-  int get _totalCalls =>
-      _findInt(_metricSource, const ['totalCalls', 'callsMade', 'callCount']);
-  int get _connectedCalls => _findInt(_metricSource, const [
-    'connectedCalls',
-    'callsConnected',
-    'connected',
-  ]);
-  int get _interested => _leads
-      .where((lead) => lead.status.toLowerCase().contains('interested'))
-      .length;
-  int get _converted => _leads
-      .where((lead) => lead.status.toLowerCase().contains('converted'))
-      .length;
+  Map<String, dynamic> get _kpiMap {
+    if (_dashboardData is! Map) return const {};
+    final root = Map<String, dynamic>.from(_dashboardData as Map);
+    final kpi = root['kpi'] ?? root['kpis'] ?? root['performance'];
+    return kpi is Map
+        ? Map<String, dynamic>.from(kpi)
+        : Map<String, dynamic>.from(root);
+  }
+
+  Map<String, dynamic> get _performanceMap {
+    if (_dashboardData is! Map && _performanceData is! Map) return const {};
+    final fromDashboard = _dashboardData is Map
+        ? Map<String, dynamic>.from(_dashboardData as Map)['performance']
+        : null;
+    if (fromDashboard is Map) {
+      return Map<String, dynamic>.from(fromDashboard);
+    }
+    if (_performanceData is Map) {
+      return Map<String, dynamic>.from(_performanceData as Map);
+    }
+    return const {};
+  }
+
+  int _kpiCount(List<String> keys, {int fallback = 0}) {
+    for (final key in keys) {
+      if (!_kpiMap.containsKey(key) && !_performanceMap.containsKey(key)) {
+        continue;
+      }
+      final value = _kpiMap[key] ?? _performanceMap[key];
+      final parsed = _parseCount(value);
+      if (parsed != null) return parsed;
+    }
+    final nested = _findInt(_metricSource, keys);
+    return nested > 0 ? nested : fallback;
+  }
+
+  int? _parseCount(Object? value) {
+    if (value == null) return null;
+    if (value is num) return value.toInt();
+    if (value is Map) {
+      final nested = value['value'] ?? value['count'] ?? value['total'];
+      if (nested is num) return nested.toInt();
+      return int.tryParse(nested?.toString() ?? '');
+    }
+    return int.tryParse(value.toString());
+  }
+
+  String _formatCount(int value) {
+    if (value < 10) return value.toString().padLeft(2, '0');
+    return value.toString();
+  }
+
+  int get _totalLeads => _kpiCount(const [
+    'totalAssignedLeads',
+    'totalLeads',
+    'assignedLeads',
+  ], fallback: _leads.length);
+  int get _totalCalls => _kpiCount(const [
+    'totalCalls',
+    'callsMade',
+    'callCount',
+  ], fallback: _findInt(_metricSource, const ['totalCalls', 'callsMade']));
+  int get _connectedCalls =>
+      _kpiCount(const ['connectedCalls', 'callsConnected', 'connected']);
+  int get _interested => _kpiCount(
+    const ['interestedLeads', 'interested'],
+    fallback: _leads
+        .where(
+          (lead) =>
+              lead.status.toLowerCase().contains('interested') &&
+              !lead.status.toLowerCase().contains('not'),
+        )
+        .length,
+  );
+  int get _hotLeads => _kpiCount(
+    const ['hotLeads', 'hot'],
+    fallback: _leads
+        .where(
+          (lead) => '${lead.status} ${lead.leadType ?? ''}'
+              .toLowerCase()
+              .contains('hot'),
+        )
+        .length,
+  );
+  int get _converted => _kpiCount(
+    const ['bookingsDone', 'convertedLeads', 'bookingDone'],
+    fallback: _leads
+        .where(
+          (lead) =>
+              lead.status.toLowerCase().contains('converted') ||
+              lead.status.toLowerCase().contains('booking') ||
+              lead.raw?['convertedAt'] != null,
+        )
+        .length,
+  );
+  int get _siteVisitDone => _kpiCount(
+    const ['siteVisitDone', 'siteVisitsDone'],
+    fallback: _leads
+        .where((lead) => lead.status.toLowerCase().contains('site visit'))
+        .length,
+  );
+  int get _todayFollowUps => _kpiCount(const [
+    'todaysFollowUps',
+    'todayFollowUps',
+  ], fallback: _activeFollowUpsToday);
+  int get _missedFollowUps => _kpiCount(const [
+    'missedFollowUps',
+    'overdueFollowUps',
+  ], fallback: _overdueFollowUps);
+
+  int get _activeFollowUpsToday {
+    final now = DateTime.now();
+    return _followUps.where((item) {
+      final map = item is Map
+          ? Map<String, dynamic>.from(item)
+          : const <String, dynamic>{};
+      final date = _findDate(map, const [
+        'scheduledAt',
+        'dueAt',
+        'nextFollowUpAt',
+      ]);
+      final status = _findText(map, const [
+        'status',
+        'followUpStatus',
+      ]).toLowerCase();
+      return date != null &&
+          date.year == now.year &&
+          date.month == now.month &&
+          date.day == now.day &&
+          !status.contains('complete') &&
+          !status.contains('cancel');
+    }).length;
+  }
+
   int get _overdueFollowUps {
     final now = DateTime.now();
     return _followUps.where((item) {
@@ -255,58 +384,91 @@ class _MyPerformanceScreenState extends State<MyPerformanceScreen> {
         'followUpStatus',
       ]).toLowerCase();
       return date != null &&
-          !date.isBefore(_rangeStart) &&
-          date.isBefore(_rangeEnd.add(const Duration(days: 1))) &&
-          date.isBefore(now) &&
+          date.isBefore(DateTime(now.year, now.month, now.day)) &&
           !status.contains('complete') &&
           !status.contains('cancel');
     }).length;
   }
 
+  String get _conversionRate {
+    if (_totalLeads == 0) return '0.0%';
+    return '${((_converted / _totalLeads) * 100).toStringAsFixed(1)}%';
+  }
+
   List<_PerformanceMetric> get _topMetrics => [
     _PerformanceMetric(
-      label: 'Leads\nAssigned',
-      value: _leads.length.toString(),
-      icon: Icons.group_add_outlined,
+      label: 'TOTAL LEADS',
+      value: _formatCount(_totalLeads),
+      icon: Icons.groups_outlined,
       color: const Color(0xFF2563EB),
     ),
     _PerformanceMetric(
-      label: 'Total\nCalls',
-      value: _valueOrDash(_totalCalls),
+      label: 'TOTAL CALLS',
+      value: _formatCount(_totalCalls),
       icon: Icons.call_outlined,
       color: const Color(0xFFF97316),
+      badge: _selectedPeriod,
+      badgeBackground: const Color(0xFFFFF1E8),
     ),
     _PerformanceMetric(
-      label: 'Connected\nCalls',
-      value: _valueOrDash(_connectedCalls),
+      label: 'CONNECTED CALLS',
+      value: _formatCount(_connectedCalls),
       icon: Icons.phone_in_talk_outlined,
       color: const Color(0xFF10B981),
     ),
     _PerformanceMetric(
-      label: 'Interested Leads',
-      value: _interested.toString(),
-      icon: Icons.thumb_up_alt_outlined,
+      label: 'TODAY FOLLOW UP',
+      value: _formatCount(_todayFollowUps),
+      icon: Icons.person_search_outlined,
       color: const Color(0xFFF97316),
+      badge: 'Today',
+      badgeBackground: const Color(0xFFFFF1E8),
     ),
     _PerformanceMetric(
-      label: 'Converted\nLeads',
-      value: _converted.toString(),
-      icon: Icons.workspace_premium_outlined,
-      color: const Color(0xFF2563EB),
+      label: 'MISSED FOLLOW UP',
+      value: _formatCount(_missedFollowUps),
+      icon: Icons.person_remove_outlined,
+      color: const Color(0xFFEF4444),
+      badge: 'Overdue',
+      badgeBackground: const Color(0xFFFFEBEE),
     ),
     _PerformanceMetric(
-      label: 'Conversion\n%',
-      value: _leads.isEmpty
-          ? '0%'
-          : '${((_converted / _leads.length) * 100).toStringAsFixed(1)}%',
+      label: 'INTERESTED LEADS',
+      value: _formatCount(_interested),
+      icon: Icons.thumb_up_alt_outlined,
+      color: const Color(0xFF22C55E),
+    ),
+    _PerformanceMetric(
+      label: 'HOT LEADS',
+      value: _formatCount(_hotLeads),
+      icon: Icons.local_fire_department_outlined,
+      color: const Color(0xFFEF4444),
+    ),
+    _PerformanceMetric(
+      label: 'SITE VISIT DONE',
+      value: _formatCount(_siteVisitDone),
+      icon: Icons.home_work_outlined,
+      color: const Color(0xFF9333EA),
+    ),
+    _PerformanceMetric(
+      label: 'BOOKING DONE',
+      value: _formatCount(_converted),
+      icon: Icons.check_circle_outline_rounded,
+      color: const Color(0xFF16A34A),
+      badge: _selectedPeriod,
+      badgeBackground: const Color(0xFFE8F8EC),
+    ),
+    _PerformanceMetric(
+      label: 'CONVERSION %',
+      value: _conversionRate,
       icon: Icons.pie_chart_outline,
-      color: const Color(0xFF10B981),
+      color: const Color(0xFF0F766E),
     ),
   ];
 
   List<_PerformanceMetric> get _wideMetrics => [
     _PerformanceMetric(
-      label: 'Avg Response Time',
+      label: 'AVG RESPONSE TIME',
       value: _findDisplay(_metricSource, const [
         'avgResponseTime',
         'averageResponseTime',
@@ -315,28 +477,33 @@ class _MyPerformanceScreenState extends State<MyPerformanceScreen> {
       color: const Color(0xFFF97316),
     ),
     _PerformanceMetric(
-      label: 'On-time Follow-up %',
+      label: 'ON-TIME FOLLOW-UP %',
       value: _findDisplay(_metricSource, const [
         'onTimeFollowUpPercentage',
         'onTimeFollowUpRate',
       ], suffix: '%'),
-      icon: Icons.check_circle,
+      icon: Icons.check_circle_outline,
       color: const Color(0xFF10B981),
     ),
     _PerformanceMetric(
-      label: 'Site Visits Scheduled',
-      value: _findDisplay(_metricSource, const [
-        'siteVisitsScheduled',
-        'scheduledSiteVisits',
-      ]),
+      label: 'SITE VISITS SCHEDULED',
+      value: _formatCount(
+        _kpiCount(const [
+          'siteVisitScheduled',
+          'siteVisitsScheduled',
+          'scheduledSiteVisits',
+        ]),
+      ),
       icon: Icons.event_note_outlined,
       color: const Color(0xFF9333EA),
     ),
     _PerformanceMetric(
-      label: 'Follow-up Breaches',
-      value: _overdueFollowUps.toString(),
-      icon: Icons.calendar_today_outlined,
+      label: 'FOLLOW-UP BREACHES',
+      value: _formatCount(_overdueFollowUps),
+      icon: Icons.event_busy_outlined,
       color: const Color(0xFFDC2626),
+      badge: 'SLA',
+      badgeBackground: const Color(0xFFFFEBEE),
     ),
   ];
 
@@ -413,7 +580,7 @@ class _MyPerformanceScreenState extends State<MyPerformanceScreen> {
           'leadsAssigned',
           'leads',
         ]).toDouble(),
-        value: _leads.length.toDouble(),
+        value: _totalLeads.toDouble(),
       ),
       _BarSeries(
         label: 'Calls Made',
@@ -684,242 +851,170 @@ class _MyPerformanceScreenState extends State<MyPerformanceScreen> {
     return Scaffold(
       backgroundColor: MyPerformanceScreen.pageBackground,
       body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: RefreshIndicator(
-                onRefresh: _loadPerformance,
-                child: SingleChildScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: EdgeInsets.fromLTRB(15.w, 14.h, 15.w, 24.h),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (_isLoading) const LinearProgressIndicator(),
-                      if (_error != null) ...[
-                        _PerformanceError(
-                          message: _error!,
-                          onRetry: _loadPerformance,
-                        ),
-                        SizedBox(height: 12.h),
-                      ],
-                      Text(
-                        'My Performance',
-                        textAlign: TextAlign.left,
-                        maxLines: 1,
-                        style: TextStyle(
-                          fontFamily: 'Inter',
-                          fontSize: 30.sp,
-                          fontWeight: FontWeight.w700,
-                          fontStyle: FontStyle.normal,
-                          height: 1.4,
-                          letterSpacing: -0.5,
-                          color: const Color(0xFF002149),
+        child: RefreshIndicator(
+          color: AppColors.orangeStrong,
+          onRefresh: _loadPerformance,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: EdgeInsets.fromLTRB(16.w, 14.h, 16.w, 28.h),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    IconButton(
+                      onPressed: () => Navigator.maybePop(context),
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: AppColors.navy,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12.r),
+                          side: const BorderSide(color: Color(0xFFD9E3EF)),
                         ),
                       ),
-                      SizedBox(height: 8.h),
-                      Text(
-                        'Track your daily, weekly and monthly performance.',
-                        style: TextStyle(
-                          fontFamily: 'Inter',
-                          fontSize: 14.sp,
-                          fontWeight: FontWeight.w500,
-                          fontStyle: FontStyle.normal,
-                          height: 1.33,
-                          letterSpacing: 0.0,
-                          color: const Color(0xFF2563EB),
-                        ),
+                      icon: const Icon(
+                        Icons.arrow_back_ios_new_rounded,
+                        size: 18,
                       ),
-                      SizedBox(height: 14.h),
-                      Divider(
-                        color: const Color(0xFFBCC6D6),
-                        thickness: 0.8.h,
-                        height: 1.h,
-                      ),
-                      SizedBox(height: 24.h),
-                      _FieldShell(
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.calendar_today_outlined,
-                              size: MyPerformanceScreen.headerIconSize.sp,
-                              color: const Color(0xFF4B5563),
-                            ),
-                            Expanded(
-                              child: Center(
-                                child: Text(
-                                  '${_formatDate(_rangeStart)} - ${_formatDate(_rangeEnd)}',
-                                  style: TextStyle(
-                                    fontFamily: 'Inter',
-                                    fontSize: 18.sp,
-                                    fontWeight: FontWeight.w400,
-                                    fontStyle: FontStyle.normal,
-                                    height: 1.43,
-                                    color: const Color(0xFF44474E),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            Icon(
-                              Icons.calendar_today_outlined,
-                              size: MyPerformanceScreen.headerIconSize.sp,
-                              color: const Color(0xFF4B5563),
-                            ),
-                          ],
-                        ),
-                      ),
-                      SizedBox(height: 12.h),
-                      Row(
+                    ),
+                    SizedBox(width: 10.w),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: Container(
-                              height: 46.h,
-                              padding: EdgeInsets.symmetric(horizontal: 12.w),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(10.r),
-                                border: Border.all(
-                                  color: const Color(0xFFBFC7D3),
-                                ),
-                              ),
-                              child: DropdownButtonHideUnderline(
-                                child: DropdownButton<String>(
-                                  value: _selectedPeriod,
-                                  icon: Icon(
-                                    Icons.keyboard_arrow_down_rounded,
-                                    size: MyPerformanceScreen.headerIconSize.sp,
-                                  ),
-                                  isExpanded: true,
-                                  items:
-                                      const ['Today', 'This Week', 'This Month']
-                                          .map(
-                                            (period) => DropdownMenuItem(
-                                              value: period,
-                                              child: Text(period),
-                                            ),
-                                          )
-                                          .toList(),
-                                  onChanged: (period) {
-                                    if (period == null ||
-                                        period == _selectedPeriod) {
-                                      return;
-                                    }
-                                    setState(() => _selectedPeriod = period);
-                                    _loadPerformance();
-                                  },
-                                  style: GoogleFonts.inter(
-                                    color: const Color(0xFF082B63),
-                                    fontSize: 15.sp,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
+                          Text(
+                            widget.title,
+                            style: GoogleFonts.inter(
+                              fontSize: 24.sp,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.navy,
                             ),
                           ),
-                          SizedBox(width: 16.w),
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: _isLoading || _isExporting
-                                  ? null
-                                  : _exportPerformance,
-                              style: OutlinedButton.styleFrom(
-                                minimumSize: Size(double.infinity, 46.h),
-                                backgroundColor: Colors.white,
-                                side: const BorderSide(
-                                  color: Color(0xFFBFC7D3),
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10.r),
-                                ),
-                              ),
-                              icon: _isExporting
-                                  ? SizedBox.square(
-                                      dimension: 17.sp,
-                                      child: const CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                  : Icon(
-                                      Icons.download_outlined,
-                                      size: 19.sp,
-                                      color: const Color(0xFF082B63),
-                                    ),
-                              label: Text(
-                                'Export',
-                                style: GoogleFonts.inter(
-                                  color: const Color(0xFF002149),
-                                  fontSize: 15.sp,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
+                          Text(
+                            widget.subtitle,
+                            style: GoogleFonts.inter(
+                              fontSize: 12.5.sp,
+                              fontWeight: FontWeight.w500,
+                              color: const Color(0xFF64748B),
                             ),
                           ),
                         ],
                       ),
-                      SizedBox(height: 24.h),
-                      LayoutBuilder(
-                        builder: (context, constraints) {
-                          final spacing = 10.w;
-                          final threeColumnWidth =
-                              (constraints.maxWidth - (spacing * 2)) / 3;
-                          final twoColumnWidth =
-                              (constraints.maxWidth - spacing) / 2;
-
-                          return Column(
-                            children: [
-                              Wrap(
-                                spacing: spacing,
-                                runSpacing: 10.h,
-                                children: _topMetrics
-                                    .map(
-                                      (metric) => SizedBox(
-                                        width: threeColumnWidth,
-                                        child: _MetricCard(metric: metric),
-                                      ),
-                                    )
-                                    .toList(),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: _isLoading || _isExporting
+                          ? null
+                          : _exportPerformance,
+                      style: OutlinedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: AppColors.navy,
+                        side: const BorderSide(color: Color(0xFFCBD5E1)),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 12.w,
+                          vertical: 10.h,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12.r),
+                        ),
+                      ),
+                      icon: _isExporting
+                          ? SizedBox.square(
+                              dimension: 14.sp,
+                              child: const CircularProgressIndicator(
+                                strokeWidth: 2,
                               ),
-                              SizedBox(height: 10.h),
-                              Wrap(
-                                spacing: spacing,
-                                runSpacing: 10.h,
-                                children: _wideMetrics
-                                    .map(
-                                      (metric) => SizedBox(
-                                        width: twoColumnWidth,
-                                        child: _MetricCard(metric: metric),
-                                      ),
-                                    )
-                                    .toList(),
-                              ),
-                            ],
-                          );
-                        },
+                            )
+                          : Icon(Icons.download_outlined, size: 16.sp),
+                      label: Text(
+                        'Export',
+                        style: GoogleFonts.inter(
+                          fontSize: 12.sp,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
-                      SizedBox(height: 18.h),
-                      _OverviewCard(series: _barSeries),
-                      SizedBox(height: 14.h),
-                      _OutcomeCard(
-                        outcomes: _callOutcomes,
-                        totalCalls: _totalCalls,
+                    ),
+                  ],
+                ),
+                if (_isLoading) ...[
+                  SizedBox(height: 12.h),
+                  const LinearProgressIndicator(),
+                ],
+                if (_error != null) ...[
+                  SizedBox(height: 12.h),
+                  _PerformanceError(
+                    message: _error!,
+                    onRetry: _loadPerformance,
+                  ),
+                ],
+                SizedBox(height: 16.h),
+                _PeriodChips(
+                  selected: _selectedPeriod,
+                  onChanged: (period) {
+                    if (period == _selectedPeriod) return;
+                    setState(() => _selectedPeriod = period);
+                    _loadPerformance();
+                  },
+                ),
+                SizedBox(height: 12.h),
+                Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 14.w,
+                    vertical: 12.h,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14.r),
+                    border: Border.all(color: const Color(0xFFD9E3EF)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.calendar_month_outlined,
+                        size: 18.sp,
+                        color: AppColors.orangeStrong,
                       ),
-                      SizedBox(height: 14.h),
-                      _LeadStatusCard(
-                        statuses: _leadStatuses,
-                        totalLeads: _leads.length,
-                      ),
-                      SizedBox(height: 14.h),
-                      const _UnavailablePerformanceCard(
-                        title: 'Daily Performance',
-                        message:
-                            'Daily call, site-visit, remarks and follow-up aggregates are not returned by the available APIs.',
+                      SizedBox(width: 10.w),
+                      Expanded(
+                        child: Text(
+                          '${_formatDate(_rangeStart)}  –  ${_formatDate(_rangeEnd)}',
+                          style: GoogleFonts.inter(
+                            fontSize: 13.sp,
+                            fontWeight: FontWeight.w600,
+                            color: const Color(0xFF334155),
+                          ),
+                        ),
                       ),
                     ],
                   ),
                 ),
-              ),
+                SizedBox(height: 16.h),
+                _MetricsPanel(
+                  topMetrics: _topMetrics,
+                  wideMetrics: _wideMetrics,
+                ),
+                SizedBox(height: 16.h),
+                _OverviewCard(series: _barSeries),
+                SizedBox(height: 14.h),
+                _OutcomeCard(outcomes: _callOutcomes, totalCalls: _totalCalls),
+                SizedBox(height: 14.h),
+                _LeadStatusCard(
+                  statuses: _leadStatuses,
+                  totalLeads: _totalLeads,
+                ),
+                SizedBox(height: 14.h),
+                _FollowUpSnapshotCard(
+                  today: _todayFollowUps,
+                  missed: _missedFollowUps,
+                  breaches: _overdueFollowUps,
+                  onTimeLabel: _findDisplay(_metricSource, const [
+                    'onTimeFollowUpPercentage',
+                    'onTimeFollowUpRate',
+                  ], suffix: '%'),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -941,13 +1036,12 @@ class _OverviewCard extends StatelessWidget {
         padding: EdgeInsets.fromLTRB(16.w, 16.h, 16.w, 14.h),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(16.r),
-          border: Border.all(color: const Color(0xFFD9E2EF)),
+          borderRadius: BorderRadius.circular(22.r),
           boxShadow: const [
             BoxShadow(
-              color: Color(0x0D000000),
-              blurRadius: 10,
-              offset: Offset(0, 2),
+              color: Color(0x140F172A),
+              blurRadius: 22,
+              offset: Offset(0, 10),
             ),
           ],
         ),
@@ -957,88 +1051,40 @@ class _OverviewCard extends StatelessWidget {
             Text(
               'Performance Overview',
               textAlign: TextAlign.left,
-              style: MyPerformanceScreen.sectionHeaderStyle,
+              style: GoogleFonts.inter(
+                fontSize: 18.sp,
+                fontWeight: FontWeight.w800,
+                color: AppColors.navy,
+              ),
             ),
-            SizedBox(height: 18.h),
-            Row(
-              children: [
-                const _LegendSwatch(color: Color(0xFFD7DCE6)),
-                SizedBox(width: 6.w),
-                Text(
-                  'Last Week',
-                  style: GoogleFonts.inter(
-                    color: const Color(0xFF303746),
-                    fontSize: 10.sp,
-                    fontWeight: FontWeight.w400,
-                  ),
-                ),
-                SizedBox(width: 18.w),
-                const _LegendSwatch(color: Color(0xFF255FAA)),
-                SizedBox(width: 6.w),
-                Text(
-                  'This Week',
-                  style: GoogleFonts.inter(
-                    color: const Color(0xFF303746),
-                    fontSize: 10.sp,
-                    fontWeight: FontWeight.w400,
-                  ),
-                ),
-              ],
+            SizedBox(height: 6.h),
+            Text(
+              'Compared against previous period where available.',
+              style: GoogleFonts.inter(
+                fontSize: 12.sp,
+                color: const Color(0xFF64748B),
+              ),
             ),
-            SizedBox(height: 18.h),
+            SizedBox(height: 16.h),
             SizedBox(
-              height: 250.h,
+              height: 210.h,
               child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Padding(
-                    padding: EdgeInsets.only(bottom: 22.h),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: ['260', '195', '130', '65', '0']
-                          .map(
-                            (tick) => Text(
-                              tick,
-                              style: GoogleFonts.inter(
-                                color: const Color(0xFF6B7280),
-                                fontSize: 10.sp,
-                                fontWeight: FontWeight.w400,
-                              ),
-                            ),
-                          )
-                          .toList(),
-                    ),
-                  ),
-                  SizedBox(width: 10.w),
-                  Expanded(
-                    child: Stack(
-                      children: [
-                        Padding(
-                          padding: EdgeInsets.only(bottom: 22.h),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: List.generate(
-                              5,
-                              (_) => const _DashedGuideLine(),
-                            ),
-                          ),
-                        ),
-                        Padding(
-                          padding: EdgeInsets.only(top: 6.h, bottom: 0),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: series
-                                .map((series) => _BarGroup(series: series))
-                                .toList(),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                  for (var i = 0; i < series.length; i++) ...[
+                    Expanded(child: _BarGroup(series: series[i])),
+                    if (i != series.length - 1) SizedBox(width: 10.w),
+                  ],
                 ],
               ),
+            ),
+            SizedBox(height: 12.h),
+            Row(
+              children: const [
+                _LegendSwatch(color: Color(0xFFD7DCE6), label: 'Previous'),
+                SizedBox(width: 14),
+                _LegendSwatch(color: Color(0xFFFF7A00), label: 'Current'),
+              ],
             ),
           ],
         ),
@@ -1059,13 +1105,12 @@ class _OutcomeCard extends StatelessWidget {
       padding: EdgeInsets.fromLTRB(16.w, 16.h, 16.w, 14.h),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18.r),
-        border: Border.all(color: const Color(0xFFD9E2EF)),
+        borderRadius: BorderRadius.circular(22.r),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x0D000000),
-            blurRadius: 10,
-            offset: Offset(0, 2),
+            color: Color(0x140F172A),
+            blurRadius: 22,
+            offset: Offset(0, 10),
           ),
         ],
       ),
@@ -1075,7 +1120,11 @@ class _OutcomeCard extends StatelessWidget {
           Text(
             'Call Outcome Distribution',
             textAlign: TextAlign.left,
-            style: MyPerformanceScreen.sectionHeaderStyle,
+            style: GoogleFonts.inter(
+              fontSize: 18.sp,
+              fontWeight: FontWeight.w800,
+              color: AppColors.navy,
+            ),
           ),
           SizedBox(height: 18.h),
           Center(
@@ -1179,13 +1228,12 @@ class _LeadStatusCard extends StatelessWidget {
       padding: EdgeInsets.fromLTRB(14.w, 14.h, 14.w, 16.h),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18.r),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        borderRadius: BorderRadius.circular(22.r),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x0D000000),
-            blurRadius: 10,
-            offset: Offset(0, 2),
+            color: Color(0x140F172A),
+            blurRadius: 22,
+            offset: Offset(0, 10),
           ),
         ],
       ),
@@ -1195,7 +1243,11 @@ class _LeadStatusCard extends StatelessWidget {
           Text(
             'Lead Status Distribution',
             textAlign: TextAlign.left,
-            style: MyPerformanceScreen.sectionHeaderStyle,
+            style: GoogleFonts.inter(
+              fontSize: 18.sp,
+              fontWeight: FontWeight.w800,
+              color: AppColors.navy,
+            ),
           ),
           SizedBox(height: 16.h),
           Center(
@@ -1460,53 +1512,85 @@ class _MetricCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 122.h,
-      padding: EdgeInsets.fromLTRB(12.w, 14.h, 10.w, 14.h),
+      constraints: BoxConstraints(minHeight: 124.h),
+      padding: EdgeInsets.fromLTRB(14.w, 13.h, 14.w, 12.h),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14.r),
-        border: Border.all(color: const Color(0xFFD8DDE5)),
+        borderRadius: BorderRadius.circular(18.r),
+        border: Border.all(color: const Color(0xFFD9E3EF)),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x100F172A),
-            blurRadius: 5,
+            color: Color(0x0A0F172A),
+            blurRadius: 8,
             offset: Offset(0, 2),
           ),
         ],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(metric.icon, size: 20.sp, color: metric.color),
-              SizedBox(width: 8.w),
-              Expanded(
-                child: Text(
-                  metric.label.replaceAll('\n', ' '),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 13.sp,
-                    fontWeight: FontWeight.w500,
-                    fontStyle: FontStyle.normal,
-                    height: 1.33,
-                    color: const Color(0xFF6B7280),
+              Icon(metric.icon, color: metric.color, size: 22.sp),
+              if (metric.badge != null)
+                Flexible(
+                  child: Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 6.w,
+                      vertical: 3.h,
+                    ),
+                    decoration: BoxDecoration(
+                      color: metric.badgeBackground,
+                      borderRadius: BorderRadius.circular(6.r),
+                    ),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        metric.badge!,
+                        maxLines: 1,
+                        style: GoogleFonts.inter(
+                          fontSize: 9.sp,
+                          fontWeight: FontWeight.w600,
+                          color: metric.color,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
-          const Spacer(),
-          Text(
-            metric.value,
-            style: GoogleFonts.inter(
-              color: const Color(0xFF111827),
-              fontSize: 24.sp,
-              fontWeight: FontWeight.w800,
+          SizedBox(height: 12.h),
+          ConstrainedBox(
+            constraints: BoxConstraints(minHeight: 34.h),
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: Text(
+                metric.label,
+                maxLines: 2,
+                style: GoogleFonts.inter(
+                  fontSize: 11.5.sp,
+                  fontWeight: FontWeight.w600,
+                  height: 1.35,
+                  color: const Color(0xFF2D2C2C),
+                ),
+              ),
+            ),
+          ),
+          SizedBox(height: 6.h),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              metric.value,
+              maxLines: 1,
+              style: GoogleFonts.inter(
+                fontSize: 24.sp,
+                fontWeight: FontWeight.w800,
+                color: AppColors.navy,
+              ),
             ),
           ),
         ],
@@ -1575,19 +1659,36 @@ class _BarGroup extends StatelessWidget {
 }
 
 class _LegendSwatch extends StatelessWidget {
-  const _LegendSwatch({required this.color});
+  const _LegendSwatch({required this.color, this.label});
 
   final Color color;
+  final String? label;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 12.w,
-      height: 12.w,
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(2.r),
-      ),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 12.w,
+          height: 12.w,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(3.r),
+          ),
+        ),
+        if (label != null) ...[
+          SizedBox(width: 6.w),
+          Text(
+            label!,
+            style: GoogleFonts.inter(
+              fontSize: 11.sp,
+              fontWeight: FontWeight.w600,
+              color: const Color(0xFF475467),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }
@@ -1688,12 +1789,274 @@ class _PerformanceMetric {
     required this.value,
     required this.icon,
     required this.color,
+    this.badge,
+    this.badgeBackground = const Color(0xFFF1F5F9),
   });
 
   final String label;
   final String value;
   final IconData icon;
   final Color color;
+  final String? badge;
+  final Color badgeBackground;
+}
+
+class _PeriodChips extends StatelessWidget {
+  const _PeriodChips({required this.selected, required this.onChanged});
+
+  final String selected;
+  final ValueChanged<String> onChanged;
+
+  static const _periods = ['Today', 'This Week', 'This Month'];
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (var i = 0; i < _periods.length; i++) ...[
+            if (i > 0) SizedBox(width: 8.w),
+            _PeriodChip(
+              label: _periods[i],
+              selected: selected == _periods[i],
+              onTap: () => onChanged(_periods[i]),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _PeriodChip extends StatelessWidget {
+  const _PeriodChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999.r),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 9.h),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.orangeStrong : Colors.white,
+          borderRadius: BorderRadius.circular(999.r),
+          border: Border.all(
+            color: selected ? AppColors.orangeStrong : const Color(0xFFCBD5E1),
+          ),
+        ),
+        child: Text(
+          label,
+          style: GoogleFonts.inter(
+            fontSize: 12.sp,
+            fontWeight: FontWeight.w700,
+            color: selected ? Colors.white : const Color(0xFF334155),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MetricsPanel extends StatelessWidget {
+  const _MetricsPanel({required this.topMetrics, required this.wideMetrics});
+
+  final List<_PerformanceMetric> topMetrics;
+  final List<_PerformanceMetric> wideMetrics;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.all(14.w),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(26.r),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x140F172A),
+            blurRadius: 22,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final spacing = 10.w;
+          final three = (constraints.maxWidth - (spacing * 2)) / 3;
+          final two = (constraints.maxWidth - spacing) / 2;
+          return Column(
+            children: [
+              Wrap(
+                spacing: spacing,
+                runSpacing: 10.h,
+                children: [
+                  for (final metric in topMetrics)
+                    SizedBox(
+                      width: three,
+                      child: _MetricCard(metric: metric),
+                    ),
+                ],
+              ),
+              SizedBox(height: 10.h),
+              Wrap(
+                spacing: spacing,
+                runSpacing: 10.h,
+                children: [
+                  for (final metric in wideMetrics)
+                    SizedBox(
+                      width: two,
+                      child: _MetricCard(metric: metric),
+                    ),
+                ],
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _FollowUpSnapshotCard extends StatelessWidget {
+  const _FollowUpSnapshotCard({
+    required this.today,
+    required this.missed,
+    required this.breaches,
+    required this.onTimeLabel,
+  });
+
+  final int today;
+  final int missed;
+  final int breaches;
+  final String onTimeLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = [
+      (
+        'Today Follow-ups',
+        today.toString().padLeft(2, '0'),
+        const Color(0xFFF97316),
+        Icons.today_outlined,
+      ),
+      (
+        'Missed Follow-ups',
+        missed.toString().padLeft(2, '0'),
+        const Color(0xFFEF4444),
+        Icons.event_busy_outlined,
+      ),
+      (
+        'SLA Breaches',
+        breaches.toString().padLeft(2, '0'),
+        const Color(0xFFDC2626),
+        Icons.warning_amber_rounded,
+      ),
+      (
+        'On-time Rate',
+        onTimeLabel,
+        const Color(0xFF16A34A),
+        Icons.verified_outlined,
+      ),
+    ];
+
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(16.w),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22.r),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x140F172A),
+            blurRadius: 22,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Follow-up Snapshot',
+            style: GoogleFonts.inter(
+              fontSize: 18.sp,
+              fontWeight: FontWeight.w800,
+              color: AppColors.navy,
+            ),
+          ),
+          SizedBox(height: 4.h),
+          Text(
+            'Live follow-up health for your assigned leads.',
+            style: GoogleFonts.inter(
+              fontSize: 12.sp,
+              color: const Color(0xFF64748B),
+            ),
+          ),
+          SizedBox(height: 14.h),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final spacing = 10.w;
+              final cardWidth = (constraints.maxWidth - spacing) / 2;
+              return Wrap(
+                spacing: spacing,
+                runSpacing: 10.h,
+                children: [
+                  for (final item in items)
+                    SizedBox(
+                      width: cardWidth,
+                      child: Container(
+                        padding: EdgeInsets.all(12.w),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(14.r),
+                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(item.$4, color: item.$3, size: 18.sp),
+                            SizedBox(height: 8.h),
+                            Text(
+                              item.$1,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.inter(
+                                fontSize: 11.sp,
+                                fontWeight: FontWeight.w600,
+                                color: const Color(0xFF475467),
+                              ),
+                            ),
+                            SizedBox(height: 4.h),
+                            Text(
+                              item.$2,
+                              style: GoogleFonts.inter(
+                                fontSize: 20.sp,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.navy,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _UnavailablePerformanceCard extends StatelessWidget {
