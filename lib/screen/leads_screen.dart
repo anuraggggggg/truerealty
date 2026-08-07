@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -9,6 +10,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:truerealtycrm/constant/colors_screen.dart';
+import 'package:truerealtycrm/provider/lead_master_provider.dart';
 import 'package:truerealtycrm/provider/project_provider.dart';
 import 'package:truerealtycrm/router/app_router.dart';
 import '../provider/leads_provider.dart';
@@ -33,11 +35,21 @@ class _LeadListWidgetState extends State<LeadListWidget> {
   String _selectedTab = 'All';
   bool _showFilters = false;
   bool _loadingFilters = false;
+  // Kept for backwards-compatible helper code; export is no longer exposed.
+  // ignore: unused_field
   bool _exportingPdf = false;
   bool _selectionMode = false;
   final Set<String> _selectedLeadIds = <String>{};
+  final TextEditingController _searchController = TextEditingController();
+  Timer? _searchDebounce;
   String? _leadType;
+  String? _leadStatus;
+  String? _propertyType;
   String? _configuration;
+  String? _assignedTo;
+  String? _team;
+  String? _area;
+  String? _slaStatus;
   String? _dateRange;
   List<String> _leadTypes = const ['Hot', 'Warm', 'Cold'];
   List<String> _configurations = const [
@@ -48,6 +60,21 @@ class _LeadListWidgetState extends State<LeadListWidget> {
     '5 BHK',
     'Studio',
     'Penthouse',
+  ];
+  List<String> _propertyTypes = const [
+    'Apartment',
+    'Villa',
+    'Plot',
+    'Commercial',
+  ];
+  List<String> _assignees = const [];
+  List<String> _teams = const [];
+  List<String> _areas = const [];
+  final List<String> _slaStatuses = const [
+    'On Track',
+    'Due Soon',
+    'Overdue',
+    'No SLA',
   ];
 
   static const double _sectionGap = 18;
@@ -69,14 +96,37 @@ class _LeadListWidgetState extends State<LeadListWidget> {
     await context.read<LeadProvider>().fetchLeads(
       page: page,
       limit: 10,
-      status: _statusFilterForTab(_selectedTab),
+      search: _searchController.text.trim().isEmpty
+          ? null
+          : _searchController.text.trim(),
+      status: _leadStatus ?? _statusFilterForTab(_selectedTab),
       leadType: _leadType,
       configuration: _configuration,
+      propertyType: _propertyType,
+      assignedTo: _assignedTo,
+      team: _team,
+      area: _area,
+      slaStatus: _slaStatus,
       dateFrom: _dateBounds.$1,
       dateTo: _dateBounds.$2,
     );
     if (!mounted) return;
     _syncFilterOptionsFromLeads(context.read<LeadProvider>().leads);
+  }
+
+  void _onSearchChanged(String value) {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 450), () {
+      if (mounted) _fetchLeads(page: 1);
+    });
+    setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadFilterOptions() async {
@@ -102,21 +152,65 @@ class _LeadListWidgetState extends State<LeadListWidget> {
   void _syncFilterOptionsFromLeads(List<LeadModel> leads) {
     final types = <String>{..._leadTypes};
     final configs = <String>{..._configurations};
+    final propertyTypes = <String>{..._propertyTypes};
+    final assignees = <String>{..._assignees};
+    final teams = <String>{..._teams};
+    final areas = <String>{..._areas};
     for (final lead in leads) {
       final type = lead.leadType?.trim() ?? '';
       if (type.isNotEmpty) types.add(type);
       final config = lead.configuration?.trim() ?? '';
       if (config.isNotEmpty) configs.add(config);
+      final propertyType = lead.propertyType?.trim() ?? '';
+      if (propertyType.isNotEmpty) propertyTypes.add(propertyType);
+      final assigned = lead.assignedTo?.trim() ?? '';
+      if (assigned.isNotEmpty) assignees.add(assigned);
+      final raw = lead.raw ?? const <String, dynamic>{};
+      final team = _firstFilterValue(raw, const [
+        'teamName',
+        'team',
+        'assignedTeamName',
+      ]);
+      if (team.isNotEmpty) teams.add(team);
+      final area = _firstFilterValue(raw, const [
+        'areaName',
+        'area',
+        'projectArea',
+        'preferredLocation',
+      ]);
+      if (area.isNotEmpty) areas.add(area);
     }
     final nextTypes = types.toList()..sort();
     final nextConfigs = configs.toList()..sort();
+    final nextPropertyTypes = propertyTypes.toList()..sort();
+    final nextAssignees = assignees.toList()..sort();
+    final nextTeams = teams.toList()..sort();
+    final nextAreas = areas.toList()..sort();
     if (!_listEquals(nextTypes, _leadTypes) ||
-        !_listEquals(nextConfigs, _configurations)) {
+        !_listEquals(nextConfigs, _configurations) ||
+        !_listEquals(nextPropertyTypes, _propertyTypes) ||
+        !_listEquals(nextAssignees, _assignees) ||
+        !_listEquals(nextTeams, _teams) ||
+        !_listEquals(nextAreas, _areas)) {
       setState(() {
         _leadTypes = nextTypes;
         _configurations = nextConfigs;
+        _propertyTypes = nextPropertyTypes;
+        _assignees = nextAssignees;
+        _teams = nextTeams;
+        _areas = nextAreas;
       });
     }
+  }
+
+  String _firstFilterValue(Map<String, dynamic> source, List<String> keys) {
+    for (final key in keys) {
+      final value = source[key];
+      if (value != null && value.toString().trim().isNotEmpty) {
+        return value.toString().trim();
+      }
+    }
+    return '';
   }
 
   bool _listEquals(List<String> a, List<String> b) {
@@ -205,8 +299,6 @@ class _LeadListWidgetState extends State<LeadListWidget> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildHeader(context),
-        SizedBox(height: _sectionGap.h),
-        _buildStatsRow(leadProvider),
         SizedBox(height: _sectionGap.h),
         _buildSearchAndActions(context),
         if (_showFilters) ...[SizedBox(height: 14.h), _buildAdvancedFilters()],
@@ -361,163 +453,119 @@ class _LeadListWidgetState extends State<LeadListWidget> {
     );
   }
 
-  Widget _buildStatsRow(LeadProvider leadProvider) {
-    return Column(
-      children: [
-        IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                child: _statCard(
-                  Icons.groups_2_outlined,
-                  AppColors.blueStrong,
-                  'Total\nLeads',
-                  _formatCount(leadProvider.totalLeads),
-                ),
-              ),
-              SizedBox(width: 14.w),
-              Expanded(
-                child: _statCard(
-                  Icons.local_fire_department_outlined,
-                  AppColors.orangeStrong,
-                  'Hot\nLeads',
-                  _formatCount(leadProvider.hotLeads),
-                ),
-              ),
-            ],
-          ),
-        ),
-        SizedBox(height: 14.h),
-        IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                child: _statCard(
-                  Icons.filter_alt_rounded,
-                  AppColors.purpleStrong,
-                  'Qualified\nLeads',
-                  _formatCount(leadProvider.qualifiedLeads),
-                ),
-              ),
-              SizedBox(width: 14.w),
-              Expanded(
-                child: _statCard(
-                  Icons.task_alt_outlined,
-                  AppColors.greenStrong,
-                  'Converted\nLeads',
-                  _formatCount(leadProvider.convertedLeads),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _buildSearchAndActions(BuildContext context) {
-    final leads = context.watch<LeadProvider>().leads;
-    final selectedCount = _selectedLeadIds.length;
-
-    Widget actionButton({
-      required String label,
-      required IconData icon,
-      required VoidCallback? onTap,
-      Color? foreground,
-      Color? borderColor,
-      Color? background,
-      Widget? trailing,
-    }) {
-      return Expanded(
-        child: SizedBox(
-          height: 44.h,
-          child: OutlinedButton.icon(
-            onPressed: onTap,
-            style: OutlinedButton.styleFrom(
-              foregroundColor: foreground ?? AppColors.navy,
-              backgroundColor: background ?? Colors.white,
-              side: BorderSide(
-                color: borderColor ?? const Color(0xFFCBD5E1),
-                width: 1.2,
-              ),
-              padding: EdgeInsets.symmetric(horizontal: 8.w),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12.r),
-              ),
-            ),
-            icon: Icon(icon, size: 18.sp),
-            label: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    label,
-                    style: GoogleFonts.inter(
-                      fontSize: 12.5.sp,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  if (trailing != null) ...[SizedBox(width: 4.w), trailing],
-                ],
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            actionButton(
-              label: _selectionMode ? 'Cancel' : 'Select',
-              icon: _selectionMode
-                  ? Icons.close_rounded
-                  : Icons.check_box_outlined,
-              onTap: () {
-                setState(() {
-                  _selectionMode = !_selectionMode;
-                  if (!_selectionMode) _selectedLeadIds.clear();
-                });
-              },
-              foreground: _selectionMode
-                  ? const Color(0xFFB42318)
-                  : AppColors.navy,
-              borderColor: _selectionMode
-                  ? const Color(0xFFFECACA)
-                  : const Color(0xFFCBD5E1),
-              background: _selectionMode
-                  ? const Color(0xFFFFF1F0)
-                  : Colors.white,
+            Expanded(
+              child: TextField(
+                controller: _searchController,
+                onChanged: _onSearchChanged,
+                onSubmitted: (_) => _fetchLeads(page: 1),
+                textInputAction: TextInputAction.search,
+                decoration: InputDecoration(
+                  hintText: 'Search leads by name, phone or project',
+                  prefixIcon: const Icon(Icons.search_rounded),
+                  suffixIcon: _searchController.text.isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip: 'Clear search',
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() {});
+                            _fetchLeads(page: 1);
+                          },
+                          icon: const Icon(Icons.close_rounded),
+                        ),
+                  filled: true,
+                  fillColor: Colors.white,
+                  contentPadding: EdgeInsets.symmetric(vertical: 13.h),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12.r),
+                    borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12.r),
+                    borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12.r),
+                    borderSide: BorderSide(
+                      color: AppColors.orangeStrong,
+                      width: 1.5,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            SizedBox(width: 10.w),
+            SizedBox(
+              width: 48.w,
+              height: 48.h,
+              child: OutlinedButton(
+                onPressed: () {
+                  setState(() {
+                    _selectionMode = !_selectionMode;
+                    if (!_selectionMode) _selectedLeadIds.clear();
+                  });
+                },
+                style: OutlinedButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  foregroundColor: _selectionMode
+                      ? AppColors.orangeStrong
+                      : AppColors.navy,
+                  backgroundColor: _selectionMode
+                      ? const Color(0xFFFFF4ED)
+                      : Colors.white,
+                  side: BorderSide(
+                    color: _selectionMode
+                        ? AppColors.orangeStrong
+                        : const Color(0xFFCBD5E1),
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12.r),
+                  ),
+                ),
+                child: Icon(
+                  _selectionMode
+                      ? Icons.close_rounded
+                      : Icons.checklist_rounded,
+                  size: 21.sp,
+                ),
+              ),
             ),
             SizedBox(width: 8.w),
-            actionButton(
-              label: _exportingPdf ? '...' : 'Export',
-              icon: Icons.picture_as_pdf_outlined,
-              onTap: _exportingPdf ? null : _exportLeadsPdf,
-              foreground: const Color(0xFFDC2626),
-              borderColor: const Color(0xFFFECACA),
-              background: const Color(0xFFFFF5F5),
-            ),
-            SizedBox(width: 8.w),
-            actionButton(
-              label: _showFilters ? 'Hide' : 'Filter',
-              icon: _showFilters
-                  ? Icons.keyboard_arrow_up_rounded
-                  : Icons.filter_alt_rounded,
-              onTap: () => setState(() => _showFilters = !_showFilters),
-              foreground: _showFilters ? AppColors.orangeStrong : AppColors.navy,
-              borderColor: _showFilters
-                  ? AppColors.orangeStrong
-                  : const Color(0xFFCBD5E1),
-              background: _showFilters
-                  ? const Color(0xFFFFF4ED)
-                  : Colors.white,
+            SizedBox(
+              width: 48.w,
+              height: 48.h,
+              child: OutlinedButton(
+                onPressed: () => setState(() => _showFilters = !_showFilters),
+                style: OutlinedButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  foregroundColor: _showFilters
+                      ? AppColors.orangeStrong
+                      : AppColors.navy,
+                  backgroundColor: _showFilters
+                      ? const Color(0xFFFFF4ED)
+                      : Colors.white,
+                  side: BorderSide(
+                    color: _showFilters
+                        ? AppColors.orangeStrong
+                        : const Color(0xFFCBD5E1),
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12.r),
+                  ),
+                ),
+                child: Icon(
+                  _showFilters
+                      ? Icons.filter_alt_off_rounded
+                      : Icons.filter_alt_rounded,
+                  size: 21.sp,
+                ),
+              ),
             ),
           ],
         ),
@@ -526,9 +574,7 @@ class _LeadListWidgetState extends State<LeadListWidget> {
           Row(
             children: [
               Text(
-                selectedCount == 0
-                    ? 'Select leads to export'
-                    : '$selectedCount selected',
+                '${_selectedLeadIds.length} selected',
                 style: GoogleFonts.inter(
                   fontSize: 12.5.sp,
                   fontWeight: FontWeight.w600,
@@ -536,34 +582,16 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                 ),
               ),
               const Spacer(),
-              TextButton(
-                onPressed: leads.isEmpty
+              ElevatedButton.icon(
+                onPressed: _selectedLeadIds.isEmpty
                     ? null
-                    : () {
-                        setState(() {
-                          if (_selectedLeadIds.length == leads.length) {
-                            _selectedLeadIds.clear();
-                          } else {
-                            _selectedLeadIds
-                              ..clear()
-                              ..addAll(
-                                leads
-                                    .map((lead) => lead.id ?? lead.phone)
-                                    .whereType<String>(),
-                              );
-                          }
-                        });
-                      },
-                child: Text(
-                  _selectedLeadIds.length == leads.length && leads.isNotEmpty
-                      ? 'Clear all'
-                      : 'Select all',
-                  style: GoogleFonts.inter(
-                    fontSize: 12.5.sp,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.orangeDeep,
-                  ),
+                    : () => _openSelectedLeadUpdate(),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.orangeStrong,
+                  foregroundColor: Colors.white,
                 ),
+                icon: const Icon(Icons.edit_outlined, size: 17),
+                label: const Text('Update selected'),
               ),
             ],
           ),
@@ -601,10 +629,21 @@ class _LeadListWidgetState extends State<LeadListWidget> {
   }
 
   Widget _buildAdvancedFilters() {
+    final statusOptions = context
+        .watch<LeadProvider>()
+        .statusNames
+        .where((status) => !_isLostStatus(status))
+        .toList();
     final activeCount = [
+      _leadStatus,
       _leadType,
+      _propertyType,
       _configuration,
+      _assignedTo,
+      _team,
+      _area,
       _dateRange,
+      _slaStatus,
     ].where((value) => value != null).length;
     return Container(
       padding: EdgeInsets.all(16.r),
@@ -638,7 +677,7 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                     ),
                     SizedBox(height: 4.h),
                     Text(
-                      'Filter by date, lead type and configuration from your leads data.',
+                      'Refine leads by ownership, property, status, SLA, and date.',
                       style: GoogleFonts.inter(
                         fontSize: 11.5.sp,
                         color: const Color(0xFF64748B),
@@ -670,6 +709,58 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                   runSpacing: 14.h,
                   children: [
                     _filterDropdown(
+                      'Lead Status',
+                      _leadStatus,
+                      statusOptions,
+                      width,
+                      (v) => setState(() {
+                        _leadStatus = v;
+                        if (v != null) _selectedTab = 'All';
+                      }),
+                    ),
+                    _filterDropdown(
+                      'Lead Type',
+                      _leadType,
+                      _leadTypes,
+                      width,
+                      (v) => setState(() => _leadType = v),
+                    ),
+                    _filterDropdown(
+                      'Property Type',
+                      _propertyType,
+                      _propertyTypes,
+                      width,
+                      (v) => setState(() => _propertyType = v),
+                    ),
+                    _filterDropdown(
+                      'Configuration',
+                      _configuration,
+                      _configurations,
+                      width,
+                      (v) => setState(() => _configuration = v),
+                    ),
+                    _filterDropdown(
+                      'Assigned To',
+                      _assignedTo,
+                      _assignees,
+                      width,
+                      (v) => setState(() => _assignedTo = v),
+                    ),
+                    _filterDropdown(
+                      'Team-wise',
+                      _team,
+                      _teams,
+                      width,
+                      (v) => setState(() => _team = v),
+                    ),
+                    _filterDropdown(
+                      'Area-wise',
+                      _area,
+                      _areas,
+                      width,
+                      (v) => setState(() => _area = v),
+                    ),
+                    _filterDropdown(
                       'Date Range',
                       _dateRange,
                       const [
@@ -682,32 +773,33 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                       (v) => setState(() => _dateRange = v),
                     ),
                     _filterDropdown(
-                      'Lead Type',
-                      _leadType,
-                      _leadTypes,
+                      'SLA Status',
+                      _slaStatus,
+                      _slaStatuses,
                       width,
-                      (v) => setState(() => _leadType = v),
-                    ),
-                    _filterDropdown(
-                      'Configuration',
-                      _configuration,
-                      _configurations,
-                      width,
-                      (v) => setState(() => _configuration = v),
+                      (v) => setState(() => _slaStatus = v),
                     ),
                   ],
                 );
               },
             ),
           SizedBox(height: 18.h),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
+          Wrap(
+            alignment: WrapAlignment.end,
+            spacing: 10.w,
+            runSpacing: 10.h,
             children: [
               OutlinedButton(
                 onPressed: _resetFilters,
-                child: const Text('Reset'),
+                style: OutlinedButton.styleFrom(minimumSize: Size(88.w, 44.h)),
+                child: Text(
+                  'Reset',
+                  style: GoogleFonts.inter(
+                    fontSize: 12.sp,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
-              SizedBox(width: 10.w),
               ElevatedButton.icon(
                 onPressed: () => _fetchLeads(page: 1),
                 style: ElevatedButton.styleFrom(
@@ -717,9 +809,16 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                     horizontal: 18.w,
                     vertical: 13.h,
                   ),
+                  minimumSize: Size(132.w, 44.h),
                 ),
-                icon: const Icon(Icons.filter_alt_outlined),
-                label: const Text('Apply Filter'),
+                icon: Icon(Icons.filter_alt_outlined, size: 17.sp),
+                label: Text(
+                  'Apply Filter',
+                  style: GoogleFonts.inter(
+                    fontSize: 12.sp,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
             ],
           ),
@@ -737,36 +836,73 @@ class _LeadListWidgetState extends State<LeadListWidget> {
   ) {
     final unique = options.toSet().toList()..sort();
     final selected = unique.contains(value) ? value : null;
+    final allLabel = switch (label) {
+      'Lead Status' => 'All Status',
+      'Lead Type' => 'All Lead Types',
+      'Property Type' => 'All Property Types',
+      'Configuration' => 'All Configurations',
+      'Assigned To' => 'All Assigned To',
+      'Team-wise' => 'All Teams',
+      'Area-wise' => 'All Areas',
+      'Date Range' => 'All Date Ranges',
+      'SLA Status' => 'All SLA Statuses',
+      _ => 'All $label',
+    };
     return SizedBox(
       width: width,
-      child: DropdownButtonFormField<String?>(
-        key: ValueKey('$label-$selected-${unique.length}'),
-        initialValue: selected,
-        isExpanded: true,
-        decoration: InputDecoration(
-          labelText: label,
-          prefixIcon: const Icon(Icons.tune_rounded),
-          filled: true,
-          fillColor: const Color(0xFFFCFDFE),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10.r)),
-        ),
-        items: [
-          DropdownMenuItem<String?>(
-            value: null,
-            child: Text(
-              'All $label',
-              overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: GoogleFonts.inter(
+              fontSize: 11.5.sp,
+              fontWeight: FontWeight.w700,
+              color: AppColors.navy,
             ),
           ),
-          ...unique.map(
-            (item) => DropdownMenuItem<String?>(
-              value: item,
-              child: Text(item, overflow: TextOverflow.ellipsis),
+          SizedBox(height: 7.h),
+          DropdownButtonFormField<String?>(
+            key: ValueKey('$label-$selected-${unique.length}'),
+            initialValue: selected,
+            isExpanded: true,
+            icon: Icon(Icons.keyboard_arrow_down_rounded, size: 20.sp),
+            style: GoogleFonts.inter(
+              fontSize: 12.5.sp,
+              fontWeight: FontWeight.w500,
+              color: const Color(0xFF344054),
             ),
+            decoration: InputDecoration(
+              isDense: true,
+              filled: true,
+              fillColor: const Color(0xFFFCFDFE),
+              contentPadding: EdgeInsets.symmetric(
+                horizontal: 13.w,
+                vertical: 13.h,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10.r),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10.r),
+                borderSide: const BorderSide(color: Color(0xFFD8E0EC)),
+              ),
+            ),
+            items: [
+              DropdownMenuItem<String?>(
+                value: null,
+                child: Text(allLabel, overflow: TextOverflow.ellipsis),
+              ),
+              ...unique.map(
+                (item) => DropdownMenuItem<String?>(
+                  value: item,
+                  child: Text(item, overflow: TextOverflow.ellipsis),
+                ),
+              ),
+            ],
+            onChanged: onChanged,
           ),
         ],
-        onChanged: onChanged,
       ),
     );
   }
@@ -791,8 +927,14 @@ class _LeadListWidgetState extends State<LeadListWidget> {
 
   Future<void> _resetFilters() async {
     setState(() {
+      _leadStatus = null;
       _leadType = null;
+      _propertyType = null;
       _configuration = null;
+      _assignedTo = null;
+      _team = null;
+      _area = null;
+      _slaStatus = null;
       _dateRange = null;
       _selectedTab = 'All';
     });
@@ -807,6 +949,8 @@ class _LeadListWidgetState extends State<LeadListWidget> {
     final status = _normalizeStatus(lead.status);
     final statusColors = _leadStatusColors(status);
     final budget = _leadBudget(requirement);
+    final rawRemark = raw['remarks']?.toString().trim() ?? '';
+    final remark = rawRemark.isEmpty ? 'No remark added' : rawRemark;
     final nextFollowUp = _leadDate(raw['nextFollowUpAt']);
     final followUpLabel = nextFollowUp == null
         ? lead.dueLabel ?? 'Not scheduled'
@@ -820,7 +964,6 @@ class _LeadListWidgetState extends State<LeadListWidget> {
         : '-';
     final leadKey = lead.id ?? lead.phone;
     final isSelected = _selectedLeadIds.contains(leadKey);
-
     return Material(
       color: Colors.white,
       borderRadius: BorderRadius.circular(14.r),
@@ -829,15 +972,13 @@ class _LeadListWidgetState extends State<LeadListWidget> {
         onTap: () {
           if (_selectionMode) {
             setState(() {
-              if (isSelected) {
-                _selectedLeadIds.remove(leadKey);
-              } else {
-                _selectedLeadIds.add(leadKey);
-              }
+              isSelected
+                  ? _selectedLeadIds.remove(leadKey)
+                  : _selectedLeadIds.add(leadKey);
             });
             return;
           }
-          Navigator.pushNamed(context, AppRouter.leadDetail, arguments: lead);
+          _showLeadUpdateSheet([lead]);
         },
         child: Container(
           padding: EdgeInsets.fromLTRB(14.w, 13.h, 14.w, 12.h),
@@ -865,17 +1006,14 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                   if (_selectionMode) ...[
                     Checkbox(
                       value: isSelected,
-                      onChanged: (value) {
+                      onChanged: (_) {
                         setState(() {
-                          if (value == true) {
-                            _selectedLeadIds.add(leadKey);
-                          } else {
-                            _selectedLeadIds.remove(leadKey);
-                          }
+                          isSelected
+                              ? _selectedLeadIds.remove(leadKey)
+                              : _selectedLeadIds.add(leadKey);
                         });
                       },
                       activeColor: AppColors.orangeStrong,
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       visualDensity: VisualDensity.compact,
                     ),
                     SizedBox(width: 4.w),
@@ -913,17 +1051,26 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                     borderColor: statusColors.$3,
                   ),
                   if (!_selectionMode) ...[
-                    SizedBox(width: 2.w),
-                    IconButton(
-                      tooltip: 'Lead actions',
-                      visualDensity: VisualDensity.compact,
-                      padding: EdgeInsets.zero,
-                      constraints: BoxConstraints.tight(Size(32.w, 32.h)),
-                      onPressed: () => _showLeadActionsSheet(context, lead),
-                      icon: Icon(
-                        Icons.more_horiz_rounded,
-                        size: 20.sp,
-                        color: const Color(0xFF667085),
+                    SizedBox(width: 6.w),
+                    SizedBox(
+                      width: 40.w,
+                      height: 40.h,
+                      child: IconButton(
+                        tooltip: 'View lead details',
+                        padding: EdgeInsets.zero,
+                        style: IconButton.styleFrom(
+                          foregroundColor: AppColors.navy,
+                          backgroundColor: const Color(0xFFF1F5F9),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10.r),
+                          ),
+                        ),
+                        onPressed: () => Navigator.pushNamed(
+                          context,
+                          AppRouter.leadDetail,
+                          arguments: lead,
+                        ),
+                        icon: Icon(Icons.visibility_outlined, size: 20.sp),
                       ),
                     ),
                   ],
@@ -979,39 +1126,46 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                 ],
               ),
               SizedBox(height: 11.h),
-              Container(
-                width: double.infinity,
-                padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 9.h),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(9.r),
-                  border: Border.all(color: const Color(0xFFE6EAF0)),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _LeadCardDetail(
-                        icon: Icons.payments_outlined,
-                        label: 'Budget',
-                        value: budget,
-                      ),
+              Row(
+                children: [
+                  Expanded(
+                    child: _LeadCardDetail(
+                      icon: Icons.payments_outlined,
+                      label: 'Budget',
+                      value: budget,
                     ),
-                    Container(
-                      width: 1,
-                      height: 34.h,
-                      color: const Color(0xFFE1E6EE),
+                  ),
+                  SizedBox(width: 16.w),
+                  Expanded(
+                    child: _LeadCardDetail(
+                      icon: Icons.event_available_outlined,
+                      label: 'Next follow-up',
+                      value: followUpLabel,
+                      alignEnd: true,
                     ),
-                    SizedBox(width: 10.w),
-                    Expanded(
-                      child: _LeadCardDetail(
-                        icon: Icons.event_available_outlined,
-                        label: 'Next follow-up',
-                        value: followUpLabel,
-                        alignEnd: true,
-                      ),
+                  ),
+                ],
+              ),
+              SizedBox(height: 11.h),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.notes_rounded,
+                    size: 17.sp,
+                    color: const Color(0xFF667085),
+                  ),
+                  SizedBox(width: 7.w),
+                  Text('Remark: ', style: _professionalLeadLabelStyle),
+                  Expanded(
+                    child: Text(
+                      remark,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: _professionalLeadFooterValueStyle,
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
               SizedBox(height: 11.h),
               Row(
@@ -1037,27 +1191,106 @@ class _LeadListWidgetState extends State<LeadListWidget> {
               Row(
                 children: [
                   Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _callLead(lead.phone),
-                      icon: Icon(Icons.call_outlined, size: 16.sp),
-                      label: const Text('Call'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.orangeDeep,
-                        side: const BorderSide(color: Color(0xFFFFD8C2)),
-                        padding: EdgeInsets.symmetric(vertical: 10.h),
+                    child: SizedBox(
+                      height: 44.h,
+                      child: ElevatedButton.icon(
+                        onPressed: () => _showAddRemarkDialog(lead),
+                        icon: Icon(Icons.add_comment_outlined, size: 15.sp),
+                        label: FittedBox(
+                          child: Text(
+                            'Add Remark',
+                            style: GoogleFonts.inter(
+                              fontSize: 11.sp,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.orangeStrong,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: EdgeInsets.symmetric(horizontal: 8.w),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10.r),
+                          ),
+                        ),
                       ),
                     ),
                   ),
                   SizedBox(width: 10.w),
                   Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _openWhatsApp(lead.phone),
-                      icon: Icon(Icons.chat_outlined, size: 16.sp),
-                      label: const Text('WhatsApp'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF168553),
-                        side: const BorderSide(color: Color(0xFFB7E4C7)),
-                        padding: EdgeInsets.symmetric(vertical: 10.h),
+                    child: SizedBox(
+                      height: 44.h,
+                      child: OutlinedButton.icon(
+                        onPressed: () => _showRemarkHistory(lead),
+                        icon: Icon(Icons.history_rounded, size: 16.sp),
+                        label: FittedBox(
+                          child: Text(
+                            'Remark History',
+                            style: GoogleFonts.inter(
+                              fontSize: 11.sp,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.navy,
+                          padding: EdgeInsets.symmetric(horizontal: 8.w),
+                          side: const BorderSide(color: Color(0xFFCBD5E1)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10.r),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: 10.h),
+              Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 40.h,
+                      child: OutlinedButton.icon(
+                        onPressed: () => _callLead(lead.phone),
+                        icon: Icon(Icons.call_outlined, size: 14.sp),
+                        label: Text(
+                          'Call',
+                          style: GoogleFonts.inter(
+                            fontSize: 11.sp,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.orangeDeep,
+                          side: const BorderSide(color: Color(0xFFFFD8C2)),
+                          padding: EdgeInsets.symmetric(horizontal: 8.w),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(width: 10.w),
+                  Expanded(
+                    child: SizedBox(
+                      height: 40.h,
+                      child: OutlinedButton.icon(
+                        onPressed: () => _openWhatsApp(lead.phone),
+                        icon: Icon(Icons.chat_outlined, size: 14.sp),
+                        label: Text(
+                          'WhatsApp',
+                          style: GoogleFonts.inter(
+                            fontSize: 11.sp,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF168553),
+                          side: const BorderSide(color: Color(0xFFB7E4C7)),
+                          padding: EdgeInsets.symmetric(horizontal: 8.w),
+                          visualDensity: VisualDensity.compact,
+                        ),
                       ),
                     ),
                   ),
@@ -1068,6 +1301,92 @@ class _LeadListWidgetState extends State<LeadListWidget> {
         ),
       ),
     );
+  }
+
+  Future<void> _showAddRemarkDialog(LeadModel lead) async {
+    final leadId = lead.id;
+    if (leadId == null || leadId.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Lead ID is unavailable.')));
+      return;
+    }
+    final added = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _AddLeadRemarkDialog(lead: lead),
+    );
+    if (added == true && mounted) await _fetchLeads(page: _page);
+  }
+
+  Future<void> _showRemarkHistory(LeadModel lead) async {
+    final leadId = lead.id;
+    if (leadId == null || leadId.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Lead ID is unavailable.')));
+      return;
+    }
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _RemarkHistorySheet(leadId: leadId, leadName: lead.name),
+    );
+  }
+
+  Future<void> _openSelectedLeadUpdate() async {
+    final selected = context
+        .read<LeadProvider>()
+        .leads
+        .where((lead) => _selectedLeadIds.contains(lead.id ?? lead.phone))
+        .toList();
+    if (selected.isNotEmpty) await _showLeadUpdateSheet(selected);
+  }
+
+  Future<List<_LeadUpdateOption>> _loadUpdateOptions(
+    List<String> categories,
+  ) async {
+    final provider = context.read<LeadMasterProvider>();
+    for (final category in categories) {
+      final response = await provider.fetchMasterValues(
+        masterCategory: category,
+      );
+      final options = _updateOptionList(response?.data);
+      if (options.isNotEmpty) return options;
+    }
+    return const [];
+  }
+
+  Future<void> _showLeadUpdateSheet(List<LeadModel> leads) async {
+    final optionGroups = await Future.wait([
+      _loadUpdateOptions(const ['status', 'lead_status', 'lead-status']),
+      _loadUpdateOptions(const [
+        'temperature',
+        'lead_temperature',
+        'lead-temperature',
+      ]),
+      _loadUpdateOptions(const ['source', 'lead_source', 'lead-source']),
+    ]);
+    if (!mounted) return;
+
+    final updated = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _LeadUpdateDialog(
+        leads: leads,
+        statuses: optionGroups[0],
+        temperatures: optionGroups[1],
+        sources: optionGroups[2],
+      ),
+    );
+    if (updated == true && mounted) {
+      setState(() {
+        _selectionMode = false;
+        _selectedLeadIds.clear();
+      });
+      await _fetchLeads(page: _page);
+    }
   }
 
   Future<void> _callLead(String phone) async {
@@ -1116,13 +1435,12 @@ class _LeadListWidgetState extends State<LeadListWidget> {
     );
   }
 
+  // ignore: unused_element
   Future<void> _exportLeadsPdf() async {
     final allLeads = context.read<LeadProvider>().leads;
     final leads = _selectionMode && _selectedLeadIds.isNotEmpty
         ? allLeads
-              .where(
-                (lead) => _selectedLeadIds.contains(lead.id ?? lead.phone),
-              )
+              .where((lead) => _selectedLeadIds.contains(lead.id ?? lead.phone))
               .toList()
         : allLeads;
 
@@ -1163,10 +1481,7 @@ class _LeadListWidgetState extends State<LeadListWidget> {
           build: (context) => [
             pw.Text(
               'TrueRoot Realty - Lead List',
-              style: pw.TextStyle(
-                fontSize: 18,
-                fontWeight: pw.FontWeight.bold,
-              ),
+              style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
             ),
             pw.SizedBox(height: 4),
             pw.Text(
@@ -1211,10 +1526,7 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                 horizontal: 4,
                 vertical: 5,
               ),
-              border: pw.TableBorder.all(
-                color: PdfColors.grey300,
-                width: 0.4,
-              ),
+              border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.4),
             ),
           ],
         ),
@@ -1230,15 +1542,16 @@ class _LeadListWidgetState extends State<LeadListWidget> {
       );
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Unable to export PDF: $error')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Unable to export PDF: $error')));
       }
     } finally {
       if (mounted) setState(() => _exportingPdf = false);
     }
   }
 
+  // ignore: unused_element
   Future<void> _showLeadActionsSheet(BuildContext context, LeadModel lead) {
     return showModalBottomSheet<void>(
       context: context,
@@ -1949,62 +2262,6 @@ class _LeadListWidgetState extends State<LeadListWidget> {
     );
   }
 
-  Widget _statCard(IconData icon, Color color, String title, String value) {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 16.h),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(5.3),
-        border: Border.all(
-          color: const Color.fromRGBO(195, 198, 209, 0.4),
-          width: 0.7,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: const Color.fromRGBO(0, 0, 0, 0.05),
-            blurRadius: 1.3,
-            offset: const Offset(0, 0.7),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 24.w,
-            height: 24.w,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(8.r),
-            ),
-            child: Icon(icon, size: 14.sp, color: color),
-          ),
-          SizedBox(height: 6.h),
-          Text(
-            title,
-            maxLines: 2,
-            style: GoogleFonts.inter(
-              fontSize: 14.5.sp,
-              fontWeight: FontWeight.w600,
-              height: 1.2,
-              color: const Color(0xFF43474F),
-            ),
-          ),
-          SizedBox(height: 2.h),
-          Text(
-            value,
-            style: GoogleFonts.inter(
-              fontSize: 24.sp,
-              fontWeight: FontWeight.w700, // bold
-              height: 1.33,
-              color: const Color(0xFF002149),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _tabChip(
     String label, {
     bool isSelected = false,
@@ -2318,6 +2575,1125 @@ class _LeadCardDetail extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _LeadUpdateOption {
+  const _LeadUpdateOption({required this.id, required this.label});
+
+  final String id;
+  final String label;
+
+  factory _LeadUpdateOption.fromMap(Map<dynamic, dynamic> map) {
+    String read(List<String> keys) {
+      for (final key in keys) {
+        final value = map[key];
+        if (value != null && value.toString().trim().isNotEmpty) {
+          return value.toString().trim();
+        }
+      }
+      return '';
+    }
+
+    return _LeadUpdateOption(
+      id: read(const ['id', '_id', 'value', 'slug', 'key', 'masterValueId']),
+      label: read(const [
+        'name',
+        'label',
+        'title',
+        'displayName',
+        'value',
+        'masterValue',
+      ]),
+    );
+  }
+}
+
+List<_LeadUpdateOption> _updateOptionList(Object? source) {
+  if (source is List) {
+    return source
+        .map((item) {
+          if (item is String) {
+            return _LeadUpdateOption(id: item, label: item);
+          }
+          if (item is Map) return _LeadUpdateOption.fromMap(item);
+          return const _LeadUpdateOption(id: '', label: '');
+        })
+        .where((option) => option.id.isNotEmpty && option.label.isNotEmpty)
+        .toList();
+  }
+  if (source is Map) {
+    for (final key in const [
+      'data',
+      'items',
+      'results',
+      'rows',
+      'values',
+      'masterValues',
+    ]) {
+      final options = _updateOptionList(source[key]);
+      if (options.isNotEmpty) return options;
+    }
+  }
+  return const [];
+}
+
+class _LeadUpdateDialog extends StatefulWidget {
+  const _LeadUpdateDialog({
+    required this.leads,
+    required this.statuses,
+    required this.temperatures,
+    required this.sources,
+  });
+
+  final List<LeadModel> leads;
+  final List<_LeadUpdateOption> statuses;
+  final List<_LeadUpdateOption> temperatures;
+  final List<_LeadUpdateOption> sources;
+
+  @override
+  State<_LeadUpdateDialog> createState() => _LeadUpdateDialogState();
+}
+
+class _LeadUpdateDialogState extends State<_LeadUpdateDialog> {
+  static const _budgets = [
+    '50 Lakh - 75 Lakh',
+    '75 Lakh - 1 Cr',
+    '1 Cr - 1.5 Cr',
+    '1.5 Cr - 2 Cr',
+    '2 Cr - 3 Cr',
+    '3 Cr+',
+  ];
+  static const _configurations = [
+    '1 BHK',
+    '2 BHK',
+    '3 BHK',
+    '4 BHK',
+    '5 BHK',
+    'Studio',
+    'Penthouse',
+  ];
+
+  late final TextEditingController _locationController;
+  late final TextEditingController _remarkController;
+  String? _statusId;
+  String? _temperatureId;
+  String? _sourceId;
+  String? _budget;
+  String? _configuration;
+  DateTime? _followUpDate;
+  TimeOfDay? _followUpTime;
+  bool _saving = false;
+  String? _error;
+
+  LeadModel get _first => widget.leads.first;
+  bool get _isSingle => widget.leads.length == 1;
+
+  @override
+  void initState() {
+    super.initState();
+    final raw = _first.raw ?? const <String, dynamic>{};
+    final requirement = raw['requirement'] is Map
+        ? Map<String, dynamic>.from(raw['requirement'] as Map)
+        : const <String, dynamic>{};
+    String? text(Object? value) {
+      final result = value?.toString().trim() ?? '';
+      return result.isEmpty || result == '-' ? null : result;
+    }
+
+    _statusId = _isSingle ? text(raw['statusId']) : null;
+    _temperatureId = _isSingle ? text(raw['temperatureId']) : null;
+    _sourceId = _isSingle ? text(raw['sourceId']) : null;
+    _budget = _isSingle ? text(requirement['budgetRange']) : null;
+    _configuration = _isSingle ? text(requirement['configuration']) : null;
+    _locationController = TextEditingController(
+      text: _isSingle
+          ? text(requirement['preferredLocation']) ?? _first.location ?? ''
+          : '',
+    );
+    _remarkController = TextEditingController(
+      text: _isSingle ? text(raw['remarks']) ?? '' : '',
+    );
+    final followUp = _isSingle
+        ? DateTime.tryParse(text(raw['nextFollowUpAt']) ?? '')?.toLocal()
+        : null;
+    if (followUp != null) {
+      _followUpDate = followUp;
+      _followUpTime = TimeOfDay.fromDateTime(followUp);
+    }
+  }
+
+  @override
+  void dispose() {
+    _locationController.dispose();
+    _remarkController.dispose();
+    super.dispose();
+  }
+
+  String? _validOption(String? value, List<_LeadUpdateOption> options) {
+    return options.any((option) => option.id == value) ? value : null;
+  }
+
+  Future<void> _pickDate() async {
+    final value = await showDatePicker(
+      context: context,
+      initialDate: _followUpDate ?? DateTime.now(),
+      firstDate: DateTime.now().subtract(const Duration(days: 1)),
+      lastDate: DateTime.now().add(const Duration(days: 730)),
+    );
+    if (value != null) setState(() => _followUpDate = value);
+  }
+
+  Future<void> _pickTime() async {
+    final value = await showTimePicker(
+      context: context,
+      initialTime: _followUpTime ?? TimeOfDay.now(),
+    );
+    if (value != null) setState(() => _followUpTime = value);
+  }
+
+  Future<void> _submit() async {
+    final body = <String, dynamic>{
+      if (_statusId != null) 'statusId': _statusId,
+      if (_temperatureId != null) 'temperatureId': _temperatureId,
+      if (_sourceId != null) 'sourceId': _sourceId,
+      if (_budget != null) 'budgetRange': _budget,
+      if (_configuration != null) 'configuration': _configuration,
+      if (_locationController.text.trim().isNotEmpty)
+        'preferredLocation': _locationController.text.trim(),
+      if (_remarkController.text.trim().isNotEmpty)
+        'remarks': _remarkController.text.trim(),
+      if (_followUpDate != null && _followUpTime != null)
+        'nextFollowUpAt': DateTime(
+          _followUpDate!.year,
+          _followUpDate!.month,
+          _followUpDate!.day,
+          _followUpTime!.hour,
+          _followUpTime!.minute,
+        ).toUtc().toIso8601String(),
+    };
+    if (body.isEmpty) {
+      setState(() => _error = 'Choose at least one field to update.');
+      return;
+    }
+
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    final provider = context.read<LeadProvider>();
+    var updated = 0;
+    for (final lead in widget.leads) {
+      final id = lead.id;
+      if (id == null || id.isEmpty) continue;
+      final response = await provider.updateLeadFromApi(leadId: id, body: body);
+      if (response != null) updated++;
+    }
+    if (!mounted) return;
+    if (updated == widget.leads.length) {
+      Navigator.pop(context, true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            updated == 1
+                ? 'Lead updated successfully.'
+                : '$updated leads updated successfully.',
+          ),
+        ),
+      );
+    } else {
+      setState(() {
+        _saving = false;
+        _error =
+            provider.error ??
+            'Updated $updated of ${widget.leads.length} leads.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Dialog(
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.transparent,
+      shadowColor: Colors.black26,
+      clipBehavior: Clip.antiAlias,
+      insetPadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 24.h),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18.r)),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: 720.w, maxHeight: 760.h),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: EdgeInsets.fromLTRB(22.w, 18.h, 12.w, 14.h),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Update reminder, status & remark',
+                          style: GoogleFonts.inter(
+                            fontSize: 19.sp,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.navy,
+                          ),
+                        ),
+                        SizedBox(height: 5.h),
+                        Text(
+                          'Update only the fields you fill. ${widget.leads.length} selected lead${widget.leads.length == 1 ? '' : 's'} will receive the updates.',
+                          style: GoogleFonts.inter(
+                            fontSize: 12.sp,
+                            color: const Color(0xFF64748B),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: _saving ? null : () => Navigator.pop(context),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Flexible(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.all(22.r),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _responsiveFields([
+                      _optionField(
+                        'Status',
+                        _validOption(_statusId, widget.statuses),
+                        widget.statuses,
+                        (value) => setState(() => _statusId = value),
+                      ),
+                      _optionField(
+                        'Type',
+                        _validOption(_temperatureId, widget.temperatures),
+                        widget.temperatures,
+                        (value) => setState(() => _temperatureId = value),
+                      ),
+                    ]),
+                    SizedBox(height: 16.h),
+                    Container(
+                      padding: EdgeInsets.all(16.r),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12.r),
+                        border: Border.all(color: const Color(0xFFDCE3ED)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Follow-up reminder',
+                            style: GoogleFonts.inter(
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.navy,
+                            ),
+                          ),
+                          SizedBox(height: 12.h),
+                          _responsiveFields([
+                            _pickerField(
+                              'Follow-up date',
+                              _followUpDate == null
+                                  ? 'dd/mm/yyyy'
+                                  : '${_followUpDate!.day.toString().padLeft(2, '0')}/${_followUpDate!.month.toString().padLeft(2, '0')}/${_followUpDate!.year}',
+                              Icons.calendar_today_outlined,
+                              _pickDate,
+                            ),
+                            _pickerField(
+                              'Follow-up time',
+                              _followUpTime?.format(context) ?? 'Select time',
+                              Icons.schedule_rounded,
+                              _pickTime,
+                            ),
+                          ]),
+                        ],
+                      ),
+                    ),
+                    SizedBox(height: 16.h),
+                    _responsiveFields([
+                      _stringDropdown('Budget', _budget, _budgets, (value) {
+                        setState(() => _budget = value);
+                      }),
+                      _textField('Location', _locationController),
+                      _stringDropdown(
+                        'Configuration',
+                        _configuration,
+                        _configurations,
+                        (value) => setState(() => _configuration = value),
+                      ),
+                      _optionField(
+                        'Source',
+                        _validOption(_sourceId, widget.sources),
+                        widget.sources,
+                        (value) => setState(() => _sourceId = value),
+                      ),
+                    ]),
+                    SizedBox(height: 16.h),
+                    _textField('Remark', _remarkController, maxLines: 3),
+                    if (_error != null) ...[
+                      SizedBox(height: 12.h),
+                      Text(
+                        _error!,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.error,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            const Divider(height: 1),
+            Padding(
+              padding: EdgeInsets.all(16.r),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  OutlinedButton(
+                    onPressed: _saving ? null : () => Navigator.pop(context),
+                    child: const Text('Close'),
+                  ),
+                  SizedBox(width: 10.w),
+                  ElevatedButton(
+                    onPressed: _saving ? null : _submit,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.orangeStrong,
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 20.w,
+                        vertical: 13.h,
+                      ),
+                    ),
+                    child: _saving
+                        ? SizedBox(
+                            width: 18.w,
+                            height: 18.w,
+                            child: const CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text('Update Lead'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _responsiveFields(List<Widget> fields) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final twoColumns = constraints.maxWidth >= 520;
+        final width = twoColumns
+            ? (constraints.maxWidth - 14.w) / 2
+            : constraints.maxWidth;
+        return Wrap(
+          spacing: 14.w,
+          runSpacing: 14.h,
+          children: fields
+              .map((field) => SizedBox(width: width, child: field))
+              .toList(),
+        );
+      },
+    );
+  }
+
+  Widget _fieldLabel(String label, Widget child) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: GoogleFonts.inter(
+            fontSize: 12.sp,
+            fontWeight: FontWeight.w700,
+            color: AppColors.navy,
+          ),
+        ),
+        SizedBox(height: 7.h),
+        child,
+      ],
+    );
+  }
+
+  InputDecoration get _decoration => InputDecoration(
+    isDense: true,
+    filled: true,
+    fillColor: Colors.white,
+    contentPadding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 13.h),
+    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10.r)),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(10.r),
+      borderSide: const BorderSide(color: Color(0xFFD6DFEB)),
+    ),
+  );
+
+  Widget _optionField(
+    String label,
+    String? value,
+    List<_LeadUpdateOption> options,
+    ValueChanged<String?> onChanged,
+  ) {
+    return _fieldLabel(
+      label,
+      DropdownButtonFormField<String>(
+        initialValue: value,
+        isExpanded: true,
+        hint: Text(options.isEmpty ? 'No options available' : 'Select $label'),
+        decoration: _decoration,
+        items: options
+            .map(
+              (option) => DropdownMenuItem(
+                value: option.id,
+                child: Text(option.label, overflow: TextOverflow.ellipsis),
+              ),
+            )
+            .toList(),
+        onChanged: options.isEmpty ? null : onChanged,
+      ),
+    );
+  }
+
+  Widget _stringDropdown(
+    String label,
+    String? value,
+    List<String> options,
+    ValueChanged<String?> onChanged,
+  ) {
+    final values = <String>{...options, ?value}.toList();
+    return _fieldLabel(
+      label,
+      DropdownButtonFormField<String>(
+        initialValue: value,
+        isExpanded: true,
+        hint: Text('Select $label'),
+        decoration: _decoration,
+        items: values
+            .map(
+              (item) => DropdownMenuItem(
+                value: item,
+                child: Text(item, overflow: TextOverflow.ellipsis),
+              ),
+            )
+            .toList(),
+        onChanged: onChanged,
+      ),
+    );
+  }
+
+  Widget _textField(
+    String label,
+    TextEditingController controller, {
+    int maxLines = 1,
+  }) {
+    return _fieldLabel(
+      label,
+      TextField(
+        controller: controller,
+        maxLines: maxLines,
+        decoration: _decoration.copyWith(hintText: 'Enter $label'),
+      ),
+    );
+  }
+
+  Widget _pickerField(
+    String label,
+    String value,
+    IconData icon,
+    VoidCallback onTap,
+  ) {
+    return _fieldLabel(
+      label,
+      InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10.r),
+        child: InputDecorator(
+          decoration: _decoration.copyWith(prefixIcon: Icon(icon, size: 19.sp)),
+          child: Text(value, maxLines: 1, overflow: TextOverflow.ellipsis),
+        ),
+      ),
+    );
+  }
+}
+
+class _AddLeadRemarkDialog extends StatefulWidget {
+  const _AddLeadRemarkDialog({required this.lead});
+
+  final LeadModel lead;
+
+  @override
+  State<_AddLeadRemarkDialog> createState() => _AddLeadRemarkDialogState();
+}
+
+class _AddLeadRemarkDialogState extends State<_AddLeadRemarkDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _remarkController = TextEditingController();
+  final _notesController = TextEditingController();
+  DateTime _date = DateTime.now().add(const Duration(days: 1));
+  TimeOfDay _time = const TimeOfDay(hour: 10, minute: 0);
+  String _status = 'Scheduled';
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _remarkController.dispose();
+    _notesController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDate() async {
+    final value = await showDatePicker(
+      context: context,
+      initialDate: _date,
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 730)),
+    );
+    if (value != null && mounted) setState(() => _date = value);
+  }
+
+  Future<void> _pickTime() async {
+    final value = await showTimePicker(context: context, initialTime: _time);
+    if (value != null && mounted) setState(() => _time = value);
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    final leadId = widget.lead.id!;
+    final raw = widget.lead.raw ?? const <String, dynamic>{};
+    final assignedToId =
+        [
+              raw['assignedToId'],
+              raw['ownerId'],
+              raw['telecallerId'],
+              raw['fieldExecutiveId'],
+            ]
+            .where((value) => value != null && value.toString().isNotEmpty)
+            .firstOrNull;
+    final scheduledAt = DateTime(
+      _date.year,
+      _date.month,
+      _date.day,
+      _time.hour,
+      _time.minute,
+    );
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    final response = await context.read<LeadProvider>().createFollowUp(
+      leadId: leadId,
+      body: {
+        'followUpType': 'Call',
+        'remarks': _remarkController.text.trim(),
+        if (_notesController.text.trim().isNotEmpty)
+          'notes': _notesController.text.trim(),
+        'scheduledAt': scheduledAt.toUtc().toIso8601String(),
+        'status': _status,
+        if (assignedToId != null) 'assignedToId': assignedToId.toString(),
+      },
+    );
+    if (!mounted) return;
+    if (response != null) {
+      Navigator.pop(context, true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Remark added successfully.')),
+      );
+    } else {
+      setState(() {
+        _saving = false;
+        _error = context.read<LeadProvider>().error ?? 'Unable to add remark.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    InputDecoration decoration(String label) => InputDecoration(
+      labelText: label,
+      filled: true,
+      fillColor: Colors.white,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10.r)),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10.r),
+        borderSide: const BorderSide(color: Color(0xFFD8E0EC)),
+      ),
+    );
+
+    return Dialog(
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.transparent,
+      insetPadding: EdgeInsets.symmetric(horizontal: 18.w, vertical: 24.h),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.r)),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: 560.w),
+        child: SingleChildScrollView(
+          padding: EdgeInsets.all(20.r),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.add_comment_outlined,
+                      color: AppColors.orangeStrong,
+                    ),
+                    SizedBox(width: 10.w),
+                    Expanded(
+                      child: Text(
+                        'Add Remark',
+                        style: GoogleFonts.inter(
+                          fontSize: 19.sp,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.navy,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: _saving ? null : () => Navigator.pop(context),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                ),
+                Text(
+                  widget.lead.titleWithId,
+                  style: GoogleFonts.inter(
+                    fontSize: 12.sp,
+                    color: const Color(0xFF64748B),
+                  ),
+                ),
+                SizedBox(height: 18.h),
+                TextFormField(
+                  controller: _remarkController,
+                  minLines: 3,
+                  maxLines: 5,
+                  decoration: decoration('Remark'),
+                  validator: (value) => value?.trim().isEmpty ?? true
+                      ? 'Please enter a remark.'
+                      : null,
+                ),
+                SizedBox(height: 14.h),
+                TextFormField(
+                  controller: _notesController,
+                  minLines: 2,
+                  maxLines: 4,
+                  decoration: decoration('Notes (optional)'),
+                ),
+                SizedBox(height: 14.h),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _pickDate,
+                        icon: const Icon(Icons.calendar_today_outlined),
+                        label: Text(
+                          '${_date.day.toString().padLeft(2, '0')}/${_date.month.toString().padLeft(2, '0')}/${_date.year}',
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: Size.fromHeight(48.h),
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 10.w),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _pickTime,
+                        icon: const Icon(Icons.schedule_rounded),
+                        label: Text(_time.format(context)),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: Size.fromHeight(48.h),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 14.h),
+                DropdownButtonFormField<String>(
+                  initialValue: _status,
+                  decoration: decoration('Status'),
+                  items: const ['Scheduled', 'Pending', 'Completed']
+                      .map(
+                        (status) => DropdownMenuItem(
+                          value: status,
+                          child: Text(status),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) {
+                    if (value != null) setState(() => _status = value);
+                  },
+                ),
+                if (_error != null) ...[
+                  SizedBox(height: 12.h),
+                  Text(
+                    _error!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ],
+                SizedBox(height: 18.h),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    OutlinedButton(
+                      onPressed: _saving ? null : () => Navigator.pop(context),
+                      child: const Text('Cancel'),
+                    ),
+                    SizedBox(width: 10.w),
+                    ElevatedButton.icon(
+                      onPressed: _saving ? null : _submit,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.orangeStrong,
+                        foregroundColor: Colors.white,
+                        minimumSize: Size(130.w, 48.h),
+                      ),
+                      icon: _saving
+                          ? SizedBox(
+                              width: 17.w,
+                              height: 17.w,
+                              child: const CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.send_outlined),
+                      label: const Text('Add Remark'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RemarkHistorySheet extends StatefulWidget {
+  const _RemarkHistorySheet({required this.leadId, required this.leadName});
+
+  final String leadId;
+  final String leadName;
+
+  @override
+  State<_RemarkHistorySheet> createState() => _RemarkHistorySheetState();
+}
+
+class _RemarkHistorySheetState extends State<_RemarkHistorySheet> {
+  bool _loading = true;
+  String? _error;
+  List<_RemarkHistoryEntry> _entries = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  Future<void> _load() async {
+    final provider = context.read<LeadProvider>();
+    final response = await provider.fetchFollowUps(limit: 500);
+    if (!mounted) return;
+    if (response == null) {
+      setState(() {
+        _loading = false;
+        _error = provider.error ?? 'Unable to load remark history.';
+      });
+      return;
+    }
+    final entries =
+        _remarkMaps(response.data)
+            .map(_RemarkHistoryEntry.fromMap)
+            .where((entry) => entry.leadId == widget.leadId && entry.hasContent)
+            .toList()
+          ..sort((a, b) => b.sortDate.compareTo(a.sortDate));
+    setState(() {
+      _entries = entries;
+      _loading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FractionallySizedBox(
+      heightFactor: .82,
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20.r)),
+        clipBehavior: Clip.antiAlias,
+        child: SafeArea(
+          top: false,
+          child: Column(
+            children: [
+              Padding(
+                padding: EdgeInsets.fromLTRB(20.w, 14.h, 10.w, 12.h),
+                child: Row(
+                  children: [
+                    Icon(Icons.history_rounded, color: AppColors.orangeStrong),
+                    SizedBox(width: 10.w),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Remark History',
+                            style: GoogleFonts.inter(
+                              fontSize: 18.sp,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.navy,
+                            ),
+                          ),
+                          Text(
+                            widget.leadName,
+                            style: GoogleFonts.inter(
+                              fontSize: 12.sp,
+                              color: const Color(0xFF64748B),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(child: _body()),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _body() {
+    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_error != null) {
+      return Center(
+        child: Padding(
+          padding: EdgeInsets.all(24.r),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(_error!, textAlign: TextAlign.center),
+              SizedBox(height: 12.h),
+              OutlinedButton(onPressed: _load, child: const Text('Try again')),
+            ],
+          ),
+        ),
+      );
+    }
+    if (_entries.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.chat_bubble_outline, size: 38.sp, color: Colors.grey),
+            SizedBox(height: 10.h),
+            const Text('No remark history available.'),
+          ],
+        ),
+      );
+    }
+    return ListView.separated(
+      padding: EdgeInsets.all(16.r),
+      itemCount: _entries.length,
+      separatorBuilder: (_, _) => SizedBox(height: 12.h),
+      itemBuilder: (_, index) => _RemarkHistoryCard(entry: _entries[index]),
+    );
+  }
+}
+
+class _RemarkHistoryEntry {
+  const _RemarkHistoryEntry({
+    required this.leadId,
+    required this.remark,
+    required this.notes,
+    required this.status,
+    required this.addedBy,
+    required this.scheduledAt,
+    required this.createdAt,
+  });
+
+  final String leadId;
+  final String remark;
+  final String notes;
+  final String status;
+  final String addedBy;
+  final DateTime? scheduledAt;
+  final DateTime? createdAt;
+
+  bool get hasContent => remark.isNotEmpty || notes.isNotEmpty;
+  DateTime get sortDate => createdAt ?? scheduledAt ?? DateTime(1970);
+
+  factory _RemarkHistoryEntry.fromMap(Map<String, dynamic> map) {
+    final lead = map['lead'] is Map
+        ? Map<String, dynamic>.from(map['lead'] as Map)
+        : const <String, dynamic>{};
+    String read(List<String> keys, [String fallback = '']) {
+      for (final key in keys) {
+        final value = map[key] ?? lead[key];
+        if (value != null && value.toString().trim().isNotEmpty) {
+          return value.toString().trim();
+        }
+      }
+      return fallback;
+    }
+
+    DateTime? date(List<String> keys) =>
+        DateTime.tryParse(read(keys))?.toLocal();
+    final directLeadId = map['leadId'] ?? map['lead_id'];
+    final nestedLeadId = lead['id'] ?? lead['_id'] ?? lead['leadId'];
+    return _RemarkHistoryEntry(
+      leadId: (directLeadId ?? nestedLeadId ?? '').toString(),
+      remark: read(const ['remarks', 'remark']),
+      notes: read(const ['notes']),
+      status: read(const ['statusName', 'status'], 'Not set'),
+      addedBy: read(const [
+        'assignedToName',
+        'createdByName',
+        'ownerName',
+        'assignedToId',
+      ], 'Not available'),
+      scheduledAt: date(const ['scheduledAt', 'followUpDate']),
+      createdAt: date(const ['createdAt', 'created_at']),
+    );
+  }
+}
+
+List<Map<String, dynamic>> _remarkMaps(Object? source) {
+  if (source is List) {
+    return source
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+  }
+  if (source is Map) {
+    for (final key in const [
+      'followUps',
+      'follow_ups',
+      'items',
+      'results',
+      'rows',
+      'data',
+    ]) {
+      final result = _remarkMaps(source[key]);
+      if (result.isNotEmpty) return result;
+    }
+  }
+  return const [];
+}
+
+class _RemarkHistoryCard extends StatelessWidget {
+  const _RemarkHistoryCard({required this.entry});
+
+  final _RemarkHistoryEntry entry;
+
+  String _date(DateTime? value) {
+    if (value == null) return 'Not available';
+    final hour = value.hour % 12 == 0 ? 12 : value.hour % 12;
+    return '${value.day.toString().padLeft(2, '0')}/${value.month.toString().padLeft(2, '0')}/${value.year} '
+        '$hour:${value.minute.toString().padLeft(2, '0')} ${value.hour < 12 ? 'AM' : 'PM'}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.all(16.r),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12.r),
+        border: Border.all(color: const Color(0xFFDCE3ED)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  entry.addedBy,
+                  style: GoogleFonts.inter(
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.navy,
+                  ),
+                ),
+              ),
+              _CompactLeadBadge(
+                text: entry.status,
+                foreground: AppColors.orangeDeep,
+                background: const Color(0xFFFFF4ED),
+                borderColor: const Color(0xFFFFD8C2),
+              ),
+            ],
+          ),
+          SizedBox(height: 4.h),
+          Text(
+            _date(entry.createdAt),
+            style: GoogleFonts.inter(
+              fontSize: 11.sp,
+              color: const Color(0xFF64748B),
+            ),
+          ),
+          SizedBox(height: 12.h),
+          if (entry.remark.isNotEmpty)
+            Text(
+              entry.remark,
+              style: GoogleFonts.inter(fontSize: 14.sp, height: 1.4),
+            ),
+          if (entry.notes.isNotEmpty && entry.notes != entry.remark) ...[
+            SizedBox(height: 8.h),
+            Text(
+              'Notes: ${entry.notes}',
+              style: GoogleFonts.inter(
+                fontSize: 12.sp,
+                color: const Color(0xFF475467),
+              ),
+            ),
+          ],
+          SizedBox(height: 10.h),
+          Row(
+            children: [
+              Icon(Icons.schedule_rounded, size: 15.sp, color: Colors.grey),
+              SizedBox(width: 5.w),
+              Expanded(
+                child: Text(
+                  'Scheduled: ${_date(entry.scheduledAt)}',
+                  style: GoogleFonts.inter(
+                    fontSize: 11.sp,
+                    color: const Color(0xFF64748B),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

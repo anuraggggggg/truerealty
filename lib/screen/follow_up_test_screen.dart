@@ -332,26 +332,22 @@ class _QuickActionsSection extends StatelessWidget {
 
 class _QuickActionTile extends StatelessWidget {
   const _QuickActionTile({
-    this.icon,
-    this.iconPath,
+    required this.iconPath,
     required this.title,
     required this.subtitle,
   });
-  final IconData? icon;
-  final String? iconPath;
+  final String iconPath;
   final String title;
   final String subtitle;
 
   @override
   Widget build(BuildContext context) {
     return ListTile(
-      leading: iconPath != null
-          ? SizedBox(
-              width: 50.w,
-              height: 50.w,
-              child: Image.asset(iconPath!, fit: BoxFit.contain),
-            )
-          : Icon(icon, color: AppColors.vividBlue),
+      leading: SizedBox(
+        width: 50.w,
+        height: 50.w,
+        child: Image.asset(iconPath, fit: BoxFit.contain),
+      ),
       title: Text(
         title,
         style: const TextStyle(
@@ -1309,11 +1305,18 @@ class _FollowUpLeadCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.fromLTRB(14.w, 14.h, 14.w, 14.h),
+      padding: EdgeInsets.fromLTRB(14.w, 13.h, 14.w, 12.h),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14.r),
-        border: Border.all(color: const Color(0xFFE1E7F0)),
+        border: Border.all(color: const Color(0xFFD5DDE8)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0A0F172A),
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         children: [
@@ -1321,19 +1324,19 @@ class _FollowUpLeadCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 44.w,
-                height: 44.w,
+                width: 40.w,
+                height: 40.w,
                 alignment: Alignment.center,
                 decoration: const BoxDecoration(
-                  color: Color(0xFFEAF2FF),
+                  color: Color(0xFF10213D),
                   shape: BoxShape.circle,
                 ),
                 child: Text(
                   'SN',
                   style: GoogleFonts.inter(
-                    fontSize: 17.sp,
-                    fontWeight: FontWeight.w700,
-                    color: const Color(0xFF2563EB),
+                    fontSize: 11.5.sp,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
                   ),
                 ),
               ),
@@ -1348,8 +1351,8 @@ class _FollowUpLeadCard extends StatelessWidget {
                           child: Text(
                             data.name,
                             style: GoogleFonts.inter(
-                              fontSize: 18.sp,
-                              fontWeight: FontWeight.w800,
+                              fontSize: 15.sp,
+                              fontWeight: FontWeight.w700,
                               color: AppColors.navy,
                             ),
                           ),
@@ -1372,15 +1375,15 @@ class _FollowUpLeadCard extends StatelessWidget {
                                 child: Text(
                                   data.status,
                                   style: GoogleFonts.inter(
-                                    fontSize: 17.sp,
-                                    fontWeight: FontWeight.w500,
+                                    fontSize: 10.sp,
+                                    fontWeight: FontWeight.w700,
                                     color: const Color(0xFFEF4444),
                                   ),
                                 ),
                               ),
                               SizedBox(width: 6.w),
                               Icon(
-                                Icons.more_vert,
+                                Icons.visibility_outlined,
                                 color: const Color(0xFF374151),
                                 size: 18.sp,
                               ),
@@ -1393,8 +1396,8 @@ class _FollowUpLeadCard extends StatelessWidget {
                     Text(
                       data.property,
                       style: GoogleFonts.inter(
-                        fontSize: 17.sp,
-                        fontWeight: FontWeight.w500,
+                        fontSize: 12.sp,
+                        fontWeight: FontWeight.w700,
                         color: const Color(0xFF4B5563),
                       ),
                     ),
@@ -1403,7 +1406,7 @@ class _FollowUpLeadCard extends StatelessWidget {
                       data.source,
                       style: const TextStyle(
                         fontFamily: 'Inter',
-                        fontSize: 14,
+                        fontSize: 11,
                         fontWeight: FontWeight.w500,
                         height: 1.33, // line-height equivalent
                         letterSpacing: 0,

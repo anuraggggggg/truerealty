@@ -3,6 +3,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:truerealtycrm/constant/colors_screen.dart';
+import 'package:truerealtycrm/provider/auth_provider.dart';
 import 'package:truerealtycrm/provider/employee_provider.dart';
 import 'package:truerealtycrm/provider/lead_master_provider.dart';
 import 'package:truerealtycrm/provider/leads_provider.dart';
@@ -36,12 +37,6 @@ const List<_ApiOption> _leadStageOptions = [
   _ApiOption(id: 'new-lead', label: 'New Lead'),
   _ApiOption(id: 'qualified', label: 'Qualified'),
   _ApiOption(id: 'site-visit', label: 'Site Visit'),
-];
-
-const List<_ApiOption> _leadPriorityOptions = [
-  _ApiOption(id: 'low', label: 'Low'),
-  _ApiOption(id: 'medium', label: 'Medium'),
-  _ApiOption(id: 'high', label: 'High'),
 ];
 
 const List<_ApiOption> _employeeFallbackOptions = [
@@ -161,18 +156,18 @@ class _AddLeadScreenState extends State<AddLeadScreen> {
   String? _error;
 
   List<_ApiOption> _sources = const [];
-  List<_ApiOption> _statuses = const [];
   List<_ApiOption> _stages = const [];
-  List<_ApiOption> _priorities = const [];
   // Keep project selection usable while the remote options are loading or
   // unavailable. API projects are merged into these options in _loadOptions.
   List<_ApiOption> _projects = _projectFallbackOptions;
   List<_ApiOption> _employees = const [];
 
   _ApiOption? _selectedSource;
-  _ApiOption? _selectedStatus;
+  _ApiOption _selectedStatus = const _ApiOption(
+    id: 'New Lead',
+    label: 'New Lead',
+  );
   _ApiOption? _selectedStage;
-  _ApiOption? _selectedPriority;
   _ApiOption? _selectedProject;
   _ApiOption? _selectedEmployee;
   String _followUpType = 'Call';
@@ -224,7 +219,6 @@ class _AddLeadScreenState extends State<AddLeadScreen> {
       _loadMasterOptions(const ['source', 'lead_source', 'lead-source']),
       _loadMasterOptions(const ['status', 'lead_status', 'lead-status']),
       _loadMasterOptions(const ['stage', 'lead_stage', 'lead-stage']),
-      _loadMasterOptions(const ['priority', 'lead_priority', 'lead-priority']),
       _loadProjects(),
       _loadEmployees(),
     ]);
@@ -234,14 +228,49 @@ class _AddLeadScreenState extends State<AddLeadScreen> {
     }
 
     setState(() {
+      final statuses = _mergeOptions(results[1], _leadStatusOptions);
+      final employees = _mergeOptions(results[4], _employeeFallbackOptions);
       _sources = _mergeOptions(results[0], _leadSourceOptions);
-      _statuses = _mergeOptions(results[1], _leadStatusOptions);
       _stages = _mergeOptions(results[2], _leadStageOptions);
-      _priorities = _mergeOptions(results[3], _leadPriorityOptions);
-      _projects = _mergeOptions(results[4], _projectFallbackOptions);
-      _employees = _mergeOptions(results[5], _employeeFallbackOptions);
+      _projects = _mergeOptions(results[3], _projectFallbackOptions);
+      _employees = employees;
+      _selectedStatus = _newLeadStatus(statuses);
+      _selectedEmployee = _currentUserEmployee(employees);
       _isLoadingOptions = false;
     });
+  }
+
+  _ApiOption _newLeadStatus(List<_ApiOption> statuses) {
+    return statuses.firstWhere(
+      (option) => option.label.trim().toLowerCase() == 'new lead',
+      orElse: () => const _ApiOption(id: 'New Lead', label: 'New Lead'),
+    );
+  }
+
+  _ApiOption? _currentUserEmployee(List<_ApiOption> employees) {
+    final user = context.read<AuthProvider>().session?.user;
+    if (user == null) return null;
+    String read(List<String> keys) {
+      for (final key in keys) {
+        final value = user[key];
+        if (value != null && value.toString().trim().isNotEmpty) {
+          return value.toString().trim();
+        }
+      }
+      return '';
+    }
+
+    final id = read(const ['employeeId', 'id', 'userId', '_id']);
+    final match = employees.where((option) => option.id == id).firstOrNull;
+    if (match != null) return match;
+    if (id.isEmpty) return null;
+    final name = read(const ['name', 'fullName', 'displayName', 'email']);
+    return _ApiOption(
+      id: id,
+      label: name.isEmpty ? 'Current user' : name,
+      subtitle: context.read<AuthProvider>().roleName,
+      data: user,
+    );
   }
 
   Future<List<_ApiOption>> _loadMasterOptions(List<String> categories) async {
@@ -280,6 +309,7 @@ class _AddLeadScreenState extends State<AddLeadScreen> {
   }
 
   Future<void> _submit() async {
+    if (_isSaving) return;
     FocusScope.of(context).unfocus();
     if (!_formKey.currentState!.validate()) {
       setState(() => _error = 'Please complete the required fields.');
@@ -301,9 +331,8 @@ class _AddLeadScreenState extends State<AddLeadScreen> {
       if (_emailController.text.trim().isNotEmpty)
         'email': _emailController.text.trim(),
       if (_selectedSource != null) 'sourceId': _selectedSource!.id,
-      if (_selectedStatus != null) 'statusId': _selectedStatus!.id,
+      'statusId': _selectedStatus.id,
       if (_selectedStage != null) 'stageId': _selectedStage!.id,
-      if (_selectedPriority != null) 'priorityId': _selectedPriority!.id,
       if (_remarksController.text.trim().isNotEmpty)
         'remarks': _remarksController.text.trim(),
       if (_selectedEmployee != null) 'ownerId': _selectedEmployee!.id,
@@ -410,133 +439,131 @@ class _AddLeadScreenState extends State<AddLeadScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF4F6FB),
-      body: SafeArea(
-        child: Column(
-          children: [
-            _AddLeadHeader(createdAt: _createdAt, onClose: _close),
-            Expanded(
-              child: Form(
-                key: _formKey,
-                autovalidateMode: AutovalidateMode.onUserInteraction,
-                child: SingleChildScrollView(
-                  padding: EdgeInsets.fromLTRB(18.w, 18.h, 18.w, 24.h),
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 1180),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _StepCards(currentStep: _currentStep),
-                          SizedBox(height: 18.h),
-                          if (_isLoadingOptions) ...[
-                            const LinearProgressIndicator(minHeight: 2),
-                            SizedBox(height: 14.h),
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF4F6FB),
+        body: SafeArea(
+          child: Column(
+            children: [
+              _AddLeadHeader(createdAt: _createdAt, onClose: _close),
+              Expanded(
+                child: Form(
+                  key: _formKey,
+                  autovalidateMode: AutovalidateMode.onUserInteraction,
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.fromLTRB(18.w, 18.h, 18.w, 24.h),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 1180),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _StepCards(currentStep: _currentStep),
+                            SizedBox(height: 18.h),
+                            if (_isLoadingOptions) ...[
+                              const LinearProgressIndicator(minHeight: 2),
+                              SizedBox(height: 14.h),
+                            ],
+                            if (_error != null) ...[
+                              _InlineError(message: _error!),
+                              SizedBox(height: 14.h),
+                            ],
+                            if (_currentStep == 0) ...[
+                              _BasicInfoSection(
+                                createdAt: _createdAt,
+                                sources: _sources,
+                                stages: _stages,
+                                projects: _projects,
+                                employees: _employees,
+                                selectedSource: _selectedSource,
+                                selectedStage: _selectedStage,
+                                selectedProject: _selectedProject,
+                                selectedEmployee: _selectedEmployee,
+                                nameController: _nameController,
+                                mobileCodeController: _mobileCodeController,
+                                mobileController: _mobileController,
+                                alternateCodeController:
+                                    _alternateCodeController,
+                                alternateMobileController:
+                                    _alternateMobileController,
+                                emailController: _emailController,
+                                remarksController: _remarksController,
+                                onSourceChanged: (value) =>
+                                    setState(() => _selectedSource = value),
+                                onStageChanged: (value) =>
+                                    setState(() => _selectedStage = value),
+                                onProjectChanged: (value) {
+                                  setState(() {
+                                    _selectedProject = value;
+                                    final location = value == null
+                                        ? ''
+                                        : _optionLocation(value.data);
+                                    if (location.isNotEmpty) {
+                                      _preferredLocationController.text =
+                                          location;
+                                    }
+                                  });
+                                },
+                                onEmployeeChanged: (value) =>
+                                    setState(() => _selectedEmployee = value),
+                              ),
+                              SizedBox(height: 16.h),
+                              _RequirementSection(
+                                propertyTypeController: _propertyTypeController,
+                                configurationController:
+                                    _configurationController,
+                                budgetRangeController: _budgetRangeController,
+                                minBudgetController: _minBudgetController,
+                                maxBudgetController: _maxBudgetController,
+                                budgetUnitController: _budgetUnitController,
+                                preferredLocationController:
+                                    _preferredLocationController,
+                                possessionTimelineController:
+                                    _possessionTimelineController,
+                                carpetAreaRangeController:
+                                    _carpetAreaRangeController,
+                                purposeController: _purposeController,
+                                minAreaController: _minAreaController,
+                                maxAreaController: _maxAreaController,
+                                zoneController: _zoneController,
+                                occupationController: _occupationController,
+                              ),
+                            ] else
+                              _FollowUpSection(
+                                enabled: _scheduleFollowUp,
+                                type: _followUpType,
+                                date: _followUpDate,
+                                time: _followUpTime,
+                                messageController: _followUpMessageController,
+                                onEnabledChanged: (value) =>
+                                    setState(() => _scheduleFollowUp = value),
+                                onTypeChanged: (value) =>
+                                    setState(() => _followUpType = value),
+                                remindTelecaller: _remindTelecaller,
+                                onRemindTelecallerChanged: (value) =>
+                                    setState(() => _remindTelecaller = value),
+                                onPickDate: _pickFollowUpDate,
+                                onPickTime: _pickFollowUpTime,
+                              ),
                           ],
-                          if (_error != null) ...[
-                            _InlineError(message: _error!),
-                            SizedBox(height: 14.h),
-                          ],
-                          if (_currentStep == 0) ...[
-                            _BasicInfoSection(
-                              createdAt: _createdAt,
-                              sources: _sources,
-                              statuses: _statuses,
-                              stages: _stages,
-                              priorities: _priorities,
-                              projects: _projects,
-                              employees: _employees,
-                              selectedSource: _selectedSource,
-                              selectedStatus: _selectedStatus,
-                              selectedStage: _selectedStage,
-                              selectedPriority: _selectedPriority,
-                              selectedProject: _selectedProject,
-                              selectedEmployee: _selectedEmployee,
-                              nameController: _nameController,
-                              mobileCodeController: _mobileCodeController,
-                              mobileController: _mobileController,
-                              alternateCodeController: _alternateCodeController,
-                              alternateMobileController:
-                                  _alternateMobileController,
-                              emailController: _emailController,
-                              remarksController: _remarksController,
-                              onSourceChanged: (value) =>
-                                  setState(() => _selectedSource = value),
-                              onStatusChanged: (value) =>
-                                  setState(() => _selectedStatus = value),
-                              onStageChanged: (value) =>
-                                  setState(() => _selectedStage = value),
-                              onPriorityChanged: (value) =>
-                                  setState(() => _selectedPriority = value),
-                              onProjectChanged: (value) {
-                                setState(() {
-                                  _selectedProject = value;
-                                  final location = value == null
-                                      ? ''
-                                      : _optionLocation(value.data);
-                                  if (location.isNotEmpty) {
-                                    _preferredLocationController.text =
-                                        location;
-                                  }
-                                });
-                              },
-                              onEmployeeChanged: (value) =>
-                                  setState(() => _selectedEmployee = value),
-                            ),
-                            SizedBox(height: 16.h),
-                            _RequirementSection(
-                              propertyTypeController: _propertyTypeController,
-                              configurationController: _configurationController,
-                              budgetRangeController: _budgetRangeController,
-                              minBudgetController: _minBudgetController,
-                              maxBudgetController: _maxBudgetController,
-                              budgetUnitController: _budgetUnitController,
-                              preferredLocationController:
-                                  _preferredLocationController,
-                              possessionTimelineController:
-                                  _possessionTimelineController,
-                              carpetAreaRangeController:
-                                  _carpetAreaRangeController,
-                              purposeController: _purposeController,
-                              minAreaController: _minAreaController,
-                              maxAreaController: _maxAreaController,
-                              zoneController: _zoneController,
-                              occupationController: _occupationController,
-                            ),
-                          ] else
-                            _FollowUpSection(
-                              enabled: _scheduleFollowUp,
-                              type: _followUpType,
-                              date: _followUpDate,
-                              time: _followUpTime,
-                              messageController: _followUpMessageController,
-                              onEnabledChanged: (value) =>
-                                  setState(() => _scheduleFollowUp = value),
-                              onTypeChanged: (value) =>
-                                  setState(() => _followUpType = value),
-                              remindTelecaller: _remindTelecaller,
-                              onRemindTelecallerChanged: (value) =>
-                                  setState(() => _remindTelecaller = value),
-                              onPickDate: _pickFollowUpDate,
-                              onPickTime: _pickFollowUpTime,
-                            ),
-                        ],
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
-            _AddLeadFooter(
-              currentStep: _currentStep,
-              isSaving: _isSaving,
-              onCancel: _close,
-              onBack: _backToBasicInfo,
-              onContinue: _continueToFollowUp,
-              onSubmit: _isSaving ? null : _submit,
-            ),
-          ],
+              _AddLeadFooter(
+                currentStep: _currentStep,
+                isSaving: _isSaving,
+                onCancel: _close,
+                onBack: _backToBasicInfo,
+                onContinue: _continueToFollowUp,
+                onSubmit: _isSaving ? null : _submit,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -705,7 +732,7 @@ class _StepCards extends StatelessWidget {
       builder: (context, constraints) {
         final first = _StepCard(
           number: '1',
-          title: 'Basic information',
+          title: 'Lead information',
           subtitle: 'Contact, source, project and initial assignment',
           active: currentStep == 0,
           completed: currentStep > 0,
@@ -822,15 +849,11 @@ class _BasicInfoSection extends StatelessWidget {
   const _BasicInfoSection({
     required this.createdAt,
     required this.sources,
-    required this.statuses,
     required this.stages,
-    required this.priorities,
     required this.projects,
     required this.employees,
     required this.selectedSource,
-    required this.selectedStatus,
     required this.selectedStage,
-    required this.selectedPriority,
     required this.selectedProject,
     required this.selectedEmployee,
     required this.nameController,
@@ -841,24 +864,18 @@ class _BasicInfoSection extends StatelessWidget {
     required this.emailController,
     required this.remarksController,
     required this.onSourceChanged,
-    required this.onStatusChanged,
     required this.onStageChanged,
-    required this.onPriorityChanged,
     required this.onProjectChanged,
     required this.onEmployeeChanged,
   });
 
   final DateTime createdAt;
   final List<_ApiOption> sources;
-  final List<_ApiOption> statuses;
   final List<_ApiOption> stages;
-  final List<_ApiOption> priorities;
   final List<_ApiOption> projects;
   final List<_ApiOption> employees;
   final _ApiOption? selectedSource;
-  final _ApiOption? selectedStatus;
   final _ApiOption? selectedStage;
-  final _ApiOption? selectedPriority;
   final _ApiOption? selectedProject;
   final _ApiOption? selectedEmployee;
   final TextEditingController nameController;
@@ -869,32 +886,87 @@ class _BasicInfoSection extends StatelessWidget {
   final TextEditingController emailController;
   final TextEditingController remarksController;
   final ValueChanged<_ApiOption?> onSourceChanged;
-  final ValueChanged<_ApiOption?> onStatusChanged;
   final ValueChanged<_ApiOption?> onStageChanged;
-  final ValueChanged<_ApiOption?> onPriorityChanged;
   final ValueChanged<_ApiOption?> onProjectChanged;
   final ValueChanged<_ApiOption?> onEmployeeChanged;
 
   @override
   Widget build(BuildContext context) {
     return _SectionShell(
-      title: 'Basic information',
+      title: 'Lead information',
       icon: Icons.badge_outlined,
-      child: Column(
-        children: [
-          Row(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          Widget adaptivePair(Widget first, Widget second) {
+            if (constraints.maxWidth < 680) {
+              return Column(
+                children: [
+                  first,
+                  SizedBox(height: 18.h),
+                  second,
+                ],
+              );
+            }
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: first),
+                SizedBox(width: 16.w),
+                Expanded(child: second),
+              ],
+            );
+          }
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(
-                child: _ReadonlyField(
-                  label: 'Date & time',
-                  value: _formatDateTime(createdAt),
-                  icon: Icons.calendar_month_outlined,
-                  suffix: 'Auto generated',
-                ),
+              _ReadonlyField(
+                label: 'Date & time',
+                value: _formatDateTime(createdAt),
+                icon: Icons.calendar_month_outlined,
+                suffix: 'Auto generated',
               ),
-              SizedBox(width: 12.w),
-              Expanded(
-                child: _OptionDropdown(
+              SizedBox(height: 18.h),
+              _TextInput(
+                controller: nameController,
+                label: 'Lead name *',
+                hint: 'Enter lead full name',
+                validator: _required('Lead name is required.'),
+              ),
+              SizedBox(height: 18.h),
+              _PhoneInput(
+                codeController: mobileCodeController,
+                numberController: mobileController,
+                label: 'Primary phone number *',
+                validator: _phoneValidator(required: true),
+              ),
+              SizedBox(height: 18.h),
+              _PhoneInput(
+                codeController: alternateCodeController,
+                numberController: alternateMobileController,
+                label: 'Alternate phone number',
+                required: false,
+                validator: _phoneValidator(required: false),
+              ),
+              SizedBox(height: 18.h),
+              _TextInput(
+                controller: emailController,
+                label: 'Email',
+                hint: 'Enter email address',
+                keyboardType: TextInputType.emailAddress,
+                validator: _emailValidator,
+              ),
+              SizedBox(height: 18.h),
+              adaptivePair(
+                _OptionDropdown(
+                  label: 'Project *',
+                  hint: 'Select Project',
+                  value: selectedProject,
+                  items: projects,
+                  validatorMessage: 'Project is required.',
+                  onChanged: onProjectChanged,
+                ),
+                _OptionDropdown(
                   label: 'Source *',
                   hint: 'Select lead source',
                   value: selectedSource,
@@ -903,67 +975,17 @@ class _BasicInfoSection extends StatelessWidget {
                   onChanged: onSourceChanged,
                 ),
               ),
-            ],
-          ),
-          SizedBox(height: 14.h),
-          Row(
-            children: [
-              Expanded(
-                child: _OptionDropdown(
-                  label: 'Lead Status',
-                  hint: 'Select lead status',
-                  value: selectedStatus,
-                  items: statuses,
-                  onChanged: onStatusChanged,
+              SizedBox(height: 18.h),
+              adaptivePair(
+                _ReadonlyField(
+                  label: 'Project area / location',
+                  value: selectedProject == null
+                      ? 'Selected project location'
+                      : _optionLocation(selectedProject!.data),
+                  icon: Icons.location_on_outlined,
+                  suffix: 'Auto-filled',
                 ),
-              ),
-              SizedBox(width: 12.w),
-              Expanded(
-                child: _TextInput(
-                  controller: nameController,
-                  label: 'Customer name *',
-                  hint: 'Enter customer full name',
-                  validator: _required('Customer name is required.'),
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 14.h),
-          Row(
-            children: [
-              Expanded(
-                child: _PhoneInput(
-                  codeController: mobileCodeController,
-                  numberController: mobileController,
-                  label: 'Mobile number *',
-                  validator: _required('Mobile number is required.'),
-                ),
-              ),
-              SizedBox(width: 12.w),
-              Expanded(
-                child: _PhoneInput(
-                  codeController: alternateCodeController,
-                  numberController: alternateMobileController,
-                  label: 'Alternate mobile number',
-                  required: false,
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 14.h),
-          Row(
-            children: [
-              Expanded(
-                child: _TextInput(
-                  controller: emailController,
-                  label: 'Email ID',
-                  hint: 'Enter email address',
-                  keyboardType: TextInputType.emailAddress,
-                ),
-              ),
-              SizedBox(width: 12.w),
-              Expanded(
-                child: _OptionDropdown(
+                _OptionDropdown(
                   label: 'Lead Stage',
                   hint: 'Select lead stage',
                   value: selectedStage,
@@ -971,79 +993,25 @@ class _BasicInfoSection extends StatelessWidget {
                   onChanged: onStageChanged,
                 ),
               ),
-            ],
-          ),
-          SizedBox(height: 14.h),
-          Row(
-            children: [
-              Expanded(
-                child: _OptionDropdown(
-                  label: 'Priority',
-                  hint: 'Select priority',
-                  value: selectedPriority,
-                  items: priorities,
-                  onChanged: onPriorityChanged,
-                ),
+              SizedBox(height: 18.h),
+              _TextInput(
+                controller: remarksController,
+                label: 'Requirements / Notes',
+                hint: 'Add lead context or notes',
+                maxLines: 3,
+                textInputAction: TextInputAction.newline,
               ),
-              SizedBox(width: 12.w),
-              Expanded(
-                child: _TextInput(
-                  controller: remarksController,
-                  label: 'Remarks',
-                  hint: 'Add context or note',
-                ),
+              SizedBox(height: 18.h),
+              _OptionDropdown(
+                label: 'Assign To',
+                hint: 'Select employee',
+                value: selectedEmployee,
+                items: employees,
+                onChanged: onEmployeeChanged,
               ),
             ],
-          ),
-          SizedBox(height: 16.h),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: _SidePanel(
-                  icon: Icons.apartment_rounded,
-                  title: 'Project selection',
-                  subtitle: 'Attach the lead to the right project.',
-                  children: [
-                    _OptionDropdown(
-                      label: 'Project name',
-                      hint: 'Search and select a project',
-                      value: selectedProject,
-                      items: projects,
-                      onChanged: onProjectChanged,
-                    ),
-                    SizedBox(height: 12.h),
-                    _ReadonlyField(
-                      label: 'Project area / location',
-                      value: selectedProject == null
-                          ? 'Selected project location'
-                          : _optionLocation(selectedProject!.data),
-                      icon: Icons.location_on_outlined,
-                      suffix: 'Auto-filled',
-                    ),
-                  ],
-                ),
-              ),
-              SizedBox(width: 12.w),
-              Expanded(
-                child: _SidePanel(
-                  icon: Icons.person_outline_rounded,
-                  title: 'Assign to',
-                  subtitle: 'Optional initial ownership.',
-                  children: [
-                    _OptionDropdown(
-                      label: 'Employee',
-                      hint: 'Search employee by name or role',
-                      value: selectedEmployee,
-                      items: employees,
-                      onChanged: onEmployeeChanged,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -1089,157 +1057,140 @@ class _RequirementSection extends StatelessWidget {
       icon: Icons.tune_rounded,
       child: Column(
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: _TextControllerOptionField(
-                  controller: propertyTypeController,
-                  label: 'Property type',
-                  hint: 'Select property type',
-                  searchHint: 'Search property types...',
-                  items: _propertyTypeOptions,
-                ),
-              ),
-              SizedBox(width: 12.w),
-              Expanded(
-                child: _TextControllerOptionField(
-                  controller: configurationController,
-                  label: 'Configuration',
-                  hint: 'Select configuration',
-                  searchHint: 'Search configurations...',
-                  items: _configurationOptions,
-                ),
-              ),
-            ],
+          _ResponsiveFieldPair(
+            first: _TextControllerOptionField(
+              controller: propertyTypeController,
+              label: 'Property type',
+              hint: 'Select property type',
+              searchHint: 'Search property types...',
+              items: _propertyTypeOptions,
+            ),
+            second: _TextControllerOptionField(
+              controller: configurationController,
+              label: 'Configuration',
+              hint: 'Select configuration',
+              searchHint: 'Search configurations...',
+              items: _configurationOptions,
+            ),
           ),
           SizedBox(height: 14.h),
-          Row(
-            children: [
-              Expanded(
-                child: _TextControllerOptionField(
-                  controller: budgetRangeController,
-                  label: 'Budget',
-                  hint: 'Select budget',
-                  searchHint: 'Search budgets...',
-                  items: _budgetOptions,
-                ),
-              ),
-              SizedBox(width: 12.w),
-              Expanded(
-                child: _TextInput(
-                  controller: budgetUnitController,
-                  label: 'Budget unit',
-                  hint: 'Lakh, Cr, INR',
-                ),
-              ),
-            ],
+          _ResponsiveFieldPair(
+            first: _TextControllerOptionField(
+              controller: budgetRangeController,
+              label: 'Budget',
+              hint: 'Select budget',
+              searchHint: 'Search budgets...',
+              items: _budgetOptions,
+            ),
+            second: _TextInput(
+              controller: budgetUnitController,
+              label: 'Budget unit',
+              hint: 'Lakh, Cr, INR',
+            ),
           ),
           SizedBox(height: 14.h),
-          Row(
-            children: [
-              Expanded(
-                child: _TextInput(
-                  controller: minBudgetController,
-                  label: 'Min budget',
-                  hint: 'Enter minimum budget',
-                  keyboardType: TextInputType.number,
-                ),
-              ),
-              SizedBox(width: 12.w),
-              Expanded(
-                child: _TextInput(
-                  controller: maxBudgetController,
-                  label: 'Max budget',
-                  hint: 'Enter maximum budget',
-                  keyboardType: TextInputType.number,
-                ),
-              ),
-            ],
+          _ResponsiveFieldPair(
+            first: _TextInput(
+              controller: minBudgetController,
+              label: 'Min budget',
+              hint: 'Enter minimum budget',
+              keyboardType: TextInputType.number,
+            ),
+            second: _TextInput(
+              controller: maxBudgetController,
+              label: 'Max budget',
+              hint: 'Enter maximum budget',
+              keyboardType: TextInputType.number,
+            ),
           ),
           SizedBox(height: 14.h),
-          Row(
-            children: [
-              Expanded(
-                child: _TextInput(
-                  controller: preferredLocationController,
-                  label: 'Preferred location',
-                  hint: 'Enter preferred location',
-                ),
-              ),
-              SizedBox(width: 12.w),
-              Expanded(
-                child: _TextInput(
-                  controller: possessionTimelineController,
-                  label: 'Possession timeline',
-                  hint: 'Immediate, 6 months, 1 year',
-                ),
-              ),
-            ],
+          _ResponsiveFieldPair(
+            first: _TextInput(
+              controller: preferredLocationController,
+              label: 'Preferred location',
+              hint: 'Enter preferred location',
+            ),
+            second: _TextInput(
+              controller: possessionTimelineController,
+              label: 'Possession timeline',
+              hint: 'Immediate, 6 months, 1 year',
+            ),
           ),
           SizedBox(height: 14.h),
-          Row(
-            children: [
-              Expanded(
-                child: _TextInput(
-                  controller: carpetAreaRangeController,
-                  label: 'Carpet area range',
-                  hint: 'Example: 700 - 950 sq.ft.',
-                ),
-              ),
-              SizedBox(width: 12.w),
-              Expanded(
-                child: _TextInput(
-                  controller: purposeController,
-                  label: 'Purpose',
-                  hint: 'Investment, self-use',
-                ),
-              ),
-            ],
+          _ResponsiveFieldPair(
+            first: _TextInput(
+              controller: carpetAreaRangeController,
+              label: 'Carpet area range',
+              hint: 'Example: 700 - 950 sq.ft.',
+            ),
+            second: _TextInput(
+              controller: purposeController,
+              label: 'Purpose',
+              hint: 'Investment, self-use',
+            ),
           ),
           SizedBox(height: 14.h),
-          Row(
-            children: [
-              Expanded(
-                child: _TextInput(
-                  controller: minAreaController,
-                  label: 'Min area',
-                  hint: 'Minimum area',
-                  keyboardType: TextInputType.number,
-                ),
-              ),
-              SizedBox(width: 12.w),
-              Expanded(
-                child: _TextInput(
-                  controller: maxAreaController,
-                  label: 'Max area',
-                  hint: 'Maximum area',
-                  keyboardType: TextInputType.number,
-                ),
-              ),
-            ],
+          _ResponsiveFieldPair(
+            first: _TextInput(
+              controller: minAreaController,
+              label: 'Min area',
+              hint: 'Minimum area',
+              keyboardType: TextInputType.number,
+            ),
+            second: _TextInput(
+              controller: maxAreaController,
+              label: 'Max area',
+              hint: 'Maximum area',
+              keyboardType: TextInputType.number,
+            ),
           ),
           SizedBox(height: 14.h),
-          Row(
-            children: [
-              Expanded(
-                child: _TextInput(
-                  controller: zoneController,
-                  label: 'Zone',
-                  hint: 'Enter zone',
-                ),
-              ),
-              SizedBox(width: 12.w),
-              Expanded(
-                child: _TextInput(
-                  controller: occupationController,
-                  label: 'Occupation',
-                  hint: 'Enter occupation',
-                ),
-              ),
-            ],
+          _ResponsiveFieldPair(
+            first: _TextInput(
+              controller: zoneController,
+              label: 'Zone',
+              hint: 'Enter zone',
+            ),
+            second: _TextInput(
+              controller: occupationController,
+              label: 'Occupation',
+              hint: 'Enter occupation',
+            ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _ResponsiveFieldPair extends StatelessWidget {
+  const _ResponsiveFieldPair({required this.first, required this.second});
+
+  final Widget first;
+  final Widget second;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 600) {
+          return Column(
+            children: [
+              first,
+              SizedBox(height: 14.h),
+              second,
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: first),
+            SizedBox(width: 12.w),
+            Expanded(child: second),
+          ],
+        );
+      },
     );
   }
 }
@@ -1536,68 +1487,6 @@ class _SectionShell extends StatelessWidget {
   }
 }
 
-class _SidePanel extends StatelessWidget {
-  const _SidePanel({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.children,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.all(14.r),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFBFCFE),
-        borderRadius: BorderRadius.circular(10.r),
-        border: Border.all(color: const Color(0xFFD9E3EF)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, color: AppColors.orangeDeep, size: 22.sp),
-              SizedBox(width: 10.w),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: GoogleFonts.inter(
-                        fontSize: 13.sp,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.navy,
-                      ),
-                    ),
-                    Text(
-                      subtitle,
-                      style: GoogleFonts.inter(
-                        fontSize: 11.sp,
-                        fontWeight: FontWeight.w500,
-                        color: const Color(0xFF64748B),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 14.h),
-          ...children,
-        ],
-      ),
-    );
-  }
-}
-
 class _TextInput extends StatelessWidget {
   const _TextInput({
     required this.controller,
@@ -1605,6 +1494,8 @@ class _TextInput extends StatelessWidget {
     required this.hint,
     this.validator,
     this.keyboardType,
+    this.maxLines = 1,
+    this.textInputAction = TextInputAction.next,
   });
 
   final TextEditingController controller;
@@ -1612,6 +1503,8 @@ class _TextInput extends StatelessWidget {
   final String hint;
   final String? Function(String?)? validator;
   final TextInputType? keyboardType;
+  final int maxLines;
+  final TextInputAction textInputAction;
 
   @override
   Widget build(BuildContext context) {
@@ -1621,6 +1514,11 @@ class _TextInput extends StatelessWidget {
         controller: controller,
         validator: validator,
         keyboardType: keyboardType,
+        maxLines: maxLines,
+        textInputAction: textInputAction,
+        onFieldSubmitted: textInputAction == TextInputAction.next
+            ? (_) => FocusScope.of(context).nextFocus()
+            : null,
         decoration: _inputDecoration(hint),
       ),
     );
@@ -1659,8 +1557,10 @@ class _PhoneInput extends StatelessWidget {
           Expanded(
             child: TextFormField(
               controller: numberController,
-              validator: required ? validator : null,
+              validator: validator,
               keyboardType: TextInputType.phone,
+              textInputAction: TextInputAction.next,
+              onFieldSubmitted: (_) => FocusScope.of(context).nextFocus(),
               decoration: _inputDecoration(
                 required ? 'Enter mobile number' : 'Enter alternate number',
               ),
@@ -2395,6 +2295,26 @@ InputDecoration _inputDecoration(String hint) {
 
 String? Function(String?) _required(String message) {
   return (value) => value == null || value.trim().isEmpty ? message : null;
+}
+
+String? _emailValidator(String? value) {
+  final email = value?.trim() ?? '';
+  if (email.isEmpty) return null;
+  final valid = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email);
+  return valid ? null : 'Enter a valid email address.';
+}
+
+String? Function(String?) _phoneValidator({required bool required}) {
+  return (value) {
+    final phone = value?.replaceAll(RegExp(r'\D'), '') ?? '';
+    if (phone.isEmpty) {
+      return required ? 'Phone number is required.' : null;
+    }
+    if (phone.length < 7 || phone.length > 15) {
+      return 'Enter a valid phone number.';
+    }
+    return null;
+  };
 }
 
 List<_ApiOption> _mergeOptions(

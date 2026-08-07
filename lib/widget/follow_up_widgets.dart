@@ -6,10 +6,16 @@ import 'package:truerealtycrm/data/models/follow_up_model.dart';
 
 /// Shared dashboard-style surface used across Follow-Up sections.
 class FollowUpSectionCard extends StatelessWidget {
-  const FollowUpSectionCard({super.key, required this.child, this.padding});
+  const FollowUpSectionCard({
+    super.key,
+    required this.child,
+    this.padding,
+    this.borderRadius,
+  });
 
   final Widget child;
   final EdgeInsetsGeometry? padding;
+  final double? borderRadius;
 
   @override
   Widget build(BuildContext context) {
@@ -18,7 +24,7 @@ class FollowUpSectionCard extends StatelessWidget {
       padding: padding ?? EdgeInsets.all(16.r),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18.r),
+        borderRadius: BorderRadius.circular((borderRadius ?? 18).r),
         border: Border.all(color: const Color(0xFFD9E3EF)),
         boxShadow: const [
           BoxShadow(
@@ -64,8 +70,9 @@ class FollowUpMetricCard extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(18.r),
+        borderRadius: BorderRadius.circular(14.r),
         child: FollowUpSectionCard(
+          borderRadius: 14,
           padding: EdgeInsets.fromLTRB(14.w, 13.h, 14.w, 12.h),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -287,13 +294,13 @@ class FollowUpLeadCard extends StatelessWidget {
                 children: [
                   CircleAvatar(
                     radius: 20.r,
-                    backgroundColor: const Color(0xFFFFF1E8),
+                    backgroundColor: const Color(0xFF10213D),
                     child: Text(
                       _initials(item.leadName),
                       style: GoogleFonts.inter(
                         fontSize: 12.sp,
                         fontWeight: FontWeight.w800,
-                        color: AppColors.orangeDeep,
+                        color: Colors.white,
                       ),
                     ),
                   ),
@@ -333,10 +340,11 @@ class FollowUpLeadCard extends StatelessWidget {
                   if (onMore != null) ...[
                     SizedBox(width: 2.w),
                     IconButton(
+                      tooltip: 'View lead details',
                       onPressed: onMore,
                       visualDensity: VisualDensity.compact,
                       icon: Icon(
-                        Icons.more_vert_rounded,
+                        Icons.visibility_outlined,
                         size: 20.sp,
                         color: AppColors.textTertiary,
                       ),
@@ -445,7 +453,7 @@ class FollowUpLeadCard extends StatelessWidget {
                           style: OutlinedButton.styleFrom(
                             foregroundColor: AppColors.orangeDeep,
                             side: const BorderSide(color: Color(0xFFFFD8C2)),
-                            padding: EdgeInsets.symmetric(vertical: 10.h),
+                            padding: EdgeInsets.symmetric(vertical: 8.h),
                           ),
                         ),
                       ),
@@ -460,7 +468,7 @@ class FollowUpLeadCard extends StatelessWidget {
                           style: OutlinedButton.styleFrom(
                             foregroundColor: const Color(0xFF168553),
                             side: const BorderSide(color: Color(0xFFB7E4C7)),
-                            padding: EdgeInsets.symmetric(vertical: 10.h),
+                            padding: EdgeInsets.symmetric(vertical: 8.h),
                           ),
                         ),
                       ),

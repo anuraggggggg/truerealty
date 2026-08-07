@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:truerealtycrm/constant/colors_screen.dart';
 import 'package:truerealtycrm/data/models/follow_up_model.dart';
 import 'package:truerealtycrm/provider/follow_ups_provider.dart';
+import 'package:truerealtycrm/provider/lead_master_provider.dart';
 import 'package:truerealtycrm/provider/leads_provider.dart';
 import 'package:truerealtycrm/router/app_router.dart';
 import 'package:truerealtycrm/widget/app_loading.dart';
@@ -95,6 +96,21 @@ class _MyFollowUpsScreenState extends State<MyFollowUpsScreen> {
     Navigator.of(
       context,
     ).pushNamed(AppRouter.leadDetail, arguments: LeadModel.fromJson(lead));
+  }
+
+  Future<void> _openReschedule(FollowUpModel item) async {
+    if (item.leadId == null || item.leadId!.isEmpty || item.id.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Follow-up identifiers are unavailable.')),
+      );
+      return;
+    }
+    final updated = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _RescheduleFollowUpDialog(item: item),
+    );
+    if (updated == true && mounted) await _refresh();
   }
 
   @override
@@ -201,9 +217,10 @@ class _MyFollowUpsScreenState extends State<MyFollowUpsScreen> {
                     final item = visible[index];
                     return FollowUpLeadCard(
                       item: item,
-                      onTap: () => _openLead(item),
+                      onTap: () => _openReschedule(item),
                       onCall: () => _call(item.phone),
                       onWhatsApp: () => _openWhatsApp(item.phone),
+                      onMore: () => _openLead(item),
                     );
                   },
                 ),
@@ -229,6 +246,554 @@ class _MyFollowUpsScreenState extends State<MyFollowUpsScreen> {
       ),
     );
   }
+}
+
+class _RescheduleFollowUpDialog extends StatefulWidget {
+  const _RescheduleFollowUpDialog({required this.item});
+
+  final FollowUpModel item;
+
+  @override
+  State<_RescheduleFollowUpDialog> createState() =>
+      _RescheduleFollowUpDialogState();
+}
+
+class _RescheduleFollowUpDialogState extends State<_RescheduleFollowUpDialog> {
+  static const _budgetOptions = [
+    '50 Lakh - 75 Lakh',
+    '75 Lakh - 1 Cr',
+    '1 Cr - 1.5 Cr',
+    '1.5 Cr - 2 Cr',
+    '2 Cr - 3 Cr',
+    '3 Cr+',
+  ];
+  static const _configurationOptions = [
+    '1 BHK',
+    '2 BHK',
+    '3 BHK',
+    '4 BHK',
+    '5 BHK',
+    'Studio',
+    'Penthouse',
+  ];
+  late final TextEditingController _remarksController;
+  late final TextEditingController _notesController;
+  late final TextEditingController _locationController;
+  late DateTime _date;
+  late TimeOfDay _time;
+  bool _setReminder = true;
+  bool _saving = false;
+  bool _loadingOptions = true;
+  String? _error;
+  String? _statusId;
+  String? _temperatureId;
+  String? _sourceId;
+  String? _budget;
+  String? _configuration;
+  List<_FollowUpOption> _statuses = const [];
+  List<_FollowUpOption> _temperatures = const [];
+  List<_FollowUpOption> _sources = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    final scheduled = widget.item.scheduledAt ?? DateTime.now();
+    _date = scheduled;
+    _time = TimeOfDay.fromDateTime(scheduled);
+    _remarksController = TextEditingController(
+      text: widget.item.nextAction ?? '',
+    );
+    _notesController = TextEditingController(text: widget.item.notes ?? '');
+    final raw = widget.item.leadRaw ?? const <String, dynamic>{};
+    final requirement = raw['requirement'] is Map
+        ? Map<String, dynamic>.from(raw['requirement'] as Map)
+        : const <String, dynamic>{};
+    _statusId = _dialogText(raw['statusId']);
+    _temperatureId = _dialogText(raw['temperatureId']);
+    _sourceId = _dialogText(raw['sourceId']);
+    _budget = _dialogText(requirement['budgetRange']);
+    _configuration = _dialogText(requirement['configuration']);
+    _locationController = TextEditingController(
+      text:
+          _dialogText(requirement['preferredLocation']) ??
+          widget.item.location,
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadOptions());
+  }
+
+  @override
+  void dispose() {
+    _remarksController.dispose();
+    _notesController.dispose();
+    _locationController.dispose();
+    super.dispose();
+  }
+
+  Future<List<_FollowUpOption>> _masterOptions(
+    List<String> categories,
+  ) async {
+    final provider = context.read<LeadMasterProvider>();
+    for (final category in categories) {
+      final response = await provider.fetchMasterValues(
+        masterCategory: category,
+      );
+      final options = _followUpOptions(response?.data);
+      if (options.isNotEmpty) return options;
+    }
+    return const [];
+  }
+
+  Future<void> _loadOptions() async {
+    final values = await Future.wait([
+      _masterOptions(const ['status', 'lead_status', 'lead-status']),
+      _masterOptions(const [
+        'temperature',
+        'lead_temperature',
+        'lead-temperature',
+      ]),
+      _masterOptions(const ['source', 'lead_source', 'lead-source']),
+    ]);
+    if (!mounted) return;
+    setState(() {
+      _statuses = values[0];
+      _temperatures = values[1];
+      _sources = values[2];
+      _loadingOptions = false;
+    });
+  }
+
+  Future<void> _pickDate() async {
+    final value = await showDatePicker(
+      context: context,
+      initialDate: _date,
+      firstDate: DateTime.now().subtract(const Duration(days: 1)),
+      lastDate: DateTime.now().add(const Duration(days: 730)),
+    );
+    if (value != null && mounted) setState(() => _date = value);
+  }
+
+  Future<void> _pickTime() async {
+    final value = await showTimePicker(context: context, initialTime: _time);
+    if (value != null && mounted) setState(() => _time = value);
+  }
+
+  DateTime get _scheduledAt =>
+      DateTime(_date.year, _date.month, _date.day, _time.hour, _time.minute);
+
+  String get _apiScheduledAt {
+    final value = _scheduledAt;
+    final hour = value.hour % 12 == 0 ? 12 : value.hour % 12;
+    return '${value.year}-${value.month.toString().padLeft(2, '0')}-'
+        '${value.day.toString().padLeft(2, '0')} '
+        '${hour.toString().padLeft(2, '0')}:'
+        '${value.minute.toString().padLeft(2, '0')} '
+        '${value.hour < 12 ? 'AM' : 'PM'}';
+  }
+
+  Future<void> _submit() async {
+    if (_saving) return;
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    final reminderBody = <String, dynamic>{
+      'scheduledAt': _apiScheduledAt,
+      'remarks': _remarksController.text.trim(),
+      'notes': _notesController.text.trim(),
+      'setReminder': _setReminder,
+      'status': 'Rescheduled',
+    };
+    final leadBody = <String, dynamic>{
+      ...reminderBody,
+      if (_statusId != null) 'statusId': _statusId,
+      if (_temperatureId != null) 'temperatureId': _temperatureId,
+      if (_sourceId != null) 'sourceId': _sourceId,
+      if (_budget != null) 'budgetRange': _budget,
+      if (_configuration != null) 'configuration': _configuration,
+      if (_locationController.text.trim().isNotEmpty)
+        'preferredLocation': _locationController.text.trim(),
+    };
+    final provider = context.read<LeadProvider>();
+    final leadResponse = await provider.updateLeadFromApi(
+      leadId: widget.item.leadId!,
+      body: leadBody,
+    );
+    if (leadResponse == null) {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _error = provider.error ?? 'Unable to update the lead reminder.';
+      });
+      return;
+    }
+    final followUpResponse = await provider.updateFollowUp(
+      leadId: widget.item.leadId!,
+      followUpId: widget.item.id,
+      body: reminderBody,
+    );
+    if (!mounted) return;
+    if (followUpResponse == null) {
+      setState(() {
+        _saving = false;
+        _error = provider.error ?? 'Unable to update the follow-up.';
+      });
+      return;
+    }
+    Navigator.pop(context, true);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Follow-up rescheduled successfully.')),
+    );
+  }
+
+  InputDecoration _dropdownDecoration(String label) => InputDecoration(
+    labelText: label,
+    filled: true,
+    fillColor: Colors.white,
+    isDense: true,
+    contentPadding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 13.h),
+    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10.r)),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(10.r),
+      borderSide: const BorderSide(color: Color(0xFFD8E0EC)),
+    ),
+  );
+
+  Widget _masterDropdown(
+    String label,
+    String? value,
+    List<_FollowUpOption> options,
+    ValueChanged<String?> onChanged,
+  ) {
+    final selected = options.any((option) => option.id == value) ? value : null;
+    return DropdownButtonFormField<String>(
+      initialValue: selected,
+      isExpanded: true,
+      decoration: _dropdownDecoration(label),
+      hint: Text('Select $label'),
+      items: options
+          .map(
+            (option) => DropdownMenuItem(
+              value: option.id,
+              child: Text(option.label, overflow: TextOverflow.ellipsis),
+            ),
+          )
+          .toList(),
+      onChanged: options.isEmpty ? null : onChanged,
+    );
+  }
+
+  Widget _valueDropdown(
+    String label,
+    String? value,
+    List<String> options,
+    ValueChanged<String?> onChanged,
+  ) {
+    final values = <String>{...options, ?value}.toList();
+    return DropdownButtonFormField<String>(
+      initialValue: value,
+      isExpanded: true,
+      decoration: _dropdownDecoration(label),
+      hint: Text('Select $label'),
+      items: values
+          .map(
+            (option) => DropdownMenuItem(
+              value: option,
+              child: Text(option, overflow: TextOverflow.ellipsis),
+            ),
+          )
+          .toList(),
+      onChanged: onChanged,
+    );
+  }
+
+  Widget _dialogFieldGrid(List<Widget> fields) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth < 500
+            ? constraints.maxWidth
+            : (constraints.maxWidth - 12.w) / 2;
+        return Wrap(
+          spacing: 12.w,
+          runSpacing: 12.h,
+          children: fields
+              .map((field) => SizedBox(width: width, child: field))
+              .toList(),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    InputDecoration decoration(String label) => InputDecoration(
+      labelText: label,
+      filled: true,
+      fillColor: Colors.white,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10.r)),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10.r),
+        borderSide: const BorderSide(color: Color(0xFFD8E0EC)),
+      ),
+    );
+
+    return Dialog(
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.transparent,
+      insetPadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 24.h),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.r)),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: 680.w, maxHeight: 720.h),
+        child: SingleChildScrollView(
+          padding: EdgeInsets.all(20.r),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Update reminder, status & remark',
+                          style: GoogleFonts.inter(
+                            fontSize: 19.sp,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.navy,
+                          ),
+                        ),
+                        SizedBox(height: 4.h),
+                        Text(
+                          'Update lead fields, save the current follow-up remark, and create the next reminder for ${widget.item.leadName}.',
+                          style: GoogleFonts.inter(
+                            fontSize: 12.sp,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: _saving ? null : () => Navigator.pop(context),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+              SizedBox(height: 18.h),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final dateButton = OutlinedButton.icon(
+                    onPressed: _pickDate,
+                    icon: const Icon(Icons.calendar_today_outlined),
+                    label: Text(
+                      '${_date.day.toString().padLeft(2, '0')}/'
+                      '${_date.month.toString().padLeft(2, '0')}/${_date.year}',
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: Size.fromHeight(48.h),
+                    ),
+                  );
+                  final timeButton = OutlinedButton.icon(
+                    onPressed: _pickTime,
+                    icon: const Icon(Icons.schedule_rounded),
+                    label: Text(_time.format(context)),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: Size.fromHeight(48.h),
+                    ),
+                  );
+                  if (constraints.maxWidth < 480) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        dateButton,
+                        SizedBox(height: 12.h),
+                        timeButton,
+                      ],
+                    );
+                  }
+                  return Row(
+                    children: [
+                      Expanded(child: dateButton),
+                      SizedBox(width: 12.w),
+                      Expanded(child: timeButton),
+                    ],
+                  );
+                },
+              ),
+              SizedBox(height: 14.h),
+              TextField(
+                controller: _remarksController,
+                minLines: 3,
+                maxLines: 5,
+                decoration: decoration('Remarks'),
+              ),
+              SizedBox(height: 14.h),
+              if (_loadingOptions)
+                const LinearProgressIndicator(minHeight: 2)
+              else
+                _dialogFieldGrid([
+                  _masterDropdown(
+                    'Lead Status',
+                    _statusId,
+                    _statuses,
+                    (value) => setState(() => _statusId = value),
+                  ),
+                  _masterDropdown(
+                    'Lead Type',
+                    _temperatureId,
+                    _temperatures,
+                    (value) => setState(() => _temperatureId = value),
+                  ),
+                  _valueDropdown(
+                    'Budget',
+                    _budget,
+                    _budgetOptions,
+                    (value) => setState(() => _budget = value),
+                  ),
+                  TextField(
+                    controller: _locationController,
+                    decoration: decoration('Location'),
+                  ),
+                  _valueDropdown(
+                    'Configuration',
+                    _configuration,
+                    _configurationOptions,
+                    (value) => setState(() => _configuration = value),
+                  ),
+                  _masterDropdown(
+                    'Source',
+                    _sourceId,
+                    _sources,
+                    (value) => setState(() => _sourceId = value),
+                  ),
+                ]),
+              SizedBox(height: 14.h),
+              TextField(
+                controller: _notesController,
+                minLines: 2,
+                maxLines: 4,
+                decoration: decoration('Notes'),
+              ),
+              SizedBox(height: 10.h),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                value: _setReminder,
+                activeColor: AppColors.orangeStrong,
+                title: Text(
+                  'Set reminder for assigned owner',
+                  style: GoogleFonts.inter(
+                    fontSize: 12.sp,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.navy,
+                  ),
+                ),
+                onChanged: (value) =>
+                    setState(() => _setReminder = value ?? true),
+              ),
+              if (_error != null) ...[
+                SizedBox(height: 8.h),
+                Text(
+                  _error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ],
+              SizedBox(height: 16.h),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  OutlinedButton(
+                    onPressed: _saving ? null : () => Navigator.pop(context),
+                    child: const Text('Cancel'),
+                  ),
+                  SizedBox(width: 10.w),
+                  ElevatedButton(
+                    onPressed: _saving ? null : _submit,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.orangeStrong,
+                      foregroundColor: Colors.white,
+                      minimumSize: Size(142.w, 48.h),
+                    ),
+                    child: _saving
+                        ? SizedBox(
+                            width: 18.w,
+                            height: 18.w,
+                            child: const CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text('Save changes'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FollowUpOption {
+  const _FollowUpOption({required this.id, required this.label});
+
+  final String id;
+  final String label;
+
+  factory _FollowUpOption.fromMap(Map<dynamic, dynamic> map) {
+    String read(List<String> keys) {
+      for (final key in keys) {
+        final value = map[key];
+        if (value != null && value.toString().trim().isNotEmpty) {
+          return value.toString().trim();
+        }
+      }
+      return '';
+    }
+
+    final id = read(const ['id', '_id', 'value', 'slug', 'key']);
+    final label = read(const [
+      'name',
+      'label',
+      'title',
+      'displayName',
+      'value',
+    ]);
+    return _FollowUpOption(id: id, label: label.isEmpty ? id : label);
+  }
+}
+
+String? _dialogText(Object? value) {
+  final text = value?.toString().trim() ?? '';
+  return text.isEmpty || text == '-' ? null : text;
+}
+
+List<_FollowUpOption> _followUpOptions(Object? source) {
+  if (source is List) {
+    return source
+        .map((item) {
+          if (item is String) return _FollowUpOption(id: item, label: item);
+          if (item is Map) return _FollowUpOption.fromMap(item);
+          return const _FollowUpOption(id: '', label: '');
+        })
+        .where((option) => option.id.isNotEmpty && option.label.isNotEmpty)
+        .toList();
+  }
+  if (source is Map) {
+    for (final key in const [
+      'data',
+      'items',
+      'results',
+      'rows',
+      'values',
+      'masterValues',
+    ]) {
+      final options = _followUpOptions(source[key]);
+      if (options.isNotEmpty) return options;
+    }
+  }
+  return const [];
 }
 
 class _SummaryMetricsGrid extends StatelessWidget {
