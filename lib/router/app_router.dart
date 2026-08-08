@@ -4,7 +4,6 @@ import 'package:truerealtycrm/provider/leads_provider.dart';
 import 'package:truerealtycrm/provider/auth_provider.dart';
 import 'package:truerealtycrm/provider/dashboard_provider.dart';
 import 'package:truerealtycrm/screen/login_screen.dart';
-import 'package:truerealtycrm/screen/leads_screen.dart';
 import 'package:truerealtycrm/screen/lead_detail_screen.dart';
 import 'package:truerealtycrm/screen/lead_profile_management_screen.dart';
 import 'package:truerealtycrm/screen/add_lead_screen.dart';
@@ -17,7 +16,6 @@ import 'package:truerealtycrm/screen/tasks_screen.dart';
 import 'package:truerealtycrm/screen/reports_screen.dart';
 import 'package:truerealtycrm/screen/logout_confirmation_screen.dart';
 import 'package:truerealtycrm/screen/site_visits_screen.dart';
-import 'package:truerealtycrm/screen/telecaller_lead_details_screen.dart';
 import 'package:truerealtycrm/screen/follow_up_test_screen.dart';
 import 'package:truerealtycrm/screen/my_leads_filter_screen.dart';
 import 'package:truerealtycrm/screen/my_follow_ups_screen.dart';
@@ -78,7 +76,7 @@ class AppRouter {
       case dashboard:
         return MaterialPageRoute(builder: (_) => const DashboardScreen());
       case leads:
-        return MaterialPageRoute(builder: (_) => const LeadListWidget());
+        return MaterialPageRoute(builder: (_) => const MyLeadsScreen());
       case leadDetail:
         final args = settings.arguments;
         final leadDetailArgs = args is LeadDetailScreenArgs
@@ -147,9 +145,7 @@ class AppRouter {
         final lead = settings.arguments is LeadModel
             ? settings.arguments as LeadModel
             : null;
-        return MaterialPageRoute(
-          builder: (_) => TelecallerLeadDetailsScreen(lead: lead),
-        );
+        return MaterialPageRoute(builder: (_) => LeadDetailScreen(lead: lead));
       case telecallerCommunication:
       case callHistory:
         return MaterialPageRoute(
@@ -208,10 +204,6 @@ class _LeadDetailRouteWrapper extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final role = context.read<AuthProvider>().role;
-    if (role == UserRole.telecaller) {
-      return TelecallerLeadDetailsScreen(lead: lead);
-    }
     return LeadDetailScreen(initialTabIndex: initialTabIndex, lead: lead);
   }
 }

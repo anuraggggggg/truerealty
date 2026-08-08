@@ -14,9 +14,10 @@ import 'package:truerealtycrm/widget/app_loading.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class ProjectsScreen extends StatefulWidget {
-  const ProjectsScreen({super.key, this.onMenuTap});
+  const ProjectsScreen({super.key, this.onMenuTap, this.initialProjectId});
 
   final VoidCallback? onMenuTap;
+  final String? initialProjectId;
 
   @override
   State<ProjectsScreen> createState() => _ProjectsScreenState();
@@ -28,9 +29,19 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
-      context.read<ProjectProvider>().loadProjects();
+      final provider = context.read<ProjectProvider>();
+      await provider.loadProjects();
+      if (!mounted) return;
+      final projectId = widget.initialProjectId?.trim() ?? '';
+      if (projectId.isEmpty) return;
+      for (final project in provider.projects) {
+        if (project.id == projectId) {
+          _showProjectDetails(project);
+          break;
+        }
+      }
     });
   }
 
@@ -1529,8 +1540,10 @@ class _ProjectDetailsSheet extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.only(bottom: 10.h),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
+            flex: 2,
             child: Text(
               label,
               style: GoogleFonts.inter(
@@ -1539,12 +1552,19 @@ class _ProjectDetailsSheet extends StatelessWidget {
               ),
             ),
           ),
-          Text(
-            value,
-            style: GoogleFonts.inter(
-              fontSize: 13.sp,
-              fontWeight: FontWeight.w700,
-              color: AppColors.navy,
+          SizedBox(width: 12.w),
+          Expanded(
+            flex: 3,
+            child: Text(
+              value,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.end,
+              style: GoogleFonts.inter(
+                fontSize: 13.sp,
+                fontWeight: FontWeight.w700,
+                color: AppColors.navy,
+              ),
             ),
           ),
         ],

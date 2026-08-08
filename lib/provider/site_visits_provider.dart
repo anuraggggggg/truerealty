@@ -2,13 +2,7 @@ import 'package:truerealtycrm/data/models/api_response.dart';
 import 'package:truerealtycrm/data/repositories/site_visit_repository.dart';
 import 'package:truerealtycrm/provider/api_provider_base.dart';
 
-enum SiteVisitListFilter {
-  all,
-  upcoming,
-  scheduled,
-  completed,
-  cancelled,
-}
+enum SiteVisitListFilter { all, upcoming, scheduled, completed, cancelled }
 
 extension SiteVisitListFilterX on SiteVisitListFilter {
   String get label {
@@ -192,9 +186,7 @@ class SiteVisitModel {
     return SiteVisitModel(
       id: _text(json['id'] ?? json['_id']),
       displayId: _text(json['displayId'] ?? json['visitId']),
-      leadId: _text(
-        json['leadId'] ?? lead['id'] ?? lead['_id'],
-      ),
+      leadId: _text(json['leadId'] ?? lead['id'] ?? lead['_id']),
       leadDisplayId: _firstNonEmpty([
         json['leadDisplayId'],
         lead['displayId'],
@@ -384,41 +376,44 @@ class SiteVisitProvider extends ApiProviderBase {
   List<SiteVisitModel> get visibleVisits {
     final query = _searchQuery.trim().toLowerCase();
     final executiveId = _selectedExecutiveId?.trim().toLowerCase() ?? '';
-    return _siteVisits.where((visit) {
-      if (!_filter.matches(visit)) return false;
-      if (executiveId.isNotEmpty &&
-          visit.executiveId.trim().toLowerCase() != executiveId) {
-        return false;
-      }
-      if (query.isEmpty) return true;
-      return visit.leadName.toLowerCase().contains(query) ||
-          visit.phone.toLowerCase().contains(query) ||
-          visit.project.toLowerCase().contains(query) ||
-          visit.location.toLowerCase().contains(query) ||
-          visit.executiveName.toLowerCase().contains(query) ||
-          visit.leadDisplayId.toLowerCase().contains(query) ||
-          visit.status.toLowerCase().contains(query) ||
-          visit.type.toLowerCase().contains(query);
-    }).toList(growable: false);
+    return _siteVisits
+        .where((visit) {
+          if (!_filter.matches(visit)) return false;
+          if (executiveId.isNotEmpty &&
+              visit.executiveId.trim().toLowerCase() != executiveId) {
+            return false;
+          }
+          if (query.isEmpty) return true;
+          return visit.leadName.toLowerCase().contains(query) ||
+              visit.phone.toLowerCase().contains(query) ||
+              visit.project.toLowerCase().contains(query) ||
+              visit.location.toLowerCase().contains(query) ||
+              visit.executiveName.toLowerCase().contains(query) ||
+              visit.leadDisplayId.toLowerCase().contains(query) ||
+              visit.status.toLowerCase().contains(query) ||
+              visit.type.toLowerCase().contains(query);
+        })
+        .toList(growable: false);
   }
 
   List<SiteVisitModel> get todayAndUpcoming {
     final now = DateTime.now();
     final startOfToday = DateTime(now.year, now.month, now.day);
-    final items = _siteVisits.where((visit) {
-      final status = visit.status.toLowerCase();
-      if (status.contains('completed') || status.contains('cancel')) {
-        return false;
-      }
-      final scheduled = visit.scheduledAt;
-      if (scheduled == null) return status.contains('upcoming');
-      return !scheduled.isBefore(startOfToday) || status.contains('upcoming');
-    }).toList()
-      ..sort((a, b) {
-        final aDate = a.scheduledAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-        final bDate = b.scheduledAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-        return aDate.compareTo(bDate);
-      });
+    final items =
+        _siteVisits.where((visit) {
+          final status = visit.status.toLowerCase();
+          if (status.contains('completed') || status.contains('cancel')) {
+            return false;
+          }
+          final scheduled = visit.scheduledAt;
+          if (scheduled == null) return status.contains('upcoming');
+          return !scheduled.isBefore(startOfToday) ||
+              status.contains('upcoming');
+        }).toList()..sort((a, b) {
+          final aDate = a.scheduledAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+          final bDate = b.scheduledAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+          return aDate.compareTo(bDate);
+        });
     return items.take(5).toList(growable: false);
   }
 
@@ -443,6 +438,22 @@ class SiteVisitProvider extends ApiProviderBase {
     if (_searchQuery == value) return;
     _searchQuery = value;
     notifyListeners();
+  }
+
+  /// Clears UI-only filters when entering the shared Site Visits screen.
+  ///
+  /// The provider lives above the role dashboards, so these values otherwise
+  /// survive navigation and even a role/session change. API-loaded visits are
+  /// intentionally preserved until the screen refreshes them.
+  void resetViewFilters() {
+    final changed =
+        _filter != SiteVisitListFilter.all ||
+        _selectedExecutiveId != null ||
+        _searchQuery.isNotEmpty;
+    _filter = SiteVisitListFilter.all;
+    _selectedExecutiveId = null;
+    _searchQuery = '';
+    if (changed) notifyListeners();
   }
 
   Future<ApiResponse<dynamic>?> fetchSiteVisits({
@@ -477,6 +488,41 @@ class SiteVisitProvider extends ApiProviderBase {
       notifyListeners();
     }
     return response;
+  }
+
+  /// Loads the visits visible through a set of field executives.
+  ///
+  /// Some role scopes return an empty result for the unfiltered list while
+  /// still granting access to specific executives through the options API.
+  Future<void> fetchSiteVisitsForExecutives(
+    Iterable<String> executiveIds,
+  ) async {
+    final ids = executiveIds
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    if (ids.isEmpty) return;
+
+    final visitsById = <String, SiteVisitModel>{};
+    for (final executiveId in ids) {
+      final response = await runApiRequest(
+        () => _repository.listSiteVisits(
+          fieldExecutiveId: executiveId,
+          limit: 100,
+        ),
+      );
+      if (response == null) continue;
+      for (final json in _extractList(response.data)) {
+        final visit = SiteVisitModel.fromJson(json);
+        if (visit.id.isNotEmpty) visitsById[visit.id] = visit;
+      }
+    }
+
+    _siteVisits
+      ..clear()
+      ..addAll(visitsById.values);
+    _hasLoaded = true;
+    notifyListeners();
   }
 
   Future<ApiResponse<dynamic>?> fetchSiteVisitOptions() async {

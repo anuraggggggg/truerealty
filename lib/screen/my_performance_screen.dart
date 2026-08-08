@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:truerealtycrm/constant/colors_screen.dart';
@@ -149,6 +151,8 @@ class _MyPerformanceScreenState extends State<MyPerformanceScreen> {
   List<LeadModel> _leads = const [];
   List<dynamic> _followUps = const [];
   String _selectedPeriod = 'This Week';
+  DateTime? _customRangeStart;
+  DateTime? _customRangeEnd;
 
   @override
   void initState() {
@@ -214,6 +218,8 @@ class _MyPerformanceScreenState extends State<MyPerformanceScreen> {
         return today;
       case 'This Month':
         return DateTime(now.year, now.month);
+      case 'Custom Date':
+        return _customRangeStart ?? today;
       default:
         return _weekStart;
     }
@@ -227,9 +233,52 @@ class _MyPerformanceScreenState extends State<MyPerformanceScreen> {
         return today;
       case 'This Month':
         return DateTime(now.year, now.month + 1, 0);
+      case 'Custom Date':
+        return _customRangeEnd ?? today;
       default:
         return _weekEnd;
     }
+  }
+
+  Future<void> _selectPeriod(String period) async {
+    if (period == 'Custom Date') {
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final selectedRange = await showDateRangePicker(
+        context: context,
+        firstDate: DateTime(2020),
+        lastDate: today,
+        initialDateRange: _customRangeStart != null && _customRangeEnd != null
+            ? DateTimeRange(start: _customRangeStart!, end: _customRangeEnd!)
+            : DateTimeRange(
+                start: today.subtract(const Duration(days: 6)),
+                end: today,
+              ),
+        helpText: 'Select custom performance dates',
+        saveText: 'Apply',
+        builder: (context, child) => Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: Theme.of(context).colorScheme.copyWith(
+              primary: AppColors.orangeStrong,
+              onPrimary: Colors.white,
+            ),
+          ),
+          child: child!,
+        ),
+      );
+      if (selectedRange == null || !mounted) return;
+      setState(() {
+        _customRangeStart = selectedRange.start;
+        _customRangeEnd = selectedRange.end;
+        _selectedPeriod = period;
+      });
+      await _loadPerformance();
+      return;
+    }
+
+    if (period == _selectedPeriod) return;
+    setState(() => _selectedPeriod = period);
+    await _loadPerformance();
   }
 
   List<Object?> get _metricSource => [_kpiMap, _performanceMap, _dashboardData];
@@ -605,45 +654,131 @@ class _MyPerformanceScreenState extends State<MyPerformanceScreen> {
     if (_isExporting) return;
     setState(() => _isExporting = true);
     try {
-      final rows = <List<String>>[
-        ['My Performance Export'],
-        ['Period', _selectedPeriod],
-        ['Date From', _dateKey(_rangeStart)],
-        ['Date To', _dateKey(_rangeEnd)],
-        [],
-        ['Summary Metric', 'Value'],
-        ..._topMetrics.map(
-          (metric) => [metric.label.replaceAll('\n', ' '), metric.value],
+      String clean(String value) => value
+          .replaceAll('\n', ' ')
+          .replaceAll('—', '-')
+          .replaceAll('–', '-')
+          .replaceAll(RegExp(r'[^\x20-\x7E]'), ' ')
+          .trim();
+
+      pw.Widget reportTable({
+        required List<String> headers,
+        required List<List<String>> data,
+      }) {
+        return pw.TableHelper.fromTextArray(
+          headers: headers,
+          data: data,
+          headerStyle: pw.TextStyle(
+            fontSize: 9,
+            fontWeight: pw.FontWeight.bold,
+            color: PdfColors.white,
+          ),
+          headerDecoration: const pw.BoxDecoration(
+            color: PdfColor.fromInt(0xFF0F2B57),
+          ),
+          cellStyle: const pw.TextStyle(fontSize: 9),
+          cellPadding: const pw.EdgeInsets.symmetric(
+            horizontal: 6,
+            vertical: 5,
+          ),
+          border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+        );
+      }
+
+      final document = pw.Document();
+      document.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(30),
+          build: (_) => [
+            pw.Text(
+              'TrueRoot Realty - My Performance',
+              style: pw.TextStyle(
+                fontSize: 20,
+                fontWeight: pw.FontWeight.bold,
+                color: const PdfColor.fromInt(0xFF0F2B57),
+              ),
+            ),
+            pw.SizedBox(height: 5),
+            pw.Text(
+              '$_selectedPeriod | ${_formatDate(_rangeStart)} to ${_formatDate(_rangeEnd)}',
+              style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
+            ),
+            pw.SizedBox(height: 18),
+            pw.Text(
+              'Performance Summary',
+              style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 8),
+            reportTable(
+              headers: const ['Metric', 'Value'],
+              data: [
+                ..._topMetrics.map(
+                  (metric) => [clean(metric.label), clean(metric.value)],
+                ),
+                ..._wideMetrics.map(
+                  (metric) => [clean(metric.label), clean(metric.value)],
+                ),
+              ],
+            ),
+            pw.SizedBox(height: 18),
+            pw.Text(
+              'Call Outcomes',
+              style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 8),
+            reportTable(
+              headers: const ['Outcome', 'Count', 'Percentage'],
+              data: _callOutcomes.isEmpty
+                  ? const [
+                      ['Not available', '-', '-'],
+                    ]
+                  : _callOutcomes
+                        .map(
+                          (outcome) => [
+                            clean(outcome.label),
+                            clean(outcome.count),
+                            clean(outcome.percentage),
+                          ],
+                        )
+                        .toList(),
+            ),
+            pw.SizedBox(height: 18),
+            pw.Text(
+              'Lead Status',
+              style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 8),
+            reportTable(
+              headers: const ['Status', 'Count', 'Percentage'],
+              data: _leadStatuses.isEmpty
+                  ? const [
+                      ['No lead status data', '0', '0%'],
+                    ]
+                  : _leadStatuses
+                        .map(
+                          (status) => [
+                            clean(status.label),
+                            clean(status.count),
+                            clean(status.percentage),
+                          ],
+                        )
+                        .toList(),
+            ),
+          ],
         ),
-        ..._wideMetrics.map((metric) => [metric.label, metric.value]),
-        [],
-        ['Call Outcome', 'Count', 'Percentage'],
-        if (_callOutcomes.isEmpty)
-          ['Not available', '—', '—']
-        else
-          ..._callOutcomes.map(
-            (outcome) => [outcome.label, outcome.count, outcome.percentage],
-          ),
-        [],
-        ['Lead Status', 'Count', 'Percentage'],
-        if (_leadStatuses.isEmpty)
-          ['No lead status data', '0', '0%']
-        else
-          ..._leadStatuses.map(
-            (status) => [status.label, status.count, status.percentage],
-          ),
-      ];
-      final csv = rows.map((row) => row.map(_csvValue).join(',')).join('\r\n');
+      );
+
       final directory = await getTemporaryDirectory();
       final file = File(
-        '${directory.path}/my-performance-${_dateKey(DateTime.now())}.csv',
+        '${directory.path}/my-performance-${_dateKey(DateTime.now())}.pdf',
       );
-      await file.writeAsString('\uFEFF$csv');
+      await file.writeAsBytes(await document.save());
       await Share.shareXFiles(
-        [XFile(file.path, mimeType: 'text/csv')],
+        [XFile(file.path, mimeType: 'application/pdf')],
         subject: 'My Performance - $_selectedPeriod',
         text:
-            'Performance report for ${_formatDate(_rangeStart)} to ${_formatDate(_rangeEnd)}.',
+            'PDF performance report for ${_formatDate(_rangeStart)} to ${_formatDate(_rangeEnd)}.',
       );
     } catch (error) {
       if (mounted) {
@@ -655,8 +790,6 @@ class _MyPerformanceScreenState extends State<MyPerformanceScreen> {
       if (mounted) setState(() => _isExporting = false);
     }
   }
-
-  String _csvValue(String value) => '"${value.replaceAll('"', '""')}"';
 
   /*
   static const List<_PerformanceMetric> _wideMetrics = [
@@ -949,43 +1082,51 @@ class _MyPerformanceScreenState extends State<MyPerformanceScreen> {
                 SizedBox(height: 16.h),
                 _PeriodChips(
                   selected: _selectedPeriod,
-                  onChanged: (period) {
-                    if (period == _selectedPeriod) return;
-                    setState(() => _selectedPeriod = period);
-                    _loadPerformance();
-                  },
+                  onChanged: _selectPeriod,
                 ),
                 SizedBox(height: 12.h),
-                Container(
-                  width: double.infinity,
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 14.w,
-                    vertical: 12.h,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(14.r),
-                    border: Border.all(color: const Color(0xFFD9E3EF)),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.calendar_month_outlined,
-                        size: 18.sp,
-                        color: AppColors.orangeStrong,
-                      ),
-                      SizedBox(width: 10.w),
-                      Expanded(
-                        child: Text(
-                          '${_formatDate(_rangeStart)}  –  ${_formatDate(_rangeEnd)}',
-                          style: GoogleFonts.inter(
-                            fontSize: 13.sp,
-                            fontWeight: FontWeight.w600,
-                            color: const Color(0xFF334155),
+                InkWell(
+                  onTap: _selectedPeriod == 'Custom Date'
+                      ? () => _selectPeriod('Custom Date')
+                      : null,
+                  borderRadius: BorderRadius.circular(14.r),
+                  child: Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 14.w,
+                      vertical: 12.h,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(14.r),
+                      border: Border.all(color: const Color(0xFFD9E3EF)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.calendar_month_outlined,
+                          size: 18.sp,
+                          color: AppColors.orangeStrong,
+                        ),
+                        SizedBox(width: 10.w),
+                        Expanded(
+                          child: Text(
+                            '${_formatDate(_rangeStart)}  –  ${_formatDate(_rangeEnd)}',
+                            style: GoogleFonts.inter(
+                              fontSize: 13.sp,
+                              fontWeight: FontWeight.w600,
+                              color: const Color(0xFF334155),
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+                        if (_selectedPeriod == 'Custom Date')
+                          Icon(
+                            Icons.edit_calendar_outlined,
+                            size: 17.sp,
+                            color: AppColors.orangeStrong,
+                          ),
+                      ],
+                    ),
                   ),
                 ),
                 SizedBox(height: 16.h),
@@ -1807,7 +1948,7 @@ class _PeriodChips extends StatelessWidget {
   final String selected;
   final ValueChanged<String> onChanged;
 
-  static const _periods = ['Today', 'This Week', 'This Month'];
+  static const _periods = ['Today', 'This Week', 'This Month', 'Custom Date'];
 
   @override
   Widget build(BuildContext context) {

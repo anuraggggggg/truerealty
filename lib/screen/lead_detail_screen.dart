@@ -6,7 +6,6 @@ import 'package:truerealtycrm/constant/colors_screen.dart';
 import 'package:truerealtycrm/provider/employee_provider.dart';
 import 'package:truerealtycrm/provider/leads_provider.dart';
 import 'package:truerealtycrm/provider/site_visits_provider.dart';
-import 'package:truerealtycrm/screen/site_visits_screen.dart';
 
 class LeadDetailScreenArgs {
   const LeadDetailScreenArgs({this.initialTabIndex = 0, this.lead});
@@ -93,10 +92,7 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            _TopBar(
-              onSiteVisit: _openCreateSiteVisit,
-              onFollowUp: _openScheduleFollowUp,
-            ),
+            const _TopBar(),
             if (_loading) const LinearProgressIndicator(minHeight: 2),
             Expanded(
               child: _error != null && _lead == null && fallback == null
@@ -152,43 +148,6 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
         ),
       ),
     );
-  }
-
-  Future<void> _openCreateSiteVisit() async {
-    final created = await showCreateSiteVisitSheet(
-      context,
-      initialLead: widget.lead,
-    );
-    if (!mounted || created != true) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Site visit scheduled successfully.')),
-    );
-    await _loadLead();
-  }
-
-  Future<void> _openScheduleFollowUp() async {
-    final leadId = widget.lead?.id ?? _string(_lead?['id']);
-    if (leadId == null || leadId.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Lead ID is not available.')),
-      );
-      return;
-    }
-    final created = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _ScheduleFollowUpSheet(
-        leadId: leadId,
-        lead: _LeadData(_lead ?? widget.lead?.raw ?? const {}),
-      ),
-    );
-    if (!mounted || created != true) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Follow-up scheduled successfully.')),
-    );
-    await _loadLead();
   }
 }
 
@@ -651,75 +610,70 @@ List<Map<String, dynamic>> _extractNamedMaps(
 }
 
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.onSiteVisit, required this.onFollowUp});
-
-  final VoidCallback onSiteVisit;
-  final VoidCallback onFollowUp;
+  const _TopBar();
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.fromLTRB(10.w, 8.h, 10.w, 10.h),
+      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 11.h),
       decoration: const BoxDecoration(
         color: Colors.white,
-        border: Border(bottom: BorderSide(color: Color(0xFFE4E7EC))),
+        border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x0A0F172A),
+            blurRadius: 10,
+            offset: Offset(0, 3),
+          ),
+        ],
       ),
-      child: Column(
+      child: Row(
         children: [
-          Align(
-            alignment: Alignment.centerLeft,
-            child: IconButton(
-              visualDensity: VisualDensity.compact,
-              onPressed: () => Navigator.maybePop(context),
-              icon: const Icon(Icons.arrow_back_rounded),
+          Material(
+            color: const Color(0xFFF1F5F9),
+            borderRadius: BorderRadius.circular(10.r),
+            child: InkWell(
+              onTap: () => Navigator.maybePop(context),
+              borderRadius: BorderRadius.circular(10.r),
+              child: SizedBox(
+                width: 40.w,
+                height: 40.w,
+                child: Icon(
+                  Icons.arrow_back_rounded,
+                  size: 21.sp,
+                  color: const Color(0xFF0F2B57),
+                ),
+              ),
             ),
           ),
-          SizedBox(height: 4.h),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: onSiteVisit,
-                  style: _buttonStyle(false),
-                  child: const FittedBox(child: Text('Create Site Visit')),
+          SizedBox(width: 12.w),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Lead Details',
+                  style: GoogleFonts.inter(
+                    fontSize: 17.sp,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF0F2B57),
+                  ),
                 ),
-              ),
-              SizedBox(width: 8.w),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: onFollowUp,
-                  style: _buttonStyle(true),
-                  child: const FittedBox(child: Text('Schedule Follow-Up')),
+                SizedBox(height: 2.h),
+                Text(
+                  'Complete lead overview',
+                  style: GoogleFonts.inter(
+                    fontSize: 11.5.sp,
+                    fontWeight: FontWeight.w500,
+                    color: const Color(0xFF64748B),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),
     );
-  }
-
-  ButtonStyle _buttonStyle(bool filled) {
-    return (filled ? ElevatedButton.styleFrom() : OutlinedButton.styleFrom())
-        .copyWith(
-          minimumSize: WidgetStatePropertyAll(Size(0, 40.h)),
-          elevation: const WidgetStatePropertyAll(0),
-          backgroundColor: WidgetStatePropertyAll(
-            filled ? AppColors.orangeDeep : Colors.white,
-          ),
-          foregroundColor: WidgetStatePropertyAll(
-            filled ? Colors.white : const Color(0xFF1F2A44),
-          ),
-          side: const WidgetStatePropertyAll(
-            BorderSide(color: Color(0xFF9AA8C0)),
-          ),
-          shape: WidgetStatePropertyAll(
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(7.r)),
-          ),
-          textStyle: WidgetStatePropertyAll(
-            GoogleFonts.inter(fontSize: 13.sp, fontWeight: FontWeight.w700),
-          ),
-        );
   }
 }
 
@@ -737,9 +691,12 @@ class _SummaryCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               CircleAvatar(
-                radius: 24.r,
-                backgroundColor: const Color(0xFFF8FAFC),
-                child: Text(data.initials, style: _text(14, FontWeight.w600)),
+                radius: 27.r,
+                backgroundColor: const Color(0xFF0F2B57),
+                child: Text(
+                  data.initials,
+                  style: _text(15, FontWeight.w800, Colors.white),
+                ),
               ),
               SizedBox(width: 12.w),
               Expanded(
@@ -748,17 +705,11 @@ class _SummaryCard extends StatelessWidget {
                   children: [
                     _Chip(text: data.stage.toUpperCase()),
                     SizedBox(height: 5.h),
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            data.name,
-                            style: _text(17, FontWeight.w800),
-                          ),
-                        ),
-                        SizedBox(width: 4.w),
-                        Icon(Icons.verified, color: Colors.green, size: 15.sp),
-                      ],
+                    Text(
+                      data.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: _text(18, FontWeight.w800),
                     ),
                     Text(
                       '#${data.displayId}',
@@ -1237,13 +1188,6 @@ class _BookingCard extends StatelessWidget {
             child: data.latestBooking == null
                 ? const _EmptyText('No bookings recorded yet')
                 : Text(data.latestBooking!, style: _text(12, FontWeight.w700)),
-          ),
-          SizedBox(height: 12.h),
-          Center(
-            child: OutlinedButton(
-              onPressed: () {},
-              child: const Text('Create New Booking'),
-            ),
           ),
         ],
       ),

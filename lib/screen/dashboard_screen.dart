@@ -12,7 +12,6 @@ import 'package:truerealtycrm/router/app_router.dart';
 import 'package:truerealtycrm/screen/admin_dashboard_view.dart';
 import 'package:truerealtycrm/screen/field_executive_dashboard_screen.dart';
 import 'package:truerealtycrm/screen/lead_activity_timeline_screen.dart';
-import 'package:truerealtycrm/screen/leads_screen.dart';
 import 'package:truerealtycrm/screen/my_follow_ups_screen.dart';
 import 'package:truerealtycrm/screen/projects_screen.dart';
 import 'package:truerealtycrm/screen/site_visits_screen.dart';
@@ -91,9 +90,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     if (selectedTab == 1) {
-      return role == UserRole.telecaller
-          ? MyLeadsScreen(onMenuTap: _openDrawer)
-          : LeadListWidget(isInsideScrollView: true, onMenuTap: _openDrawer);
+      return MyLeadsScreen(onMenuTap: _openDrawer);
     }
 
     if (selectedTab == 2) {
@@ -672,7 +669,7 @@ class _TelecallerDashboardData {
       imagePath: 'assets/background_admin.png',
       label: 'New Leads',
       bgColor: Color(0xFFFF7A1A),
-      routeName: AppRouter.telecallerDashboard,
+      routeName: AppRouter.myleads,
     ),
     _TelecallerQuickActionData(
       icon: Icons.call_rounded,

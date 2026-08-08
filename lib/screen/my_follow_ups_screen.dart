@@ -174,9 +174,7 @@ class _MyFollowUpsScreenState extends State<MyFollowUpsScreen> {
                     SizedBox(height: 14.h),
                     _QueueSlaSection(summary: summary),
                     SizedBox(height: 14.h),
-                    const _QueueGuidanceSection(),
-                    SizedBox(height: 14.h),
-                    _FilterTabs(provider: provider),
+                    _PipelineFilterTabs(provider: provider),
                     SizedBox(height: 12.h),
                   ],
                 ),
@@ -277,8 +275,6 @@ class _RescheduleFollowUpDialogState extends State<_RescheduleFollowUpDialog> {
     'Penthouse',
   ];
   late final TextEditingController _remarksController;
-  late final TextEditingController _notesController;
-  late final TextEditingController _locationController;
   late DateTime _date;
   late TimeOfDay _time;
   bool _setReminder = true;
@@ -287,12 +283,10 @@ class _RescheduleFollowUpDialogState extends State<_RescheduleFollowUpDialog> {
   String? _error;
   String? _statusId;
   String? _temperatureId;
-  String? _sourceId;
   String? _budget;
   String? _configuration;
   List<_FollowUpOption> _statuses = const [];
   List<_FollowUpOption> _temperatures = const [];
-  List<_FollowUpOption> _sources = const [];
 
   @override
   void initState() {
@@ -303,35 +297,24 @@ class _RescheduleFollowUpDialogState extends State<_RescheduleFollowUpDialog> {
     _remarksController = TextEditingController(
       text: widget.item.nextAction ?? '',
     );
-    _notesController = TextEditingController(text: widget.item.notes ?? '');
     final raw = widget.item.leadRaw ?? const <String, dynamic>{};
     final requirement = raw['requirement'] is Map
         ? Map<String, dynamic>.from(raw['requirement'] as Map)
         : const <String, dynamic>{};
     _statusId = _dialogText(raw['statusId']);
     _temperatureId = _dialogText(raw['temperatureId']);
-    _sourceId = _dialogText(raw['sourceId']);
     _budget = _dialogText(requirement['budgetRange']);
     _configuration = _dialogText(requirement['configuration']);
-    _locationController = TextEditingController(
-      text:
-          _dialogText(requirement['preferredLocation']) ??
-          widget.item.location,
-    );
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadOptions());
   }
 
   @override
   void dispose() {
     _remarksController.dispose();
-    _notesController.dispose();
-    _locationController.dispose();
     super.dispose();
   }
 
-  Future<List<_FollowUpOption>> _masterOptions(
-    List<String> categories,
-  ) async {
+  Future<List<_FollowUpOption>> _masterOptions(List<String> categories) async {
     final provider = context.read<LeadMasterProvider>();
     for (final category in categories) {
       final response = await provider.fetchMasterValues(
@@ -351,13 +334,11 @@ class _RescheduleFollowUpDialogState extends State<_RescheduleFollowUpDialog> {
         'lead_temperature',
         'lead-temperature',
       ]),
-      _masterOptions(const ['source', 'lead_source', 'lead-source']),
     ]);
     if (!mounted) return;
     setState(() {
       _statuses = values[0];
       _temperatures = values[1];
-      _sources = values[2];
       _loadingOptions = false;
     });
   }
@@ -399,7 +380,6 @@ class _RescheduleFollowUpDialogState extends State<_RescheduleFollowUpDialog> {
     final reminderBody = <String, dynamic>{
       'scheduledAt': _apiScheduledAt,
       'remarks': _remarksController.text.trim(),
-      'notes': _notesController.text.trim(),
       'setReminder': _setReminder,
       'status': 'Rescheduled',
     };
@@ -407,11 +387,8 @@ class _RescheduleFollowUpDialogState extends State<_RescheduleFollowUpDialog> {
       ...reminderBody,
       if (_statusId != null) 'statusId': _statusId,
       if (_temperatureId != null) 'temperatureId': _temperatureId,
-      if (_sourceId != null) 'sourceId': _sourceId,
       if (_budget != null) 'budgetRange': _budget,
       if (_configuration != null) 'configuration': _configuration,
-      if (_locationController.text.trim().isNotEmpty)
-        'preferredLocation': _locationController.text.trim(),
     };
     final provider = context.read<LeadProvider>();
     final leadResponse = await provider.updateLeadFromApi(
@@ -539,10 +516,12 @@ class _RescheduleFollowUpDialogState extends State<_RescheduleFollowUpDialog> {
     return Dialog(
       backgroundColor: Colors.white,
       surfaceTintColor: Colors.transparent,
+      shadowColor: Colors.black26,
+      clipBehavior: Clip.antiAlias,
       insetPadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 24.h),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.r)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18.r)),
       child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: 680.w, maxHeight: 720.h),
+        constraints: BoxConstraints(maxWidth: 720.w, maxHeight: 760.h),
         child: SingleChildScrollView(
           padding: EdgeInsets.all(20.r),
           child: Column(
@@ -581,54 +560,6 @@ class _RescheduleFollowUpDialogState extends State<_RescheduleFollowUpDialog> {
                 ],
               ),
               SizedBox(height: 18.h),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final dateButton = OutlinedButton.icon(
-                    onPressed: _pickDate,
-                    icon: const Icon(Icons.calendar_today_outlined),
-                    label: Text(
-                      '${_date.day.toString().padLeft(2, '0')}/'
-                      '${_date.month.toString().padLeft(2, '0')}/${_date.year}',
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: Size.fromHeight(48.h),
-                    ),
-                  );
-                  final timeButton = OutlinedButton.icon(
-                    onPressed: _pickTime,
-                    icon: const Icon(Icons.schedule_rounded),
-                    label: Text(_time.format(context)),
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: Size.fromHeight(48.h),
-                    ),
-                  );
-                  if (constraints.maxWidth < 480) {
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        dateButton,
-                        SizedBox(height: 12.h),
-                        timeButton,
-                      ],
-                    );
-                  }
-                  return Row(
-                    children: [
-                      Expanded(child: dateButton),
-                      SizedBox(width: 12.w),
-                      Expanded(child: timeButton),
-                    ],
-                  );
-                },
-              ),
-              SizedBox(height: 14.h),
-              TextField(
-                controller: _remarksController,
-                minLines: 3,
-                maxLines: 5,
-                decoration: decoration('Remarks'),
-              ),
-              SizedBox(height: 14.h),
               if (_loadingOptions)
                 const LinearProgressIndicator(minHeight: 2)
               else
@@ -645,37 +576,92 @@ class _RescheduleFollowUpDialogState extends State<_RescheduleFollowUpDialog> {
                     _temperatures,
                     (value) => setState(() => _temperatureId = value),
                   ),
-                  _valueDropdown(
-                    'Budget',
-                    _budget,
-                    _budgetOptions,
-                    (value) => setState(() => _budget = value),
-                  ),
-                  TextField(
-                    controller: _locationController,
-                    decoration: decoration('Location'),
-                  ),
-                  _valueDropdown(
-                    'Configuration',
-                    _configuration,
-                    _configurationOptions,
-                    (value) => setState(() => _configuration = value),
-                  ),
-                  _masterDropdown(
-                    'Source',
-                    _sourceId,
-                    _sources,
-                    (value) => setState(() => _sourceId = value),
-                  ),
                 ]),
-              SizedBox(height: 14.h),
-              TextField(
-                controller: _notesController,
-                minLines: 2,
-                maxLines: 4,
-                decoration: decoration('Notes'),
+              SizedBox(height: 16.h),
+              Container(
+                padding: EdgeInsets.all(16.r),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12.r),
+                  border: Border.all(color: const Color(0xFFDCE3ED)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Follow-up reminder',
+                      style: GoogleFonts.inter(
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.navy,
+                      ),
+                    ),
+                    SizedBox(height: 12.h),
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final dateButton = OutlinedButton.icon(
+                          onPressed: _pickDate,
+                          icon: const Icon(Icons.calendar_today_outlined),
+                          label: Text(
+                            '${_date.day.toString().padLeft(2, '0')}/'
+                            '${_date.month.toString().padLeft(2, '0')}/${_date.year}',
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: Size.fromHeight(48.h),
+                          ),
+                        );
+                        final timeButton = OutlinedButton.icon(
+                          onPressed: _pickTime,
+                          icon: const Icon(Icons.schedule_rounded),
+                          label: Text(_time.format(context)),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: Size.fromHeight(48.h),
+                          ),
+                        );
+                        if (constraints.maxWidth < 480) {
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              dateButton,
+                              SizedBox(height: 12.h),
+                              timeButton,
+                            ],
+                          );
+                        }
+                        return Row(
+                          children: [
+                            Expanded(child: dateButton),
+                            SizedBox(width: 12.w),
+                            Expanded(child: timeButton),
+                          ],
+                        );
+                      },
+                    ),
+                  ],
+                ),
               ),
-              SizedBox(height: 10.h),
+              SizedBox(height: 16.h),
+              _dialogFieldGrid([
+                _valueDropdown(
+                  'Budget',
+                  _budget,
+                  _budgetOptions,
+                  (value) => setState(() => _budget = value),
+                ),
+                _valueDropdown(
+                  'Configuration',
+                  _configuration,
+                  _configurationOptions,
+                  (value) => setState(() => _configuration = value),
+                ),
+              ]),
+              SizedBox(height: 16.h),
+              TextField(
+                controller: _remarksController,
+                minLines: 3,
+                maxLines: 5,
+                decoration: decoration('Remark'),
+              ),
+              SizedBox(height: 8.h),
               CheckboxListTile(
                 contentPadding: EdgeInsets.zero,
                 value: _setReminder,
@@ -953,67 +939,24 @@ class _QueueSlaSection extends StatelessWidget {
   }
 }
 
-class _QueueGuidanceSection extends StatelessWidget {
-  const _QueueGuidanceSection();
-
-  static const _points = [
-    'Prioritize overdue follow-ups before starting fresh outreach.',
-    'Use reschedule and next-action updates to keep the queue accurate.',
-    'Completed follow-ups move out of the live queue automatically.',
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return FollowUpSectionCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Queue Guidance',
-            style: GoogleFonts.inter(
-              fontSize: 16.sp,
-              fontWeight: FontWeight.w800,
-              color: AppColors.navy,
-            ),
-          ),
-          SizedBox(height: 12.h),
-          for (var i = 0; i < _points.length; i++) ...[
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: EdgeInsets.only(top: 5.h),
-                  child: Icon(
-                    Icons.circle_outlined,
-                    size: 14.sp,
-                    color: AppColors.blueBright,
-                  ),
-                ),
-                SizedBox(width: 8.w),
-                Expanded(
-                  child: Text(
-                    _points[i],
-                    style: GoogleFonts.inter(
-                      fontSize: 13.sp,
-                      height: 1.4,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            if (i != _points.length - 1) SizedBox(height: 10.h),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _FilterTabs extends StatelessWidget {
-  const _FilterTabs({required this.provider});
+class _PipelineFilterTabs extends StatelessWidget {
+  const _PipelineFilterTabs({required this.provider});
 
   final FollowUpsProvider provider;
+
+  static const tabs = [
+    'All',
+    'New Lead',
+    'Interested',
+    'Hot Lead',
+    'Site Visit Schedule',
+    'Site Visit Done',
+    'Re-Visit Done',
+    'Follow Up',
+    'OBM Done',
+    'Not Interested',
+    'Booking Done',
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -1021,11 +964,11 @@ class _FilterTabs extends StatelessWidget {
       scrollDirection: Axis.horizontal,
       child: Row(
         children: [
-          for (final filter in FollowUpListFilter.values) ...[
+          for (final tab in tabs) ...[
             _FilterChip(
-              label: '${filter.label} (${provider.countFor(filter)})',
-              selected: provider.filter == filter,
-              onTap: () => provider.setFilter(filter),
+              label: '$tab (${provider.countForPipeline(tab)})',
+              selected: provider.pipelineFilter == tab,
+              onTap: () => provider.setPipelineFilter(tab),
             ),
             SizedBox(width: 8.w),
           ],

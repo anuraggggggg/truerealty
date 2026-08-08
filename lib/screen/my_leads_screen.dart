@@ -13,6 +13,7 @@ class MyLeadsScreen extends StatelessWidget {
     'Interested',
     'Hot Lead',
     'Site Visit Schedule',
+    'Site Visit Done',
     'Re-Visit Done',
     'Follow Up',
     'OBM Done',

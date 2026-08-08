@@ -13,6 +13,7 @@ import 'package:truerealtycrm/constant/colors_screen.dart';
 import 'package:truerealtycrm/provider/lead_master_provider.dart';
 import 'package:truerealtycrm/provider/project_provider.dart';
 import 'package:truerealtycrm/router/app_router.dart';
+import 'package:truerealtycrm/screen/projects_screen.dart';
 import '../provider/leads_provider.dart';
 import 'package:truerealtycrm/widget/app_loading.dart';
 import 'package:truerealtycrm/widget/todays_follow_ups_fab.dart';
@@ -56,6 +57,8 @@ class _LeadListWidgetState extends State<LeadListWidget> {
   String? _area;
   String? _slaStatus;
   String? _dateRange;
+  DateTime? _customDateFrom;
+  DateTime? _customDateTo;
   List<String> _leadTypes = const ['Hot', 'Warm', 'Cold'];
   List<String> _configurations = const [
     '1 BHK',
@@ -286,6 +289,7 @@ class _LeadListWidgetState extends State<LeadListWidget> {
   (String?, String?) get _dateBounds {
     final now = DateTime.now();
     DateTime? from;
+    DateTime? to;
     switch (_dateRange) {
       case 'Today':
         from = DateTime(now.year, now.month, now.day);
@@ -295,11 +299,67 @@ class _LeadListWidgetState extends State<LeadListWidget> {
         from = now.subtract(const Duration(days: 30));
       case 'This month':
         from = DateTime(now.year, now.month);
+      case 'Date':
+      case 'Custom date':
+        from = _customDateFrom;
+        to = _customDateTo;
     }
     String? date(DateTime? value) => value == null
         ? null
         : '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
-    return (date(from), from == null ? null : date(now));
+    return (date(from), from == null ? null : date(to ?? now));
+  }
+
+  Future<void> _selectDateFilter(String? value) async {
+    if (value == null) {
+      setState(() {
+        _dateRange = null;
+        _customDateFrom = null;
+        _customDateTo = null;
+      });
+      return;
+    }
+
+    final now = DateTime.now();
+    if (value == 'Date') {
+      final selected = await showDatePicker(
+        context: context,
+        initialDate: _customDateFrom ?? now,
+        firstDate: DateTime(2000),
+        lastDate: DateTime(now.year + 5),
+      );
+      if (selected == null || !mounted) return;
+      setState(() {
+        _dateRange = value;
+        _customDateFrom = selected;
+        _customDateTo = selected;
+      });
+      return;
+    }
+
+    if (value == 'Custom date') {
+      final selected = await showDateRangePicker(
+        context: context,
+        initialDateRange: _customDateFrom == null || _customDateTo == null
+            ? null
+            : DateTimeRange(start: _customDateFrom!, end: _customDateTo!),
+        firstDate: DateTime(2000),
+        lastDate: DateTime(now.year + 5),
+      );
+      if (selected == null || !mounted) return;
+      setState(() {
+        _dateRange = value;
+        _customDateFrom = selected.start;
+        _customDateTo = selected.end;
+      });
+      return;
+    }
+
+    setState(() {
+      _dateRange = value;
+      _customDateFrom = null;
+      _customDateTo = null;
+    });
   }
 
   Future<void> _selectTab(String tab) async {
@@ -791,13 +851,15 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                       'Date Range',
                       _dateRange,
                       const [
+                        'Date',
+                        'Custom date',
                         'Today',
                         'Last 7 days',
                         'Last 30 days',
                         'This month',
                       ],
                       width,
-                      (v) => setState(() => _dateRange = v),
+                      _selectDateFilter,
                     ),
                     _filterDropdown(
                       'SLA Status',
@@ -963,6 +1025,8 @@ class _LeadListWidgetState extends State<LeadListWidget> {
       _area = null;
       _slaStatus = null;
       _dateRange = null;
+      _customDateFrom = null;
+      _customDateTo = null;
       _selectedTab = _defaultTab;
     });
     await _fetchLeads(page: 1);
@@ -985,6 +1049,17 @@ class _LeadListWidgetState extends State<LeadListWidget> {
     final project = lead.project?.trim().isNotEmpty == true
         ? lead.project!
         : 'Project not assigned';
+    final projectId =
+        [
+              raw['preferredProjectId'],
+              requirement['preferredProjectId'],
+              raw['projectId'],
+            ]
+            .where(
+              (value) => value != null && value.toString().trim().isNotEmpty,
+            )
+            .map((value) => value.toString().trim())
+            .firstOrNull;
     final location = lead.location?.trim().isNotEmpty == true
         ? lead.location!
         : '-';
@@ -1028,6 +1103,7 @@ class _LeadListWidgetState extends State<LeadListWidget> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   if (_selectionMode) ...[
                     Checkbox(
@@ -1058,58 +1134,53 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                   ),
                   SizedBox(width: 10.w),
                   Expanded(
-                    child: Text(
-                      lead.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.inter(
-                        fontSize: 15.sp,
-                        fontWeight: FontWeight.w700,
-                        color: const Color(0xFF0B1735),
-                      ),
-                    ),
-                  ),
-                  SizedBox(width: 7.w),
-                  Flexible(
-                    child: Wrap(
-                      spacing: 6.w,
-                      runSpacing: 4.h,
-                      alignment: WrapAlignment.end,
-                      children: [
-                        for (final label in statusLabels)
-                          _CompactLeadBadge(
-                            text: label,
-                            foreground: _leadStatusColors(label).$1,
-                            background: _leadStatusColors(label).$2,
-                            borderColor: _leadStatusColors(label).$3,
-                          ),
-                      ],
-                    ),
-                  ),
-                  if (!_selectionMode) ...[
-                    SizedBox(width: 6.w),
-                    SizedBox(
-                      width: 40.w,
-                      height: 40.h,
-                      child: IconButton(
-                        tooltip: 'View lead details',
-                        padding: EdgeInsets.zero,
-                        style: IconButton.styleFrom(
-                          foregroundColor: AppColors.navy,
-                          backgroundColor: const Color(0xFFF1F5F9),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10.r),
-                          ),
-                        ),
-                        onPressed: () => Navigator.pushNamed(
+                    child: Padding(
+                      padding: EdgeInsets.only(top: 8.h),
+                      child: InkWell(
+                        onTap: () => Navigator.pushNamed(
                           context,
                           AppRouter.leadDetail,
                           arguments: lead,
                         ),
-                        icon: Icon(Icons.visibility_outlined, size: 20.sp),
+                        child: Text(
+                          lead.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.inter(
+                            fontSize: 15.sp,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF0B1735),
+                            decoration: TextDecoration.underline,
+                            decorationColor: const Color(0xFF0B1735),
+                          ),
+                        ),
                       ),
                     ),
-                  ],
+                  ),
+                  SizedBox(width: 10.w),
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      for (var i = 0; i < statusLabels.length; i++) ...[
+                        if (i > 0) SizedBox(height: 5.h),
+                        ConstrainedBox(
+                          constraints: BoxConstraints(maxWidth: 112.w),
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: _CompactLeadBadge(
+                              text: statusLabels[i],
+                              foreground: _leadStatusColors(statusLabels[i]).$1,
+                              background: _leadStatusColors(statusLabels[i]).$2,
+                              borderColor: _leadStatusColors(
+                                statusLabels[i],
+                              ).$3,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ],
               ),
               SizedBox(height: 14.h),
@@ -1140,11 +1211,26 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Text(
-                          project,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: _professionalLeadValueStyle,
+                        InkWell(
+                          onTap: projectId == null
+                              ? null
+                              : () => Navigator.of(context).push(
+                                  MaterialPageRoute<void>(
+                                    builder: (_) => ProjectsScreen(
+                                      initialProjectId: projectId,
+                                    ),
+                                  ),
+                                ),
+                          child: Text(
+                            project,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: _professionalLeadValueStyle.copyWith(
+                              decoration: projectId == null
+                                  ? null
+                                  : TextDecoration.underline,
+                            ),
+                          ),
                         ),
                         if (location != '-')
                           Text(
@@ -1162,25 +1248,32 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                 ],
               ),
               SizedBox(height: 11.h),
-              Row(
-                children: [
-                  Expanded(
-                    child: _LeadCardDetail(
-                      icon: Icons.payments_outlined,
-                      label: 'Budget',
-                      value: budget,
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 10.h),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF3F4F6),
+                  borderRadius: BorderRadius.circular(10.r),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _LeadCardDetail(
+                        icon: Icons.payments_outlined,
+                        label: 'Budget',
+                        value: budget,
+                      ),
                     ),
-                  ),
-                  SizedBox(width: 16.w),
-                  Expanded(
-                    child: _LeadCardDetail(
-                      icon: Icons.event_available_outlined,
-                      label: 'Next follow-up',
-                      value: followUpLabel,
-                      alignEnd: true,
+                    SizedBox(width: 16.w),
+                    Expanded(
+                      child: _LeadCardDetail(
+                        icon: Icons.event_available_outlined,
+                        label: 'Next follow-up',
+                        value: followUpLabel,
+                        alignEnd: true,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
               SizedBox(height: 11.h),
               Row(
@@ -1194,11 +1287,16 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                   SizedBox(width: 7.w),
                   Text('Remark: ', style: _professionalLeadLabelStyle),
                   Expanded(
-                    child: Text(
-                      remark,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: _professionalLeadFooterValueStyle,
+                    child: InkWell(
+                      onTap: () => _showAddRemarkDialog(lead),
+                      child: Text(
+                        remark,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: _professionalLeadFooterValueStyle.copyWith(
+                          decoration: TextDecoration.underline,
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -1246,33 +1344,6 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                           foregroundColor: Colors.white,
                           elevation: 0,
                           padding: EdgeInsets.symmetric(horizontal: 8.w),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10.r),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  SizedBox(width: 10.w),
-                  Expanded(
-                    child: SizedBox(
-                      height: 44.h,
-                      child: OutlinedButton.icon(
-                        onPressed: () => _showRemarkHistory(lead),
-                        icon: Icon(Icons.history_rounded, size: 16.sp),
-                        label: FittedBox(
-                          child: Text(
-                            'Remark History',
-                            style: GoogleFonts.inter(
-                              fontSize: 11.sp,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.navy,
-                          padding: EdgeInsets.symmetric(horizontal: 8.w),
-                          side: const BorderSide(color: Color(0xFFCBD5E1)),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10.r),
                           ),
@@ -1355,22 +1426,6 @@ class _LeadListWidgetState extends State<LeadListWidget> {
     if (added == true && mounted) await _fetchLeads(page: _page);
   }
 
-  Future<void> _showRemarkHistory(LeadModel lead) async {
-    final leadId = lead.id;
-    if (leadId == null || leadId.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Lead ID is unavailable.')));
-      return;
-    }
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _RemarkHistorySheet(leadId: leadId, leadName: lead.name),
-    );
-  }
-
   Future<void> _openSelectedLeadUpdate() async {
     final selected = context
         .read<LeadProvider>()
@@ -1402,7 +1457,6 @@ class _LeadListWidgetState extends State<LeadListWidget> {
         'lead_temperature',
         'lead-temperature',
       ]),
-      _loadUpdateOptions(const ['source', 'lead_source', 'lead-source']),
     ]);
     if (!mounted) return;
 
@@ -1413,7 +1467,6 @@ class _LeadListWidgetState extends State<LeadListWidget> {
         leads: leads,
         statuses: optionGroups[0],
         temperatures: optionGroups[1],
-        sources: optionGroups[2],
       ),
     );
     if (updated == true && mounted) {
@@ -2139,7 +2192,9 @@ class _LeadListWidgetState extends State<LeadListWidget> {
         const Color(0xFFA7F3D0),
       );
     }
-    if (value.contains('obm') || value.contains('re-visit') || value.contains('revisit')) {
+    if (value.contains('obm') ||
+        value.contains('re-visit') ||
+        value.contains('revisit')) {
       return (
         const Color(0xFF0F766E),
         const Color(0xFFCCFBF1),
@@ -2542,6 +2597,10 @@ class _LeadListWidgetState extends State<LeadListWidget> {
       return 'Re-Visit Done';
     }
     if (text.contains('site visit') &&
+        (text.contains('done') || text.contains('complete'))) {
+      return 'Site Visit Done';
+    }
+    if (text.contains('site visit') &&
         (text.contains('schedule') || text.contains('scheduled'))) {
       return 'Site Visit Schedule';
     }
@@ -2613,8 +2672,7 @@ class _LeadListWidgetState extends State<LeadListWidget> {
     if (selected.isEmpty || lead.isEmpty) return false;
     if (selected == lead) return true;
 
-    String compact(String value) =>
-        value.replaceAll(RegExp(r'[\s\-_/]+'), '');
+    String compact(String value) => value.replaceAll(RegExp(r'[\s\-_/]+'), '');
     if (compact(selected) == compact(lead)) return true;
 
     if (selected.contains('not interested')) {
@@ -2629,6 +2687,10 @@ class _LeadListWidgetState extends State<LeadListWidget> {
     if (selected.contains('site visit') && selected.contains('schedule')) {
       return lead.contains('site visit') &&
           (lead.contains('schedule') || lead.contains('scheduled'));
+    }
+    if (selected.contains('site visit') && selected.contains('done')) {
+      return lead.contains('site visit') &&
+          (lead.contains('done') || lead.contains('complete'));
     }
     if (selected.contains('re-visit') || selected.contains('revisit')) {
       return (lead.contains('re-visit') ||
@@ -2870,13 +2932,11 @@ class _LeadUpdateDialog extends StatefulWidget {
     required this.leads,
     required this.statuses,
     required this.temperatures,
-    required this.sources,
   });
 
   final List<LeadModel> leads;
   final List<_LeadUpdateOption> statuses;
   final List<_LeadUpdateOption> temperatures;
-  final List<_LeadUpdateOption> sources;
 
   @override
   State<_LeadUpdateDialog> createState() => _LeadUpdateDialogState();
@@ -2901,11 +2961,9 @@ class _LeadUpdateDialogState extends State<_LeadUpdateDialog> {
     'Penthouse',
   ];
 
-  late final TextEditingController _locationController;
   late final TextEditingController _remarkController;
   String? _statusId;
   String? _temperatureId;
-  String? _sourceId;
   String? _budget;
   String? _configuration;
   DateTime? _followUpDate;
@@ -2930,14 +2988,8 @@ class _LeadUpdateDialogState extends State<_LeadUpdateDialog> {
 
     _statusId = _isSingle ? text(raw['statusId']) : null;
     _temperatureId = _isSingle ? text(raw['temperatureId']) : null;
-    _sourceId = _isSingle ? text(raw['sourceId']) : null;
     _budget = _isSingle ? text(requirement['budgetRange']) : null;
     _configuration = _isSingle ? text(requirement['configuration']) : null;
-    _locationController = TextEditingController(
-      text: _isSingle
-          ? text(requirement['preferredLocation']) ?? _first.location ?? ''
-          : '',
-    );
     _remarkController = TextEditingController(
       text: _isSingle ? text(raw['remarks']) ?? '' : '',
     );
@@ -2952,7 +3004,6 @@ class _LeadUpdateDialogState extends State<_LeadUpdateDialog> {
 
   @override
   void dispose() {
-    _locationController.dispose();
     _remarkController.dispose();
     super.dispose();
   }
@@ -2983,11 +3034,8 @@ class _LeadUpdateDialogState extends State<_LeadUpdateDialog> {
     final body = <String, dynamic>{
       if (_statusId != null) 'statusId': _statusId,
       if (_temperatureId != null) 'temperatureId': _temperatureId,
-      if (_sourceId != null) 'sourceId': _sourceId,
       if (_budget != null) 'budgetRange': _budget,
       if (_configuration != null) 'configuration': _configuration,
-      if (_locationController.text.trim().isNotEmpty)
-        'preferredLocation': _locationController.text.trim(),
       if (_remarkController.text.trim().isNotEmpty)
         'remarks': _remarkController.text.trim(),
       if (_followUpDate != null && _followUpTime != null)
@@ -3152,18 +3200,11 @@ class _LeadUpdateDialogState extends State<_LeadUpdateDialog> {
                       _stringDropdown('Budget', _budget, _budgets, (value) {
                         setState(() => _budget = value);
                       }),
-                      _textField('Location', _locationController),
                       _stringDropdown(
                         'Configuration',
                         _configuration,
                         _configurations,
                         (value) => setState(() => _configuration = value),
-                      ),
-                      _optionField(
-                        'Source',
-                        _validOption(_sourceId, widget.sources),
-                        widget.sources,
-                        (value) => setState(() => _sourceId = value),
                       ),
                     ]),
                     SizedBox(height: 16.h),
@@ -3371,17 +3412,48 @@ class _AddLeadRemarkDialog extends StatefulWidget {
 class _AddLeadRemarkDialogState extends State<_AddLeadRemarkDialog> {
   final _formKey = GlobalKey<FormState>();
   final _remarkController = TextEditingController();
-  final _notesController = TextEditingController();
   DateTime _date = DateTime.now().add(const Duration(days: 1));
   TimeOfDay _time = const TimeOfDay(hour: 10, minute: 0);
-  String _status = 'Scheduled';
   bool _saving = false;
+  bool _showingHistory = false;
+  bool _historyLoading = false;
+  List<_RemarkHistoryEntry> _historyEntries = const [];
+  String? _historyError;
   String? _error;
+
+  Future<void> _openHistory() async {
+    setState(() => _showingHistory = true);
+    if (_historyEntries.isNotEmpty || _historyLoading) return;
+    setState(() {
+      _historyLoading = true;
+      _historyError = null;
+    });
+    final provider = context.read<LeadProvider>();
+    final response = await provider.fetchFollowUps(limit: 500);
+    if (!mounted) return;
+    if (response == null) {
+      setState(() {
+        _historyLoading = false;
+        _historyError = provider.error ?? 'Unable to load remark history.';
+      });
+      return;
+    }
+    final leadId = widget.lead.id ?? '';
+    final entries =
+        _remarkMaps(response.data)
+            .map(_RemarkHistoryEntry.fromMap)
+            .where((entry) => entry.leadId == leadId && entry.hasContent)
+            .toList()
+          ..sort((a, b) => b.sortDate.compareTo(a.sortDate));
+    setState(() {
+      _historyEntries = entries;
+      _historyLoading = false;
+    });
+  }
 
   @override
   void dispose() {
     _remarkController.dispose();
-    _notesController.dispose();
     super.dispose();
   }
 
@@ -3429,10 +3501,8 @@ class _AddLeadRemarkDialogState extends State<_AddLeadRemarkDialog> {
       body: {
         'followUpType': 'Call',
         'remarks': _remarkController.text.trim(),
-        if (_notesController.text.trim().isNotEmpty)
-          'notes': _notesController.text.trim(),
         'scheduledAt': scheduledAt.toUtc().toIso8601String(),
-        'status': _status,
+        'status': 'Scheduled',
         if (assignedToId != null) 'assignedToId': assignedToId.toString(),
       },
     );
@@ -3448,6 +3518,46 @@ class _AddLeadRemarkDialogState extends State<_AddLeadRemarkDialog> {
         _error = context.read<LeadProvider>().error ?? 'Unable to add remark.';
       });
     }
+  }
+
+  Widget _historyBody() {
+    if (_historyLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_historyError != null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(_historyError!, textAlign: TextAlign.center),
+            SizedBox(height: 12.h),
+            OutlinedButton(
+              onPressed: _openHistory,
+              child: const Text('Try again'),
+            ),
+          ],
+        ),
+      );
+    }
+    if (_historyEntries.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.chat_bubble_outline, size: 38.sp, color: Colors.grey),
+            SizedBox(height: 10.h),
+            const Text('No remark history available.'),
+          ],
+        ),
+      );
+    }
+    return ListView.separated(
+      padding: EdgeInsets.symmetric(vertical: 4.h),
+      itemCount: _historyEntries.length,
+      separatorBuilder: (_, _) => SizedBox(height: 12.h),
+      itemBuilder: (_, index) =>
+          _RemarkHistoryCard(entry: _historyEntries[index]),
+    );
   }
 
   @override
@@ -3487,7 +3597,7 @@ class _AddLeadRemarkDialogState extends State<_AddLeadRemarkDialog> {
                     SizedBox(width: 10.w),
                     Expanded(
                       child: Text(
-                        'Add Remark',
+                        _showingHistory ? 'Remark History' : 'Add Remark',
                         style: GoogleFonts.inter(
                           fontSize: 19.sp,
                           fontWeight: FontWeight.w800,
@@ -3508,106 +3618,155 @@ class _AddLeadRemarkDialogState extends State<_AddLeadRemarkDialog> {
                     color: const Color(0xFF64748B),
                   ),
                 ),
-                SizedBox(height: 18.h),
-                TextFormField(
-                  controller: _remarkController,
-                  minLines: 3,
-                  maxLines: 5,
-                  decoration: decoration('Remark'),
-                  validator: (value) => value?.trim().isEmpty ?? true
-                      ? 'Please enter a remark.'
-                      : null,
-                ),
                 SizedBox(height: 14.h),
-                TextFormField(
-                  controller: _notesController,
-                  minLines: 2,
-                  maxLines: 4,
-                  decoration: decoration('Notes (optional)'),
-                ),
-                SizedBox(height: 14.h),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _pickDate,
-                        icon: const Icon(Icons.calendar_today_outlined),
-                        label: Text(
-                          '${_date.day.toString().padLeft(2, '0')}/${_date.month.toString().padLeft(2, '0')}/${_date.year}',
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: Size.fromHeight(48.h),
-                        ),
-                      ),
-                    ),
-                    SizedBox(width: 10.w),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _pickTime,
-                        icon: const Icon(Icons.schedule_rounded),
-                        label: Text(_time.format(context)),
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: Size.fromHeight(48.h),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 14.h),
-                DropdownButtonFormField<String>(
-                  initialValue: _status,
-                  decoration: decoration('Status'),
-                  items: const ['Scheduled', 'Pending', 'Completed']
-                      .map(
-                        (status) => DropdownMenuItem(
-                          value: status,
-                          child: Text(status),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (value) {
-                    if (value != null) setState(() => _status = value);
-                  },
-                ),
-                if (_error != null) ...[
-                  SizedBox(height: 12.h),
-                  Text(
-                    _error!,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
+                Container(
+                  padding: EdgeInsets.all(4.r),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(10.r),
                   ),
-                ],
-                SizedBox(height: 18.h),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    OutlinedButton(
-                      onPressed: _saving ? null : () => Navigator.pop(context),
-                      child: const Text('Cancel'),
-                    ),
-                    SizedBox(width: 10.w),
-                    ElevatedButton.icon(
-                      onPressed: _saving ? null : _submit,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.orangeStrong,
-                        foregroundColor: Colors.white,
-                        minimumSize: Size(130.w, 48.h),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: _saving
+                              ? null
+                              : () => setState(() => _showingHistory = false),
+                          style: ElevatedButton.styleFrom(
+                            elevation: 0,
+                            backgroundColor: !_showingHistory
+                                ? AppColors.orangeStrong
+                                : Colors.white,
+                            foregroundColor: !_showingHistory
+                                ? Colors.white
+                                : AppColors.orangeStrong,
+                            side: const BorderSide(
+                              color: AppColors.orangeStrong,
+                            ),
+                          ),
+                          icon: Icon(Icons.add_comment_outlined, size: 16.sp),
+                          label: Text(
+                            'Add Remark',
+                            style: GoogleFonts.inter(
+                              fontSize: 11.sp,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
                       ),
-                      icon: _saving
-                          ? SizedBox(
-                              width: 17.w,
-                              height: 17.w,
-                              child: const CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(Icons.send_outlined),
-                      label: const Text('Add Remark'),
+                      SizedBox(width: 6.w),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: _saving ? null : _openHistory,
+                          style: ElevatedButton.styleFrom(
+                            elevation: 0,
+                            backgroundColor: _showingHistory
+                                ? AppColors.orangeStrong
+                                : Colors.white,
+                            foregroundColor: _showingHistory
+                                ? Colors.white
+                                : AppColors.orangeStrong,
+                            side: const BorderSide(
+                              color: AppColors.orangeStrong,
+                            ),
+                          ),
+                          icon: Icon(Icons.history_rounded, size: 16.sp),
+                          label: Text(
+                            'Remark History',
+                            style: GoogleFonts.inter(
+                              fontSize: 11.sp,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (!_showingHistory) ...[
+                  SizedBox(height: 18.h),
+                  TextFormField(
+                    controller: _remarkController,
+                    minLines: 3,
+                    maxLines: 5,
+                    decoration: decoration('Remark'),
+                    validator: (value) => value?.trim().isEmpty ?? true
+                        ? 'Please enter a remark.'
+                        : null,
+                  ),
+                  SizedBox(height: 14.h),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _pickDate,
+                          icon: const Icon(Icons.calendar_today_outlined),
+                          label: Text(
+                            '${_date.day.toString().padLeft(2, '0')}/${_date.month.toString().padLeft(2, '0')}/${_date.year}',
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: Size.fromHeight(48.h),
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: 10.w),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _pickTime,
+                          icon: const Icon(Icons.schedule_rounded),
+                          label: Text(_time.format(context)),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: Size.fromHeight(48.h),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (_error != null) ...[
+                    SizedBox(height: 12.h),
+                    Text(
+                      _error!,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
                     ),
                   ],
-                ),
+                  SizedBox(height: 18.h),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      OutlinedButton(
+                        onPressed: _saving
+                            ? null
+                            : () => Navigator.pop(context),
+                        child: const Text('Cancel'),
+                      ),
+                      SizedBox(width: 10.w),
+                      ElevatedButton.icon(
+                        onPressed: _saving ? null : _submit,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.orangeStrong,
+                          foregroundColor: Colors.white,
+                          minimumSize: Size(130.w, 48.h),
+                        ),
+                        icon: _saving
+                            ? SizedBox(
+                                width: 17.w,
+                                height: 17.w,
+                                child: const CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.send_outlined),
+                        label: const Text('Add Remark'),
+                      ),
+                    ],
+                  ),
+                ] else ...[
+                  SizedBox(height: 14.h),
+                  SizedBox(height: 420.h, child: _historyBody()),
+                ],
               ],
             ),
           ),

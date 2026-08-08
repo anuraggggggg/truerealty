@@ -38,14 +38,85 @@ class _MyCommissionsScreenState extends State<MyCommissionsScreen> {
             _PeriodTile('Last month', 'last_month'),
             _PeriodTile('This quarter', 'this_quarter'),
             _PeriodTile('This year', 'this_year'),
+            _PeriodTile('Single date', 'single_date'),
+            _PeriodTile('Custom date range', 'custom_range'),
           ],
         ),
       ),
     );
-    if (value != null && value != provider.preset) {
-      await provider.fetch(preset: value);
+    if (value == null) return;
+    if (!mounted) return;
+    if (value == 'single_date') {
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final existingDate = DateTime.tryParse(provider.dateFrom ?? '');
+      final date = await showDatePicker(
+        context: context,
+        firstDate: DateTime(2020),
+        lastDate: today,
+        initialDate: existingDate ?? today,
+        helpText: 'Select commission date',
+        confirmText: 'Apply',
+        builder: _datePickerBuilder,
+      );
+      if (date == null || !mounted) return;
+      await provider.fetch(
+        preset: 'custom',
+        dateFrom: _dateKey(date),
+        dateTo: _dateKey(date),
+      );
+      return;
     }
+    if (value == 'custom_range') {
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      DateTime? existingStart = DateTime.tryParse(provider.dateFrom ?? '');
+      DateTime? existingEnd = DateTime.tryParse(provider.dateTo ?? '');
+      final range = await showDateRangePicker(
+        context: context,
+        firstDate: DateTime(2020),
+        lastDate: today,
+        initialDateRange: existingStart != null && existingEnd != null
+            ? DateTimeRange(start: existingStart, end: existingEnd)
+            : DateTimeRange(
+                start: today.subtract(const Duration(days: 30)),
+                end: today,
+              ),
+        helpText: 'Select commission dates',
+        saveText: 'Apply',
+        builder: _datePickerBuilder,
+      );
+      if (range == null || !mounted) return;
+      await provider.fetch(
+        preset: 'custom',
+        dateFrom: _dateKey(range.start),
+        dateTo: _dateKey(range.end),
+      );
+      return;
+    }
+    if (value != provider.preset) await provider.fetch(preset: value);
   }
+
+  Widget _datePickerBuilder(BuildContext context, Widget? child) {
+    return MediaQuery(
+      data: MediaQuery.of(
+        context,
+      ).copyWith(textScaler: const TextScaler.linear(1)),
+      child: Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: Theme.of(
+            context,
+          ).colorScheme.copyWith(primary: _blue, onPrimary: Colors.white),
+        ),
+        child: SafeArea(child: child!),
+      ),
+    );
+  }
+
+  String _dateKey(DateTime date) =>
+      '${date.year.toString().padLeft(4, '0')}-'
+      '${date.month.toString().padLeft(2, '0')}-'
+      '${date.day.toString().padLeft(2, '0')}';
 
   @override
   Widget build(BuildContext context) {

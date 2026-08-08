@@ -11,33 +11,77 @@ class FollowUpsProvider extends ApiProviderBase {
 
   final List<FollowUpModel> _items = [];
   FollowUpListFilter _filter = FollowUpListFilter.all;
+  String _pipelineFilter = 'All';
   FollowUpQueueSummary _summary = FollowUpQueueSummary.fromItems(const []);
   bool _hasLoaded = false;
 
   List<FollowUpModel> get items => List.unmodifiable(_items);
   FollowUpListFilter get filter => _filter;
+  String get pipelineFilter => _pipelineFilter;
   FollowUpQueueSummary get summary => _summary;
   bool get hasLoaded => _hasLoaded;
 
   List<FollowUpModel> get visibleItems {
     final now = DateTime.now();
-    switch (_filter) {
-      case FollowUpListFilter.all:
-        return items;
-      case FollowUpListFilter.today:
-        return _items.where((item) => item.isDueToday(now)).toList();
-      case FollowUpListFilter.overdue:
-        return _items.where((item) => item.isOverdue).toList();
-      case FollowUpListFilter.upcoming:
-        return _items.where((item) {
-          if (item.isClosed || item.isOverdue || item.isDueToday(now)) {
-            return false;
-          }
-          return item.scheduledAt != null && item.scheduledAt!.isAfter(now);
-        }).toList();
-      case FollowUpListFilter.completed:
-        return _items.where((item) => item.isClosed).toList();
+    final queueItems = switch (_filter) {
+      FollowUpListFilter.all => items,
+      FollowUpListFilter.today =>
+        _items.where((item) => item.isDueToday(now)).toList(),
+      FollowUpListFilter.overdue =>
+        _items.where((item) => item.isOverdue).toList(),
+      FollowUpListFilter.upcoming => _items.where((item) {
+        if (item.isClosed || item.isOverdue || item.isDueToday(now)) {
+          return false;
+        }
+        return item.scheduledAt != null && item.scheduledAt!.isAfter(now);
+      }).toList(),
+      FollowUpListFilter.completed =>
+        _items.where((item) => item.isClosed).toList(),
+    };
+    return queueItems
+        .where((item) => _matchesPipeline(item, _pipelineFilter))
+        .toList(growable: false);
+  }
+
+  int countForPipeline(String pipeline) =>
+      _items.where((item) => _matchesPipeline(item, pipeline)).length;
+
+  bool _matchesPipeline(FollowUpModel item, String pipeline) {
+    final selected = pipeline.trim().toLowerCase();
+    if (selected == 'all') return true;
+    final status = item.leadStatus.trim().toLowerCase();
+    final type = item.leadType.trim().toLowerCase();
+    final text = '$status $type';
+    if (selected == 'hot lead') return type.contains('hot');
+    if (selected == 'new lead') return status.contains('new');
+    if (selected == 'interested') {
+      return status.contains('interested') &&
+          !status.contains('not interested');
     }
+    if (selected == 'not interested') return status.contains('not interested');
+    if (selected == 'site visit schedule') {
+      return text.contains('site visit') && text.contains('schedul');
+    }
+    if (selected == 'site visit done') {
+      return text.contains('site visit') &&
+          (text.contains('done') || text.contains('complete'));
+    }
+    if (selected == 're-visit done') {
+      return (text.contains('re-visit') ||
+              text.contains('revisit') ||
+              text.contains('re visit')) &&
+          (text.contains('done') || text.contains('complete'));
+    }
+    if (selected == 'follow up') {
+      return text.contains('follow up') || text.contains('follow-up');
+    }
+    if (selected == 'obm done') return text.contains('obm');
+    if (selected == 'booking done') {
+      return text.contains('booking') ||
+          text.contains('booked') ||
+          text.contains('converted');
+    }
+    return status == selected;
   }
 
   int countFor(FollowUpListFilter filter) {
@@ -73,8 +117,7 @@ class FollowUpsProvider extends ApiProviderBase {
           : hour > 12
           ? hour - 12
           : hour;
-      final label =
-          '${displayHour.toString().padLeft(2, '0')} $suffix';
+      final label = '${displayHour.toString().padLeft(2, '0')} $suffix';
       counts[label] = (counts[label] ?? 0) + 1;
     }
     final entries = counts.entries.toList()
@@ -98,6 +141,12 @@ class FollowUpsProvider extends ApiProviderBase {
   void setFilter(FollowUpListFilter filter) {
     if (_filter == filter) return;
     _filter = filter;
+    notifyListeners();
+  }
+
+  void setPipelineFilter(String filter) {
+    if (_pipelineFilter == filter) return;
+    _pipelineFilter = filter;
     notifyListeners();
   }
 

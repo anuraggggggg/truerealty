@@ -9,6 +9,8 @@ class CommissionRepository {
 
   Future<ApiResponse<CommissionReport>> getMyCommissions({
     required String preset,
+    String? dateFrom,
+    String? dateTo,
     String scope = 'mine',
     int page = 1,
     int limit = 10,
@@ -17,6 +19,8 @@ class CommissionRepository {
       '/bookings/my-commissions',
       queryParameters: {
         'preset': preset,
+        'dateFrom': dateFrom,
+        'dateTo': dateTo,
         'scope': scope,
         'page': page,
         'limit': limit,

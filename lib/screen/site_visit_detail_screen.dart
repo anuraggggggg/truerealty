@@ -14,7 +14,10 @@ class SiteVisitDetailScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppColors.leadListBg,
       appBar: AppBar(
-        title: Text('Visit Details', style: GoogleFonts.inter(color: AppColors.slate900)),
+        title: Text(
+          'Visit Details',
+          style: GoogleFonts.inter(color: AppColors.slate900),
+        ),
         backgroundColor: AppColors.white,
         elevation: 0,
         iconTheme: const IconThemeData(color: AppColors.slate900),
@@ -44,7 +47,13 @@ class SiteVisitDetailScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(visit.leadName, style: GoogleFonts.inter(fontSize: 18.sp, fontWeight: FontWeight.w700)),
+          Text(
+            visit.leadName,
+            style: GoogleFonts.inter(
+              fontSize: 18.sp,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
           SizedBox(height: 8.h),
           _detailRow(Icons.apartment, 'Project:', visit.project),
           _detailRow(Icons.calendar_today, 'Date:', visit.date),
@@ -81,14 +90,23 @@ class SiteVisitDetailScreen extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text('Status', style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w600)),
+          Text(
+            'Status',
+            style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w600),
+          ),
           Container(
             padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
             decoration: BoxDecoration(
               color: AppColors.windowBlue,
               borderRadius: BorderRadius.circular(20.r),
             ),
-            child: Text(visit.status, style: const TextStyle(color: AppColors.blueBright, fontWeight: FontWeight.w700)),
+            child: Text(
+              visit.status,
+              style: const TextStyle(
+                color: AppColors.blueBright,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
         ],
       ),

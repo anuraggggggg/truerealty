@@ -17,6 +17,7 @@ import 'package:truerealtycrm/provider/notification_provider.dart';
 import 'package:truerealtycrm/provider/site_visits_provider.dart';
 import 'package:truerealtycrm/provider/upload_provider.dart';
 import 'package:truerealtycrm/router/app_router.dart';
+import 'package:truerealtycrm/screen/field_executive_dashboard_screen.dart';
 import 'package:truerealtycrm/screen/telecaller_activities_screen.dart';
 import 'package:truerealtycrm/widget/todays_follow_ups_fab.dart';
 
@@ -151,6 +152,11 @@ class _TelecallerDashboardViewState extends State<TelecallerDashboardView> {
   bool _attendanceActionLoading = false;
   String? _error;
   _TodayAttendanceData _todayAttendance = const _TodayAttendanceData();
+  PerformanceRankingData _ranking = const PerformanceRankingData();
+  bool _rankingLoading = true;
+  String _rankingRange = 'monthly';
+  String _rankingMode = 'users';
+  String? _rankingError;
 
   @override
   void initState() {
@@ -196,6 +202,12 @@ class _TelecallerDashboardViewState extends State<TelecallerDashboardView> {
         'lead_temperature',
         'lead-temperature',
       ]),
+      dashboardProvider.fetchRankings(
+        range: _rankingRange,
+        mode: _rankingMode,
+        teamId: 'all',
+        userId: 'all',
+      ),
     ]);
 
     if (!mounted) {
@@ -210,6 +222,7 @@ class _TelecallerDashboardViewState extends State<TelecallerDashboardView> {
     final siteVisitsResponse = results[5] as ApiResponse<dynamic>?;
     final statusLookup = results[6] as Map<String, String>;
     final temperatureLookup = results[7] as Map<String, String>;
+    final rankingResponse = results[8] as ApiResponse<dynamic>?;
 
     final parsedLeads = leadsResponse == null
         ? leadProvider.leads
@@ -240,6 +253,13 @@ class _TelecallerDashboardViewState extends State<TelecallerDashboardView> {
       _statusById = statusLookup;
       _temperatureById = temperatureLookup;
       _todayAttendance = _TodayAttendanceData.fromApi(attendanceResponse?.data);
+      _ranking = rankingResponse == null
+          ? _ranking
+          : PerformanceRankingData.fromApi(rankingResponse.data);
+      _rankingLoading = false;
+      _rankingError = rankingResponse == null
+          ? 'Unable to load performance rankings.'
+          : null;
       _error =
           leadsResponse == null ||
               followUpsResponse == null ||
@@ -251,6 +271,32 @@ class _TelecallerDashboardViewState extends State<TelecallerDashboardView> {
           : null;
       _isLoading = false;
       _hasLoaded = true;
+    });
+  }
+
+  Future<void> _loadRankings({String? range, String? mode}) async {
+    final nextRange = range ?? _rankingRange;
+    final nextMode = mode ?? _rankingMode;
+    setState(() {
+      _rankingRange = nextRange;
+      _rankingMode = nextMode;
+      _rankingLoading = true;
+      _rankingError = null;
+    });
+    final response = await context.read<DashboardProvider>().fetchRankings(
+      range: nextRange,
+      mode: nextMode,
+      teamId: 'all',
+      userId: 'all',
+    );
+    if (!mounted) return;
+    setState(() {
+      _rankingLoading = false;
+      if (response == null) {
+        _rankingError = 'Unable to load performance rankings.';
+      } else {
+        _ranking = PerformanceRankingData.fromApi(response.data);
+      }
     });
   }
 
@@ -372,6 +418,17 @@ class _TelecallerDashboardViewState extends State<TelecallerDashboardView> {
                     ),
                     const _SectionGap(),
                   ],
+                  PerformanceRankingCard(
+                    data: _ranking,
+                    selectedRange: _rankingRange,
+                    selectedMode: _rankingMode,
+                    loading: _rankingLoading,
+                    error: _rankingError,
+                    onRangeChanged: (value) => _loadRankings(range: value),
+                    onModeChanged: (value) => _loadRankings(mode: value),
+                    onRetry: _loadRankings,
+                  ),
+                  const _SectionGap(),
                   _LeadStatusDistributionSection(summary: summary),
                   const _SectionGap(),
                   _ConversionFunnelSection(summary: summary),
@@ -898,6 +955,7 @@ class TelecallerDashboardFeatureSections extends StatelessWidget {
     this.notInterestedLeads = 0,
     this.siteVisitScheduledLeads = 0,
     this.siteVisitDoneLeads = 0,
+    this.reVisitDone = 0,
     this.bookingsDone = 0,
     this.todayCallFollowUps = 0,
     this.dueNextHour = 0,
@@ -913,6 +971,7 @@ class TelecallerDashboardFeatureSections extends StatelessWidget {
   final int notInterestedLeads;
   final int siteVisitScheduledLeads;
   final int siteVisitDoneLeads;
+  final int reVisitDone;
   final int bookingsDone;
   final int todayCallFollowUps;
   final int dueNextHour;
@@ -932,7 +991,7 @@ class TelecallerDashboardFeatureSections extends StatelessWidget {
       notInterestedLeads: notInterestedLeads,
       siteVisitScheduledLeads: siteVisitScheduledLeads,
       siteVisitDoneLeads: siteVisitDoneLeads,
-      reVisitDone: 0,
+      reVisitDone: reVisitDone,
       bookingsDone: bookingsDone,
       convertedLeads: bookingsDone,
       todayCallFollowUps: todayCallFollowUps,
@@ -2445,13 +2504,6 @@ class _TodayTasksSection extends StatelessWidget {
   List<_TaskStatData> get _items {
     return [
       _TaskStatData(
-        icon: Icons.call_outlined,
-        label: 'Make Calls',
-        value: _formatCount(summary.todayFollowUps),
-        iconColor: const Color(0xFF98A2B3),
-        valueColor: const Color(0xFFFF6B00),
-      ),
-      _TaskStatData(
         icon: Icons.calendar_month_outlined,
         label: 'Follow-ups',
         value: _formatCount(summary.todayFollowUps),
@@ -3194,12 +3246,10 @@ class _ConversionFunnelSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final stages = [
       _FunnelStage(_formatCount(summary.totalLeads), 'Total Leads'),
-      _FunnelStage(
-        _formatCount((summary.totalLeads - summary.newLeads).clamp(0, 999999)),
-        'Contacted',
-      ),
+      _FunnelStage(_formatCount(summary.newLeads), 'New Lead'),
       _FunnelStage(_formatCount(summary.interestedLeads), 'Interested'),
       _FunnelStage(_formatCount(summary.siteVisitDoneLeads), 'Site Visit Done'),
+      _FunnelStage(_formatCount(summary.reVisitDone), 'Re-Visit Done'),
       _FunnelStage(_formatCount(summary.bookingsDone), 'Bookings Done'),
     ];
 
@@ -4783,6 +4833,282 @@ Map<String, dynamic> _firstApiMap(Object? source) {
   }
   return const {};
 }
+
+// Legacy implementation retained temporarily while older dashboard snapshots
+// still reference its private data shape.
+// ignore: unused_element
+class _TelecallerPerformanceRanking extends StatelessWidget {
+  const _TelecallerPerformanceRanking({
+    required this.data,
+    required this.range,
+    required this.mode,
+    required this.loading,
+    required this.error,
+    required this.onRangeChanged,
+    required this.onModeChanged,
+    required this.onRetry,
+  });
+
+  final _TelecallerRankingData data;
+  final String range;
+  final String mode;
+  final bool loading;
+  final String? error;
+  final ValueChanged<String> onRangeChanged;
+  final ValueChanged<String> onModeChanged;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = mode == 'teams' ? data.teams : data.users;
+    return _SectionCard(
+      padding: EdgeInsets.all(16.r),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 38.w,
+                height: 38.w,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF1E8),
+                  borderRadius: BorderRadius.circular(10.r),
+                ),
+                child: Icon(
+                  Icons.emoji_events_rounded,
+                  color: AppColors.orangeDeep,
+                  size: 22.sp,
+                ),
+              ),
+              SizedBox(width: 10.w),
+              Expanded(
+                child: Text(
+                  'Performance ranking',
+                  style: GoogleFonts.inter(
+                    fontSize: 19.sp,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.navy,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 14.h),
+          DropdownButtonFormField<String>(
+            initialValue: range,
+            decoration: InputDecoration(
+              isDense: true,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10.r),
+              ),
+            ),
+            items:
+                const {
+                      'weekly': 'Weekly',
+                      'monthly': 'Monthly',
+                      'quarterly': 'Quarterly',
+                      'yearly': 'Yearly',
+                    }.entries
+                    .map(
+                      (item) => DropdownMenuItem(
+                        value: item.key,
+                        child: Text(item.value),
+                      ),
+                    )
+                    .toList(),
+            onChanged: loading
+                ? null
+                : (value) {
+                    if (value != null) onRangeChanged(value);
+                  },
+          ),
+          SizedBox(height: 10.h),
+          SegmentedButton<String>(
+            segments: const [
+              ButtonSegment(value: 'users', label: Text('Users')),
+              ButtonSegment(value: 'teams', label: Text('Teams')),
+            ],
+            selected: {mode},
+            onSelectionChanged: loading
+                ? null
+                : (selection) => onModeChanged(selection.first),
+            showSelectedIcon: false,
+          ),
+          SizedBox(height: 14.h),
+          if (loading)
+            const Center(child: CircularProgressIndicator())
+          else if (error != null)
+            Center(
+              child: Column(
+                children: [
+                  Text(error!, textAlign: TextAlign.center),
+                  TextButton(onPressed: onRetry, child: const Text('Retry')),
+                ],
+              ),
+            )
+          else ...[
+            Row(
+              children: [
+                Expanded(
+                  child: _TelecallerRankSummary(
+                    label: 'Your rank',
+                    value: '#${data.userRank}',
+                    points: data.userPoints,
+                  ),
+                ),
+                SizedBox(width: 10.w),
+                Expanded(
+                  child: _TelecallerRankSummary(
+                    label: 'Team rank',
+                    value: '#${data.teamRank}',
+                    points: data.teamPoints,
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 12.h),
+            if (rows.isEmpty)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(12),
+                  child: Text('No rankings available.'),
+                ),
+              )
+            else
+              ...rows
+                  .take(5)
+                  .map(
+                    (item) => ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: CircleAvatar(
+                        backgroundColor: item.rank <= 3
+                            ? const Color(0xFFFFF1E8)
+                            : const Color(0xFFF1F5F9),
+                        child: Text(
+                          '#${item.rank}',
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      title: Text(
+                        item.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: Text(
+                        '${item.points} pts',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _TelecallerRankSummary extends StatelessWidget {
+  const _TelecallerRankSummary({
+    required this.label,
+    required this.value,
+    required this.points,
+  });
+  final String label;
+  final String value;
+  final int points;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: EdgeInsets.all(12.r),
+    decoration: BoxDecoration(
+      border: Border.all(color: const Color(0xFFD8DEE9)),
+      borderRadius: BorderRadius.circular(12.r),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(fontSize: 11.sp, color: const Color(0xFF64748B)),
+        ),
+        SizedBox(height: 4.h),
+        Text(
+          value,
+          style: GoogleFonts.inter(
+            fontSize: 20.sp,
+            fontWeight: FontWeight.w800,
+            color: AppColors.navy,
+          ),
+        ),
+        Text('$points points', style: TextStyle(fontSize: 11.sp)),
+      ],
+    ),
+  );
+}
+
+class _TelecallerRankingData {
+  const _TelecallerRankingData({
+    this.userRank = 0,
+    this.teamRank = 0,
+    this.userPoints = 0,
+    this.teamPoints = 0,
+    this.users = const [],
+    this.teams = const [],
+  });
+  final int userRank;
+  final int teamRank;
+  final int userPoints;
+  final int teamPoints;
+  final List<_TelecallerRankingEntry> users;
+  final List<_TelecallerRankingEntry> teams;
+
+  // ignore: unused_element
+  factory _TelecallerRankingData.fromApi(Object? source) {
+    final root = _rankingMap(source);
+    final summary = _rankingMap(root['summary']);
+    return _TelecallerRankingData(
+      userRank: _rankingInt(summary['currentUserRank']),
+      teamRank: _rankingInt(summary['currentTeamRank']),
+      userPoints: _rankingInt(summary['currentUserPoints']),
+      teamPoints: _rankingInt(summary['currentTeamPoints']),
+      users: _TelecallerRankingEntry.list(root['userRankings']),
+      teams: _TelecallerRankingEntry.list(root['teamRankings'], team: true),
+    );
+  }
+}
+
+class _TelecallerRankingEntry {
+  const _TelecallerRankingEntry(this.rank, this.name, this.points);
+  final int rank;
+  final String name;
+  final int points;
+
+  static List<_TelecallerRankingEntry> list(
+    Object? source, {
+    bool team = false,
+  }) {
+    if (source is! List) return const [];
+    return source.whereType<Map>().map((item) {
+      final map = Map<String, dynamic>.from(item);
+      return _TelecallerRankingEntry(
+        _rankingInt(map['rank']),
+        (map[team ? 'teamName' : 'name'] ?? 'Unknown').toString(),
+        _rankingInt(map['points']),
+      );
+    }).toList();
+  }
+}
+
+Map<String, dynamic> _rankingMap(Object? source) {
+  if (source is! Map) return const {};
+  final map = Map<String, dynamic>.from(source);
+  return map['data'] is Map ? _rankingMap(map['data']) : map;
+}
+
+int _rankingInt(Object? value) =>
+    value is num ? value.toInt() : int.tryParse(value?.toString() ?? '') ?? 0;
 
 DateTime? _attendanceDate(Object? value) {
   if (value == null) return null;

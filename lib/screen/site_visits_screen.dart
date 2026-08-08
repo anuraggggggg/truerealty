@@ -7,6 +7,7 @@ import 'package:truerealtycrm/provider/auth_provider.dart';
 import 'package:truerealtycrm/provider/leads_provider.dart';
 import 'package:truerealtycrm/provider/project_provider.dart';
 import 'package:truerealtycrm/provider/site_visits_provider.dart';
+import 'package:truerealtycrm/screen/site_visit_detail_screen.dart';
 import 'package:truerealtycrm/widget/app_loading.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -54,7 +55,11 @@ class _SiteVisitDetailsScreenState extends State<SiteVisitDetailsScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<SiteVisitProvider>().resetViewFilters();
+      _load();
+    });
   }
 
   @override
@@ -70,6 +75,14 @@ class _SiteVisitDetailsScreenState extends State<SiteVisitDetailsScreen> {
       provider.fetchSiteVisits(limit: 100),
       if (_executives.isEmpty) _loadExecutives(),
     ]);
+    if (!mounted) return;
+    if (provider.siteVisits.isEmpty &&
+        context.read<AuthProvider>().role == UserRole.telecaller &&
+        _executives.isNotEmpty) {
+      await provider.fetchSiteVisitsForExecutives(
+        _executives.map((executive) => executive.id),
+      );
+    }
   }
 
   Future<void> _loadExecutives() async {
@@ -268,18 +281,6 @@ class _SiteVisitDetailsScreenState extends State<SiteVisitDetailsScreen> {
             fontSize: 26.sp,
             fontWeight: FontWeight.w800,
             color: _title,
-          ),
-        ),
-        SizedBox(height: 6.h),
-        Text(
-          'Central visit control for scheduled property tours, revisits, virtual visits, and field execution.',
-          maxLines: 3,
-          overflow: TextOverflow.ellipsis,
-          style: GoogleFonts.inter(
-            fontSize: 13.sp,
-            height: 1.4,
-            fontWeight: FontWeight.w500,
-            color: const Color(0xFF44474E),
           ),
         ),
       ],
@@ -550,6 +551,11 @@ class _SiteVisitMobileCard extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => SiteVisitDetailScreen(visit: visit),
+          ),
+        ),
         borderRadius: BorderRadius.circular(16.r),
         child: Container(
           width: double.infinity,

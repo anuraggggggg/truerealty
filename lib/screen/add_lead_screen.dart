@@ -143,16 +143,10 @@ class _AddLeadScreenState extends State<AddLeadScreen> {
   final _maxAreaController = TextEditingController();
   final _zoneController = TextEditingController();
   final _occupationController = TextEditingController();
-  final _followUpMessageController = TextEditingController();
 
   final DateTime _createdAt = DateTime.now();
-  DateTime _followUpDate = DateTime.now();
-  TimeOfDay _followUpTime = TimeOfDay.now();
   bool _isLoadingOptions = true;
   bool _isSaving = false;
-  bool _scheduleFollowUp = false;
-  bool _remindTelecaller = true;
-  int _currentStep = 0;
   String? _error;
 
   List<_ApiOption> _sources = const [];
@@ -170,7 +164,6 @@ class _AddLeadScreenState extends State<AddLeadScreen> {
   _ApiOption? _selectedStage;
   _ApiOption? _selectedProject;
   _ApiOption? _selectedEmployee;
-  String _followUpType = 'Call';
 
   @override
   void initState() {
@@ -205,7 +198,6 @@ class _AddLeadScreenState extends State<AddLeadScreen> {
     _maxAreaController.dispose();
     _zoneController.dispose();
     _occupationController.dispose();
-    _followUpMessageController.dispose();
     super.dispose();
   }
 
@@ -383,58 +375,19 @@ class _AddLeadScreenState extends State<AddLeadScreen> {
       return;
     }
 
-    final leadId = _createdLeadId(response.data);
-    if (_scheduleFollowUp && leadId != null) {
-      await leadProvider.createFollowUp(
-        leadId: leadId,
-        body: {
-          'followUpType': _followUpType,
-          'scheduledAt': _scheduledFollowUp.toUtc().toIso8601String(),
-          'remindTelecaller': _remindTelecaller,
-          if (_followUpMessageController.text.trim().isNotEmpty)
-            'message': _followUpMessageController.text.trim(),
-        },
-      );
-    }
-
-    if (!mounted) {
-      return;
-    }
-
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Lead ${_leadDisplayId(response.data)} created.')),
     );
     Navigator.of(context).pop(true);
   }
 
-  DateTime get _scheduledFollowUp {
-    return DateTime(
-      _followUpDate.year,
-      _followUpDate.month,
-      _followUpDate.day,
-      _followUpTime.hour,
-      _followUpTime.minute,
-    );
-  }
-
-  void _continueToFollowUp() {
+  void _saveLead() {
     FocusScope.of(context).unfocus();
     if (!(_formKey.currentState?.validate() ?? false)) {
       setState(() => _error = 'Please complete the required fields.');
       return;
     }
-    setState(() {
-      _currentStep = 1;
-      _error = null;
-    });
-  }
-
-  void _backToBasicInfo() {
-    FocusScope.of(context).unfocus();
-    setState(() {
-      _currentStep = 0;
-      _error = null;
-    });
+    _submit();
   }
 
   @override
@@ -460,8 +413,6 @@ class _AddLeadScreenState extends State<AddLeadScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            _StepCards(currentStep: _currentStep),
-                            SizedBox(height: 18.h),
                             if (_isLoadingOptions) ...[
                               const LinearProgressIndicator(minHeight: 2),
                               SizedBox(height: 14.h),
@@ -470,83 +421,63 @@ class _AddLeadScreenState extends State<AddLeadScreen> {
                               _InlineError(message: _error!),
                               SizedBox(height: 14.h),
                             ],
-                            if (_currentStep == 0) ...[
-                              _BasicInfoSection(
-                                createdAt: _createdAt,
-                                sources: _sources,
-                                stages: _stages,
-                                projects: _projects,
-                                employees: _employees,
-                                selectedSource: _selectedSource,
-                                selectedStage: _selectedStage,
-                                selectedProject: _selectedProject,
-                                selectedEmployee: _selectedEmployee,
-                                nameController: _nameController,
-                                mobileCodeController: _mobileCodeController,
-                                mobileController: _mobileController,
-                                alternateCodeController:
-                                    _alternateCodeController,
-                                alternateMobileController:
-                                    _alternateMobileController,
-                                emailController: _emailController,
-                                remarksController: _remarksController,
-                                onSourceChanged: (value) =>
-                                    setState(() => _selectedSource = value),
-                                onStageChanged: (value) =>
-                                    setState(() => _selectedStage = value),
-                                onProjectChanged: (value) {
-                                  setState(() {
-                                    _selectedProject = value;
-                                    final location = value == null
-                                        ? ''
-                                        : _optionLocation(value.data);
-                                    if (location.isNotEmpty) {
-                                      _preferredLocationController.text =
-                                          location;
-                                    }
-                                  });
-                                },
-                                onEmployeeChanged: (value) =>
-                                    setState(() => _selectedEmployee = value),
-                              ),
-                              SizedBox(height: 16.h),
-                              _RequirementSection(
-                                propertyTypeController: _propertyTypeController,
-                                configurationController:
-                                    _configurationController,
-                                budgetRangeController: _budgetRangeController,
-                                minBudgetController: _minBudgetController,
-                                maxBudgetController: _maxBudgetController,
-                                budgetUnitController: _budgetUnitController,
-                                preferredLocationController:
-                                    _preferredLocationController,
-                                possessionTimelineController:
-                                    _possessionTimelineController,
-                                carpetAreaRangeController:
-                                    _carpetAreaRangeController,
-                                purposeController: _purposeController,
-                                minAreaController: _minAreaController,
-                                maxAreaController: _maxAreaController,
-                                zoneController: _zoneController,
-                                occupationController: _occupationController,
-                              ),
-                            ] else
-                              _FollowUpSection(
-                                enabled: _scheduleFollowUp,
-                                type: _followUpType,
-                                date: _followUpDate,
-                                time: _followUpTime,
-                                messageController: _followUpMessageController,
-                                onEnabledChanged: (value) =>
-                                    setState(() => _scheduleFollowUp = value),
-                                onTypeChanged: (value) =>
-                                    setState(() => _followUpType = value),
-                                remindTelecaller: _remindTelecaller,
-                                onRemindTelecallerChanged: (value) =>
-                                    setState(() => _remindTelecaller = value),
-                                onPickDate: _pickFollowUpDate,
-                                onPickTime: _pickFollowUpTime,
-                              ),
+                            _BasicInfoSection(
+                              createdAt: _createdAt,
+                              sources: _sources,
+                              stages: _stages,
+                              projects: _projects,
+                              employees: _employees,
+                              selectedSource: _selectedSource,
+                              selectedStage: _selectedStage,
+                              selectedProject: _selectedProject,
+                              selectedEmployee: _selectedEmployee,
+                              nameController: _nameController,
+                              mobileCodeController: _mobileCodeController,
+                              mobileController: _mobileController,
+                              alternateCodeController: _alternateCodeController,
+                              alternateMobileController:
+                                  _alternateMobileController,
+                              emailController: _emailController,
+                              remarksController: _remarksController,
+                              onSourceChanged: (value) =>
+                                  setState(() => _selectedSource = value),
+                              onStageChanged: (value) =>
+                                  setState(() => _selectedStage = value),
+                              onProjectChanged: (value) {
+                                setState(() {
+                                  _selectedProject = value;
+                                  final location = value == null
+                                      ? ''
+                                      : _optionLocation(value.data);
+                                  if (location.isNotEmpty) {
+                                    _preferredLocationController.text =
+                                        location;
+                                  }
+                                });
+                              },
+                              onEmployeeChanged: (value) =>
+                                  setState(() => _selectedEmployee = value),
+                            ),
+                            SizedBox(height: 16.h),
+                            _RequirementSection(
+                              propertyTypeController: _propertyTypeController,
+                              configurationController: _configurationController,
+                              budgetRangeController: _budgetRangeController,
+                              minBudgetController: _minBudgetController,
+                              maxBudgetController: _maxBudgetController,
+                              budgetUnitController: _budgetUnitController,
+                              preferredLocationController:
+                                  _preferredLocationController,
+                              possessionTimelineController:
+                                  _possessionTimelineController,
+                              carpetAreaRangeController:
+                                  _carpetAreaRangeController,
+                              purposeController: _purposeController,
+                              minAreaController: _minAreaController,
+                              maxAreaController: _maxAreaController,
+                              zoneController: _zoneController,
+                              occupationController: _occupationController,
+                            ),
                           ],
                         ),
                       ),
@@ -555,42 +486,15 @@ class _AddLeadScreenState extends State<AddLeadScreen> {
                 ),
               ),
               _AddLeadFooter(
-                currentStep: _currentStep,
                 isSaving: _isSaving,
                 onCancel: _close,
-                onBack: _backToBasicInfo,
-                onContinue: _continueToFollowUp,
-                onSubmit: _isSaving ? null : _submit,
+                onSubmit: _isSaving ? null : _saveLead,
               ),
             ],
           ),
         ),
       ),
     );
-  }
-
-  Future<void> _pickFollowUpDate() async {
-    FocusManager.instance.primaryFocus?.unfocus();
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _followUpDate,
-      firstDate: DateTime.now().subtract(const Duration(days: 1)),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
-    );
-    if (picked != null && mounted) {
-      setState(() => _followUpDate = picked);
-    }
-  }
-
-  Future<void> _pickFollowUpTime() async {
-    FocusManager.instance.primaryFocus?.unfocus();
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: _followUpTime,
-    );
-    if (picked != null && mounted) {
-      setState(() => _followUpTime = picked);
-    }
   }
 
   void _close() => Navigator.of(context).maybePop();
@@ -618,15 +522,6 @@ class _AddLeadHeader extends StatelessWidget {
                   fontSize: 24.sp,
                   fontWeight: FontWeight.w800,
                   color: AppColors.navy,
-                ),
-              ),
-              SizedBox(height: 6.h),
-              Text(
-                'Capture the basic contact details first, then add requirement and follow-up context.',
-                style: GoogleFonts.inter(
-                  fontSize: 13.sp,
-                  fontWeight: FontWeight.w500,
-                  color: const Color(0xFF64748B),
                 ),
               ),
             ],
@@ -721,6 +616,7 @@ class _TimestampPill extends StatelessWidget {
   }
 }
 
+// ignore: unused_element
 class _StepCards extends StatelessWidget {
   const _StepCards({required this.currentStep});
 
@@ -897,29 +793,18 @@ class _BasicInfoSection extends StatelessWidget {
       icon: Icons.badge_outlined,
       child: LayoutBuilder(
         builder: (context, constraints) {
-          Widget adaptivePair(Widget first, Widget second) {
-            if (constraints.maxWidth < 680) {
-              return Column(
-                children: [
-                  first,
-                  SizedBox(height: 18.h),
-                  second,
-                ],
-              );
-            }
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: first),
-                SizedBox(width: 16.w),
-                Expanded(child: second),
-              ],
-            );
-          }
-
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              _OptionDropdown(
+                label: 'Source *',
+                hint: 'Select lead source',
+                value: selectedSource,
+                items: sources,
+                validatorMessage: 'Lead source is required.',
+                onChanged: onSourceChanged,
+              ),
+              SizedBox(height: 18.h),
               _ReadonlyField(
                 label: 'Date & time',
                 value: _formatDateTime(createdAt),
@@ -957,41 +842,30 @@ class _BasicInfoSection extends StatelessWidget {
                 validator: _emailValidator,
               ),
               SizedBox(height: 18.h),
-              adaptivePair(
-                _OptionDropdown(
-                  label: 'Project *',
-                  hint: 'Select Project',
-                  value: selectedProject,
-                  items: projects,
-                  validatorMessage: 'Project is required.',
-                  onChanged: onProjectChanged,
-                ),
-                _OptionDropdown(
-                  label: 'Source *',
-                  hint: 'Select lead source',
-                  value: selectedSource,
-                  items: sources,
-                  validatorMessage: 'Lead source is required.',
-                  onChanged: onSourceChanged,
-                ),
+              _OptionDropdown(
+                label: 'Project *',
+                hint: 'Select Project',
+                value: selectedProject,
+                items: projects,
+                validatorMessage: 'Project is required.',
+                onChanged: onProjectChanged,
               ),
               SizedBox(height: 18.h),
-              adaptivePair(
-                _ReadonlyField(
-                  label: 'Project area / location',
-                  value: selectedProject == null
-                      ? 'Selected project location'
-                      : _optionLocation(selectedProject!.data),
-                  icon: Icons.location_on_outlined,
-                  suffix: 'Auto-filled',
-                ),
-                _OptionDropdown(
-                  label: 'Lead Stage',
-                  hint: 'Select lead stage',
-                  value: selectedStage,
-                  items: stages,
-                  onChanged: onStageChanged,
-                ),
+              _OptionDropdown(
+                label: 'Lead Stage',
+                hint: 'Select lead stage',
+                value: selectedStage,
+                items: stages,
+                onChanged: onStageChanged,
+              ),
+              SizedBox(height: 18.h),
+              _ReadonlyField(
+                label: 'Project area / location',
+                value: selectedProject == null
+                    ? 'Selected project location'
+                    : _optionLocation(selectedProject!.data),
+                icon: Icons.location_on_outlined,
+                suffix: 'Auto-filled',
               ),
               SizedBox(height: 18.h),
               _TextInput(
@@ -1195,6 +1069,7 @@ class _ResponsiveFieldPair extends StatelessWidget {
   }
 }
 
+// ignore: unused_element
 class _FollowUpSection extends StatelessWidget {
   const _FollowUpSection({
     required this.enabled,
@@ -2141,19 +2016,13 @@ class _InlineError extends StatelessWidget {
 
 class _AddLeadFooter extends StatelessWidget {
   const _AddLeadFooter({
-    required this.currentStep,
     required this.isSaving,
     required this.onCancel,
-    required this.onBack,
-    required this.onContinue,
     required this.onSubmit,
   });
 
-  final int currentStep;
   final bool isSaving;
   final VoidCallback onCancel;
-  final VoidCallback onBack;
-  final VoidCallback onContinue;
   final VoidCallback? onSubmit;
 
   @override
@@ -2179,24 +2048,8 @@ class _AddLeadFooter extends StatelessWidget {
               style: GoogleFonts.inter(fontWeight: FontWeight.w800),
             ),
           );
-          final backButton = OutlinedButton(
-            onPressed: isSaving ? null : onBack,
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.navy,
-              backgroundColor: Colors.white,
-              side: const BorderSide(color: Color(0xFFD9E3EF)),
-              padding: EdgeInsets.symmetric(horizontal: 18.w, vertical: 13.h),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8.r),
-              ),
-            ),
-            child: Text(
-              'Back',
-              style: GoogleFonts.inter(fontWeight: FontWeight.w800),
-            ),
-          );
           final primaryButton = ElevatedButton.icon(
-            onPressed: currentStep == 0 ? onContinue : onSubmit,
+            onPressed: onSubmit,
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.orangeDeep,
               foregroundColor: Colors.white,
@@ -2206,7 +2059,7 @@ class _AddLeadFooter extends StatelessWidget {
                 borderRadius: BorderRadius.circular(8.r),
               ),
             ),
-            icon: isSaving && currentStep == 1
+            icon: isSaving
                 ? SizedBox(
                     width: 18.w,
                     height: 18.w,
@@ -2215,14 +2068,9 @@ class _AddLeadFooter extends StatelessWidget {
                       color: Colors.white,
                     ),
                   )
-                : Icon(
-                    currentStep == 0
-                        ? Icons.arrow_forward_rounded
-                        : Icons.check_rounded,
-                    size: 18,
-                  ),
+                : const Icon(Icons.check_rounded, size: 18),
             label: Text(
-              currentStep == 0 ? 'Continue to follow-up' : 'Save lead',
+              'Save lead',
               style: GoogleFonts.inter(
                 fontSize: 14.sp,
                 fontWeight: FontWeight.w800,
@@ -2236,27 +2084,12 @@ class _AddLeadFooter extends StatelessWidget {
               children: [
                 primaryButton,
                 SizedBox(height: 10.h),
-                Row(
-                  children: [
-                    Expanded(child: cancelButton),
-                    if (currentStep == 1) ...[
-                      SizedBox(width: 10.w),
-                      Expanded(child: backButton),
-                    ],
-                  ],
-                ),
+                Row(children: [Expanded(child: cancelButton)]),
               ],
             );
           }
 
-          return Row(
-            children: [
-              cancelButton,
-              const Spacer(),
-              if (currentStep == 1) ...[backButton, SizedBox(width: 10.w)],
-              primaryButton,
-            ],
-          );
+          return Row(children: [cancelButton, const Spacer(), primaryButton]);
         },
       ),
     );
@@ -2396,6 +2229,7 @@ num? _readNumber(String value) {
   return num.tryParse(clean);
 }
 
+// ignore: unused_element
 String? _createdLeadId(Object? source) {
   final lead = _createdLeadMap(source);
   return lead == null ? null : _readString(lead, const ['id', 'leadId']);
@@ -2423,9 +2257,7 @@ Map<String, dynamic>? _createdLeadMap(Object? source) {
 }
 
 String _optionLocation(Object? source) {
-  if (source is! Map) {
-    return 'Selected project location';
-  }
+  if (source is! Map) return 'Selected project location';
   final map = Map<String, dynamic>.from(source);
   final value = _readString(map, const [
     'location',

@@ -45,7 +45,7 @@ class _FieldExecutiveDashboardViewState
   bool _loaded = false;
   bool _attendanceActionLoading = false;
   _FieldAttendanceData _attendance = const _FieldAttendanceData();
-  _PerformanceRankingData _rankings = const _PerformanceRankingData();
+  PerformanceRankingData _rankings = const PerformanceRankingData();
   bool _rankingLoading = true;
   String? _rankingError;
   String _rankingRange = 'monthly';
@@ -495,7 +495,7 @@ class _FieldExecutiveDashboardViewState
       if (response == null) {
         _rankingError = 'Unable to load performance rankings.';
       } else {
-        _rankings = _PerformanceRankingData.fromApi(response.data);
+        _rankings = PerformanceRankingData.fromApi(response.data);
       }
     });
   }
@@ -641,7 +641,7 @@ class _FieldExecutiveDashboardViewState
                       child: AppListSkeleton(itemCount: 3, itemHeight: 116),
                     )
                   else ...[
-                    _PerformanceRankingCard(
+                    PerformanceRankingCard(
                       data: _rankings,
                       selectedRange: _rankingRange,
                       selectedMode: _rankingMode,
@@ -712,13 +712,14 @@ class _FieldExecutiveDashboardViewState
                     SizedBox(height: 14.h),
                     TelecallerDashboardFeatureSections(
                       totalLeads: _data.assignedLeads,
-                      newLeads: _data.visitsPendingStart,
+                      newLeads: _data.newLeads,
                       todayFollowUps: _data.myDayFollowUpsToday,
                       missedFollowUps: _data.missedVisits,
                       interestedLeads: _data.upcomingVisits,
                       notInterestedLeads: _data.missedVisits,
                       siteVisitScheduledLeads: _data.todaySiteVisits,
                       siteVisitDoneLeads: _data.completedVisits,
+                      reVisitDone: _data.reVisitDone,
                       bookingsDone: _data.bookingsAssisted,
                       todayCallFollowUps: _data.pendingFollowUps,
                       dueNextHour: _data.upcomingVisits,
@@ -1437,52 +1438,64 @@ class _ExecutiveMetrics extends StatelessWidget {
   Widget build(BuildContext context) {
     final metrics = [
       _ExecutiveMetricData(
-        title: 'Assigned\nLeads',
+        title: 'Total Leads',
         value: '${data.assignedLeads}',
-        icon: Icons.groups_2_outlined,
-        iconColor: const Color(0xFF0F2F66),
-      ),
-      _ExecutiveMetricData(
-        title: 'Today\'s\nSite Visits',
-        value: '${data.todaySiteVisits}',
-        icon: Icons.location_on_outlined,
-        iconColor: const Color(0xFF06B6D4),
-      ),
-      _ExecutiveMetricData(
-        title: 'Upcoming\nVisits',
-        value: '${data.upcomingVisits}',
-        icon: Icons.schedule_outlined,
-        iconColor: const Color(0xFFA855F7),
-      ),
-      _ExecutiveMetricData(
-        title: 'Completed\nVisits',
-        value: '${data.completedVisits}',
-        icon: Icons.check_circle_outline,
-        iconColor: const Color(0xFF22C55E),
-      ),
-      _ExecutiveMetricData(
-        title: 'Missed\nVisits',
-        value: '${data.missedVisits}',
-        icon: Icons.event_busy_outlined,
-        iconColor: const Color(0xFFEF4444),
-      ),
-      _ExecutiveMetricData(
-        title: 'Pending Follow-ups',
-        value: '${data.pendingFollowUps}',
-        icon: Icons.assignment_late_outlined,
-        iconColor: const Color(0xFFF97316),
-      ),
-      _ExecutiveMetricData(
-        title: 'Bookings Assisted',
-        value: '${data.bookingsAssisted}',
-        icon: Icons.handshake_outlined,
+        icon: Icons.groups_outlined,
         iconColor: const Color(0xFF2563EB),
       ),
       _ExecutiveMetricData(
-        title: 'Visits Pending\nStart',
-        value: '${data.visitsPendingStart}',
-        icon: Icons.assignment_turned_in_outlined,
+        title: 'New Leads',
+        value: '${data.newLeads}',
+        icon: Icons.sell_outlined,
+        iconColor: const Color(0xFF22C55E),
+      ),
+      _ExecutiveMetricData(
+        title: 'Today Follow Up',
+        value: '${data.todayFollowUps}',
+        icon: Icons.person_search_outlined,
         iconColor: const Color(0xFFF97316),
+      ),
+      _ExecutiveMetricData(
+        title: 'Missed Follow Up',
+        value: '${data.missedFollowUps}',
+        icon: Icons.person_remove_outlined,
+        iconColor: const Color(0xFFEF4444),
+      ),
+      _ExecutiveMetricData(
+        title: 'Interested Leads',
+        value: '${data.interestedLeads}',
+        icon: Icons.thumb_up_alt_outlined,
+        iconColor: const Color(0xFF22C55E),
+      ),
+      _ExecutiveMetricData(
+        title: 'Not Interested',
+        value: '${data.notInterestedLeads}',
+        icon: Icons.thumb_down_alt_outlined,
+        iconColor: const Color(0xFFA855F7),
+      ),
+      _ExecutiveMetricData(
+        title: 'Hot Leads',
+        value: '${data.hotLeads}',
+        icon: Icons.local_fire_department_outlined,
+        iconColor: const Color(0xFFEF4444),
+      ),
+      _ExecutiveMetricData(
+        title: 'Site Visit Done',
+        value: '${data.completedVisits}',
+        icon: Icons.home_work_outlined,
+        iconColor: const Color(0xFF9333EA),
+      ),
+      _ExecutiveMetricData(
+        title: 'Re-Visit Done',
+        value: '${data.reVisitDone}',
+        icon: Icons.replay_circle_filled_outlined,
+        iconColor: const Color(0xFF0F766E),
+      ),
+      _ExecutiveMetricData(
+        title: 'Booking Done',
+        value: '${data.bookingsAssisted}',
+        icon: Icons.check_circle_outline_rounded,
+        iconColor: const Color(0xFF16A34A),
       ),
     ];
     return GridView.builder(
@@ -1500,8 +1513,9 @@ class _ExecutiveMetrics extends StatelessWidget {
   }
 }
 
-class _PerformanceRankingCard extends StatelessWidget {
-  const _PerformanceRankingCard({
+class PerformanceRankingCard extends StatelessWidget {
+  const PerformanceRankingCard({
+    super.key,
     required this.data,
     required this.selectedRange,
     required this.selectedMode,
@@ -1512,7 +1526,7 @@ class _PerformanceRankingCard extends StatelessWidget {
     required this.onRetry,
   });
 
-  final _PerformanceRankingData data;
+  final PerformanceRankingData data;
   final String selectedRange;
   final String selectedMode;
   final bool loading;
@@ -1849,7 +1863,7 @@ class _RankingSummaryTile extends StatelessWidget {
 class _RankingPersonRow extends StatelessWidget {
   const _RankingPersonRow({required this.item, required this.highlighted});
 
-  final _RankingEntry item;
+  final PerformanceRankingEntry item;
   final bool highlighted;
 
   @override
@@ -3351,8 +3365,8 @@ class _ExecutiveErrorCard extends StatelessWidget {
   }
 }
 
-class _PerformanceRankingData {
-  const _PerformanceRankingData({
+class PerformanceRankingData {
+  const PerformanceRankingData({
     this.currentUserRank = 0,
     this.currentTeamRank = 0,
     this.currentUserPoints = 0,
@@ -3363,19 +3377,19 @@ class _PerformanceRankingData {
     this.teamRankings = const [],
   });
 
-  factory _PerformanceRankingData.fromApi(Object? source) {
+  factory PerformanceRankingData.fromApi(Object? source) {
     final root = _dashboardMap(source);
     final summary = _dashboardMap(root['summary']);
     final topUser = _dashboardMap(summary['topUser']);
-    return _PerformanceRankingData(
+    return PerformanceRankingData(
       currentUserRank: _dashboardInt(summary, const ['currentUserRank']),
       currentTeamRank: _dashboardInt(summary, const ['currentTeamRank']),
       currentUserPoints: _dashboardInt(summary, const ['currentUserPoints']),
       currentTeamPoints: _dashboardInt(summary, const ['currentTeamPoints']),
       totalScore: _dashboardInt(summary, const ['totalScore']),
       currentUserId: _dashboardText(topUser['userId']),
-      userRankings: _RankingEntry.listFrom(root['userRankings']),
-      teamRankings: _RankingEntry.listFrom(
+      userRankings: PerformanceRankingEntry.listFrom(root['userRankings']),
+      teamRankings: PerformanceRankingEntry.listFrom(
         root['teamRankings'],
         teamEntries: true,
       ),
@@ -3388,12 +3402,12 @@ class _PerformanceRankingData {
   final int currentTeamPoints;
   final int totalScore;
   final String currentUserId;
-  final List<_RankingEntry> userRankings;
-  final List<_RankingEntry> teamRankings;
+  final List<PerformanceRankingEntry> userRankings;
+  final List<PerformanceRankingEntry> teamRankings;
 }
 
-class _RankingEntry {
-  const _RankingEntry({
+class PerformanceRankingEntry {
+  const PerformanceRankingEntry({
     required this.rank,
     required this.userId,
     required this.name,
@@ -3403,7 +3417,7 @@ class _RankingEntry {
     required this.statusText,
   });
 
-  factory _RankingEntry.fromMap(
+  factory PerformanceRankingEntry.fromMap(
     Map<String, dynamic> map, {
     bool teamEntry = false,
   }) {
@@ -3420,7 +3434,7 @@ class _RankingEntry {
       teamEntry ? map['leaderName'] : null,
     ]);
     final memberCount = _dashboardInt(map, const ['memberCount']);
-    return _RankingEntry(
+    return PerformanceRankingEntry(
       rank: _dashboardInt(map, const ['rank']),
       userId: _dashboardFirstText([map['userId'], map['teamId']]),
       name: _dashboardFirstText([
@@ -3446,7 +3460,7 @@ class _RankingEntry {
     );
   }
 
-  static List<_RankingEntry> listFrom(
+  static List<PerformanceRankingEntry> listFrom(
     Object? source, {
     bool teamEntries = false,
   }) {
@@ -3454,7 +3468,7 @@ class _RankingEntry {
     return source
         .whereType<Map>()
         .map(
-          (item) => _RankingEntry.fromMap(
+          (item) => PerformanceRankingEntry.fromMap(
             Map<String, dynamic>.from(item),
             teamEntry: teamEntries,
           ),
@@ -3621,6 +3635,13 @@ class _FieldDashboardData {
   const _FieldDashboardData({
     this.employeeName = '',
     this.assignedLeads = 0,
+    this.newLeads = 0,
+    this.todayFollowUps = 0,
+    this.missedFollowUps = 0,
+    this.interestedLeads = 0,
+    this.notInterestedLeads = 0,
+    this.hotLeads = 0,
+    this.reVisitDone = 0,
     this.todaySiteVisits = 0,
     this.upcomingVisits = 0,
     this.completedVisits = 0,
@@ -3646,6 +3667,13 @@ class _FieldDashboardData {
 
   final String employeeName;
   final int assignedLeads;
+  final int newLeads;
+  final int todayFollowUps;
+  final int missedFollowUps;
+  final int interestedLeads;
+  final int notInterestedLeads;
+  final int hotLeads;
+  final int reVisitDone;
   final int todaySiteVisits;
   final int upcomingVisits;
   final int completedVisits;
@@ -3748,6 +3776,36 @@ class _FieldDashboardData {
         'assignedLeads',
         'assignedLeadCount',
         'totalAssignedLeads',
+      ]),
+      newLeads: _dashboardInt(kpis, const [
+        'newLeads',
+        'newLeadCount',
+        'todayNewLeads',
+      ]),
+      todayFollowUps: _dashboardInt(kpis, const [
+        'todayFollowUps',
+        'todaysFollowUps',
+        'followUpsToday',
+        'pendingFollowUps',
+      ]),
+      missedFollowUps: _dashboardInt(kpis, const [
+        'missedFollowUps',
+        'overdueFollowUps',
+        'missedFollowupCount',
+      ]),
+      interestedLeads: _dashboardInt(kpis, const [
+        'interestedLeads',
+        'interestedLeadCount',
+      ]),
+      notInterestedLeads: _dashboardInt(kpis, const [
+        'notInterestedLeads',
+        'notInterestedLeadCount',
+      ]),
+      hotLeads: _dashboardInt(kpis, const ['hotLeads', 'hotLeadCount']),
+      reVisitDone: _dashboardInt(kpis, const [
+        'reVisitDone',
+        'reVisitsDone',
+        'completedReVisits',
       ]),
       todaySiteVisits: _dashboardInt(kpis, const [
         'todaySiteVisits',
