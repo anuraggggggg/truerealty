@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:truerealtycrm/constant/colors_screen.dart';
 import 'package:truerealtycrm/data/models/project_model.dart';
+import 'package:truerealtycrm/provider/auth_provider.dart';
 import 'package:truerealtycrm/provider/project_provider.dart';
 import 'package:truerealtycrm/widget/app_loading.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -64,20 +65,125 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
   }
 
   Future<void> _shareProject(ProjectModel project) async {
-    final buffer = StringBuffer(project.name);
-    if (project.location.isNotEmpty) {
-      buffer.writeln();
-      buffer.write(project.location);
-    }
-    if (project.priceRange.isNotEmpty) {
-      buffer.writeln();
-      buffer.write(project.priceRange);
-    }
-    if (project.hasBrochure) {
-      buffer.writeln();
-      buffer.write(project.brochureUrl);
-    }
+    final raw = project.raw;
+    final configurations = project.configurations.isNotEmpty
+        ? project.configurations
+        : _shareList(raw['configurations'] ?? raw['configuration']);
+    final amenities = _shareList(raw['amenities']);
+    final highlights = _shareList(
+      raw['highlights'] ?? raw['projectHighlights'],
+    );
+    final images = <String>{
+      if (project.imageUrl.trim().isNotEmpty) project.imageUrl.trim(),
+      ..._shareUrls(raw['imageGallery'] ?? raw['images']),
+    };
+    final possession = _shareText(raw, const [
+      'possession',
+      'possessionDate',
+      'possessionStatus',
+    ]);
+    final user = context.read<AuthProvider>().session?.user;
+    final senderName = _shareText(user ?? const <String, dynamic>{}, const [
+      'fullName',
+      'name',
+      'displayName',
+    ], fallback: 'Admin User');
+    final rawPrice = project.priceRange.trim();
+    final price = rawPrice.toLowerCase().endsWith('onwards')
+        ? rawPrice
+        : '$rawPrice onwards';
+
+    final buffer = StringBuffer()
+      ..writeln('Greetings from Truroot Realty')
+      ..writeln()
+      ..writeln(project.name)
+      ..writeln()
+      ..writeln('Configurations')
+      ..writeln(configurations.isEmpty ? '-' : configurations.join(', '))
+      ..writeln()
+      ..writeln('Price')
+      ..writeln(rawPrice.isEmpty ? '-' : price)
+      ..writeln()
+      ..writeln('Possession')
+      ..writeln(possession.isEmpty ? '-' : possession)
+      ..writeln()
+      ..writeln('Amenities')
+      ..writeln(
+        amenities.isEmpty ? '-' : amenities.map((e) => '- $e').join('\n'),
+      )
+      ..writeln()
+      ..writeln('Highlights')
+      ..writeln(
+        highlights.isEmpty ? '-' : highlights.map((e) => '- $e').join('\n'),
+      )
+      ..writeln()
+      ..writeln('Project Location')
+      ..writeln(project.location.isEmpty ? '-' : project.location)
+      ..writeln()
+      ..writeln('Project Images')
+      ..writeln(images.isEmpty ? '-' : images.join('\n'))
+      ..writeln()
+      ..writeln('Thanks and Regards')
+      ..write(senderName);
     await Share.share(buffer.toString(), subject: project.name);
+  }
+
+  String _shareText(
+    Map<String, dynamic> source,
+    List<String> keys, {
+    String fallback = '',
+  }) {
+    for (final key in keys) {
+      final value = source[key];
+      if (value == null) continue;
+      final text = value.toString().trim();
+      if (text.isNotEmpty && text.toLowerCase() != 'null') return text;
+    }
+    return fallback;
+  }
+
+  List<String> _shareList(Object? value) {
+    if (value is List) {
+      return value
+          .map((item) {
+            if (item is Map) {
+              return _shareText(Map<String, dynamic>.from(item), const [
+                'name',
+                'title',
+                'label',
+                'value',
+              ]);
+            }
+            return item.toString().trim();
+          })
+          .where((item) => item.isNotEmpty && item.toLowerCase() != 'null')
+          .toList(growable: false);
+    }
+    if (value is String) {
+      return value
+          .split(RegExp(r'[,\n]'))
+          .map((item) => item.trim())
+          .where((item) => item.isNotEmpty)
+          .toList(growable: false);
+    }
+    return const [];
+  }
+
+  List<String> _shareUrls(Object? value) {
+    if (value is! List) return const [];
+    return value
+        .map((item) {
+          if (item is Map) {
+            return _shareText(Map<String, dynamic>.from(item), const [
+              'url',
+              'imageUrl',
+              'src',
+            ]);
+          }
+          return item.toString().trim();
+        })
+        .where((item) => item.isNotEmpty)
+        .toList(growable: false);
   }
 
   Future<void> _shareBrochure(ProjectModel project) async {

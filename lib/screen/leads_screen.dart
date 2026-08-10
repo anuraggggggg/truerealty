@@ -1038,7 +1038,9 @@ class _LeadListWidgetState extends State<LeadListWidget> {
         ? Map<String, dynamic>.from(raw['requirement'] as Map)
         : const <String, dynamic>{};
     final statusLabels = _cardStatusLabels(lead);
-    final budget = _leadBudget(requirement);
+    final configuration = lead.configuration?.trim().isNotEmpty == true
+        ? lead.configuration!
+        : 'Not specified';
     final rawRemark = raw['remarks']?.toString().trim() ?? '';
     final remark = rawRemark.isEmpty ? 'No remark added' : rawRemark;
     final nextFollowUp = _leadDate(raw['nextFollowUpAt']);
@@ -1063,6 +1065,11 @@ class _LeadListWidgetState extends State<LeadListWidget> {
     final location = lead.location?.trim().isNotEmpty == true
         ? lead.location!
         : '-';
+    final addedOn = lead.createdAt == null
+        ? (lead.createdLabel?.trim().isNotEmpty == true
+              ? lead.createdLabel!
+              : 'Date unavailable')
+        : _leadDateTimeLabel(lead.createdAt!);
     final leadKey = lead.id ?? lead.phone;
     final isSelected = _selectedLeadIds.contains(leadKey);
     return Material(
@@ -1134,26 +1141,36 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                   ),
                   SizedBox(width: 10.w),
                   Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.only(top: 8.h),
-                      child: InkWell(
-                        onTap: () => Navigator.pushNamed(
-                          context,
-                          AppRouter.leadDetail,
-                          arguments: lead,
-                        ),
-                        child: Text(
-                          lead.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.inter(
-                            fontSize: 15.sp,
-                            fontWeight: FontWeight.w700,
-                            color: const Color(0xFF0B1735),
-                            decoration: TextDecoration.underline,
-                            decorationColor: const Color(0xFF0B1735),
+                    child: InkWell(
+                      onTap: () => Navigator.pushNamed(
+                        context,
+                        AppRouter.leadDetail,
+                        arguments: lead,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            lead.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.inter(
+                              fontSize: 15.sp,
+                              fontWeight: FontWeight.w700,
+                              color: const Color(0xFF0B1735),
+                            ),
                           ),
-                        ),
+                          SizedBox(height: 3.h),
+                          Text(
+                            'Added on $addedOn',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.inter(
+                              fontSize: 9.5.sp,
+                              color: const Color(0xFF667085),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -1186,63 +1203,38 @@ class _LeadListWidgetState extends State<LeadListWidget> {
               SizedBox(height: 14.h),
               Row(
                 children: [
-                  Icon(
-                    Icons.phone_outlined,
-                    size: 17.sp,
-                    color: const Color(0xFF00A86B),
-                  ),
-                  SizedBox(width: 7.w),
                   Expanded(
-                    child: Text(
-                      lead.phone,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: _professionalLeadValueStyle,
+                    child: _LeadCardDetail(
+                      icon: Icons.phone_rounded,
+                      label: 'Mobile Number',
+                      value: lead.phone,
+                      iconColor: const Color(0xFF00A63E),
+                      iconBackground: const Color(0xFFE8F8EE),
                     ),
                   ),
-                  SizedBox(width: 10.w),
-                  Icon(
-                    Icons.apartment_rounded,
-                    size: 17.sp,
-                    color: const Color(0xFF475467),
+                  Container(
+                    width: 1,
+                    height: 48.h,
+                    color: const Color(0xFFE4E7EC),
                   ),
-                  SizedBox(width: 7.w),
-                  Flexible(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        InkWell(
-                          onTap: projectId == null
-                              ? null
-                              : () => Navigator.of(context).push(
-                                  MaterialPageRoute<void>(
-                                    builder: (_) => ProjectsScreen(
-                                      initialProjectId: projectId,
-                                    ),
-                                  ),
-                                ),
-                          child: Text(
-                            project,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: _professionalLeadValueStyle.copyWith(
-                              decoration: projectId == null
-                                  ? null
-                                  : TextDecoration.underline,
+                  SizedBox(width: 12.w),
+                  Expanded(
+                    child: InkWell(
+                      onTap: projectId == null
+                          ? null
+                          : () => Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) =>
+                                    ProjectsScreen(initialProjectId: projectId),
+                              ),
                             ),
-                          ),
-                        ),
-                        if (location != '-')
-                          Text(
-                            location,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.inter(
-                              fontSize: 10.5.sp,
-                              color: const Color(0xFF667085),
-                            ),
-                          ),
-                      ],
+                      child: _LeadCardDetail(
+                        icon: Icons.apartment_rounded,
+                        label: project,
+                        value: location,
+                        iconColor: const Color(0xFF1468D4),
+                        iconBackground: const Color(0xFFEAF2FF),
+                      ),
                     ),
                   ),
                 ],
@@ -1258,9 +1250,11 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                   children: [
                     Expanded(
                       child: _LeadCardDetail(
-                        icon: Icons.payments_outlined,
-                        label: 'Budget',
-                        value: budget,
+                        icon: Icons.other_houses_outlined,
+                        label: 'Configuration',
+                        value: configuration,
+                        iconColor: const Color(0xFF4D2DDB),
+                        iconBackground: const Color(0xFFEDEAFF),
                       ),
                     ),
                     SizedBox(width: 16.w),
@@ -1270,40 +1264,52 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                         label: 'Next follow-up',
                         value: followUpLabel,
                         alignEnd: true,
+                        iconColor: const Color(0xFF4D2DDB),
+                        iconBackground: const Color(0xFFEDEAFF),
                       ),
                     ),
                   ],
                 ),
               ),
               SizedBox(height: 11.h),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    Icons.notes_rounded,
-                    size: 17.sp,
-                    color: const Color(0xFF667085),
-                  ),
-                  SizedBox(width: 7.w),
-                  Text('Remark: ', style: _professionalLeadLabelStyle),
-                  Expanded(
-                    child: InkWell(
-                      onTap: () => _showAddRemarkDialog(lead),
-                      child: Text(
-                        remark,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: _professionalLeadFooterValueStyle.copyWith(
-                          decoration: TextDecoration.underline,
+              InkWell(
+                borderRadius: BorderRadius.circular(8.r),
+                onTap: () => _showAddRemarkDialog(lead),
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 4.h),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.notes_rounded,
+                        size: 17.sp,
+                        color: const Color(0xFF1454D8),
+                      ),
+                      SizedBox(width: 7.w),
+                      Text('Remark: ', style: _professionalLeadLabelStyle),
+                      Expanded(
+                        child: Text(
+                          remark,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: _professionalLeadFooterValueStyle.copyWith(
+                            decoration: TextDecoration.underline,
+                          ),
                         ),
                       ),
-                    ),
+                    ],
                   ),
-                ],
+                ),
               ),
               SizedBox(height: 11.h),
               Row(
                 children: [
+                  Icon(
+                    Icons.person_rounded,
+                    size: 17.sp,
+                    color: const Color(0xFF1454D8),
+                  ),
+                  SizedBox(width: 7.w),
                   Text('Owner: ', style: _professionalLeadLabelStyle),
                   Expanded(
                     child: Text(
@@ -1326,42 +1332,10 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                 children: [
                   Expanded(
                     child: SizedBox(
-                      height: 44.h,
-                      child: ElevatedButton.icon(
-                        onPressed: () => _showAddRemarkDialog(lead),
-                        icon: Icon(Icons.add_comment_outlined, size: 15.sp),
-                        label: FittedBox(
-                          child: Text(
-                            'Add Remark',
-                            style: GoogleFonts.inter(
-                              fontSize: 11.sp,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.orangeStrong,
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          padding: EdgeInsets.symmetric(horizontal: 8.w),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10.r),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: 10.h),
-              Row(
-                children: [
-                  Expanded(
-                    child: SizedBox(
                       height: 40.h,
                       child: OutlinedButton.icon(
                         onPressed: () => _callLead(lead.phone),
-                        icon: Icon(Icons.call_outlined, size: 14.sp),
+                        icon: Icon(Icons.phone_rounded, size: 17.sp),
                         label: Text(
                           'Call',
                           style: GoogleFonts.inter(
@@ -1371,7 +1345,7 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                         ),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: AppColors.orangeDeep,
-                          side: const BorderSide(color: Color(0xFFFFD8C2)),
+                          side: const BorderSide(color: Color(0xFFE97842)),
                           padding: EdgeInsets.symmetric(horizontal: 8.w),
                           visualDensity: VisualDensity.compact,
                         ),
@@ -1384,7 +1358,7 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                       height: 40.h,
                       child: OutlinedButton.icon(
                         onPressed: () => _openWhatsApp(lead.phone),
-                        icon: Icon(Icons.chat_outlined, size: 14.sp),
+                        icon: Icon(Icons.chat_rounded, size: 17.sp),
                         label: Text(
                           'WhatsApp',
                           style: GoogleFonts.inter(
@@ -2236,29 +2210,6 @@ class _LeadListWidgetState extends State<LeadListWidget> {
     );
   }
 
-  String _leadBudget(Map<String, dynamic> requirement) {
-    String text(Object? value) => value?.toString().trim() ?? '';
-    final explicit = text(requirement['budgetRange']);
-    if (explicit.isNotEmpty && explicit != '-') return explicit;
-    final min = text(requirement['minBudget']);
-    final max = text(requirement['maxBudget']);
-    final unit = text(requirement['budgetUnit']);
-    final range = [
-      min,
-      max,
-    ].where((value) => value.isNotEmpty && value != '-').join(' - ');
-    return [range, unit]
-            .where((value) => value.isNotEmpty && value != '-')
-            .join(' ')
-            .trim()
-            .isEmpty
-        ? '-'
-        : [
-            range,
-            unit,
-          ].where((value) => value.isNotEmpty && value != '-').join(' ');
-  }
-
   DateTime? _leadDate(Object? value) {
     if (value == null) return null;
     return DateTime.tryParse(value.toString())?.toLocal();
@@ -2758,12 +2709,6 @@ class _LeadListWidgetState extends State<LeadListWidget> {
   }
 }
 
-TextStyle get _professionalLeadValueStyle => GoogleFonts.inter(
-  fontSize: 12.sp,
-  fontWeight: FontWeight.w600,
-  color: const Color(0xFF111A32),
-);
-
 TextStyle get _professionalLeadLabelStyle =>
     GoogleFonts.inter(fontSize: 10.5.sp, color: const Color(0xFF667085));
 
@@ -2816,12 +2761,16 @@ class _LeadCardDetail extends StatelessWidget {
     required this.label,
     required this.value,
     this.alignEnd = false,
+    this.iconColor = const Color(0xFF475467),
+    this.iconBackground,
   });
 
   final IconData icon;
   final String label;
   final String value;
   final bool alignEnd;
+  final Color iconColor;
+  final Color? iconBackground;
 
   @override
   Widget build(BuildContext context) {
@@ -2830,7 +2779,22 @@ class _LeadCardDetail extends StatelessWidget {
           ? MainAxisAlignment.end
           : MainAxisAlignment.start,
       children: [
-        Icon(icon, size: 16.sp, color: const Color(0xFF475467)),
+        Container(
+          width: iconBackground == null ? 20.w : 38.w,
+          height: iconBackground == null ? 20.h : 38.h,
+          decoration: iconBackground == null
+              ? null
+              : BoxDecoration(
+                  color: iconBackground,
+                  borderRadius: BorderRadius.circular(9.r),
+                ),
+          alignment: Alignment.center,
+          child: Icon(
+            icon,
+            size: iconBackground == null ? 16.sp : 22.sp,
+            color: iconColor,
+          ),
+        ),
         SizedBox(width: 6.w),
         Flexible(
           child: Column(
