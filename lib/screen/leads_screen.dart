@@ -1047,7 +1047,6 @@ class _LeadListWidgetState extends State<LeadListWidget> {
     final followUpLabel = nextFollowUp == null
         ? lead.dueLabel ?? 'Not scheduled'
         : _leadDateTimeLabel(nextFollowUp);
-    final sla = _leadSla(nextFollowUp);
     final project = lead.project?.trim().isNotEmpty == true
         ? lead.project!
         : 'Project not assigned';
@@ -1182,7 +1181,7 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                       for (var i = 0; i < statusLabels.length; i++) ...[
                         if (i > 0) SizedBox(height: 5.h),
                         ConstrainedBox(
-                          constraints: BoxConstraints(maxWidth: 112.w),
+                          constraints: BoxConstraints(maxWidth: 150.w),
                           child: Align(
                             alignment: Alignment.centerRight,
                             child: _CompactLeadBadge(
@@ -1257,13 +1256,17 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                         iconBackground: const Color(0xFFEDEAFF),
                       ),
                     ),
-                    SizedBox(width: 16.w),
+                    Container(
+                      width: 1,
+                      height: 48.h,
+                      color: const Color(0xFFE4E7EC),
+                    ),
+                    SizedBox(width: 12.w),
                     Expanded(
                       child: _LeadCardDetail(
                         icon: Icons.event_available_outlined,
                         label: 'Next follow-up',
                         value: followUpLabel,
-                        alignEnd: true,
                         iconColor: const Color(0xFF4D2DDB),
                         iconBackground: const Color(0xFFEDEAFF),
                       ),
@@ -1300,32 +1303,6 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                     ],
                   ),
                 ),
-              ),
-              SizedBox(height: 11.h),
-              Row(
-                children: [
-                  Icon(
-                    Icons.person_rounded,
-                    size: 17.sp,
-                    color: const Color(0xFF1454D8),
-                  ),
-                  SizedBox(width: 7.w),
-                  Text('Owner: ', style: _professionalLeadLabelStyle),
-                  Expanded(
-                    child: Text(
-                      lead.assignedTo ?? 'Unassigned',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: _professionalLeadFooterValueStyle,
-                    ),
-                  ),
-                  _CompactLeadBadge(
-                    text: sla.$1,
-                    foreground: sla.$2,
-                    background: sla.$2.withValues(alpha: .08),
-                    borderColor: sla.$2.withValues(alpha: .3),
-                  ),
-                ],
               ),
               SizedBox(height: 10.h),
               Row(
@@ -2236,16 +2213,6 @@ class _LeadListWidgetState extends State<LeadListWidget> {
         '$hour:$minute ${value.hour < 12 ? 'AM' : 'PM'}';
   }
 
-  (String, Color) _leadSla(DateTime? nextFollowUp) {
-    if (nextFollowUp == null) {
-      return ('No SLA', const Color(0xFF667085));
-    }
-    if (nextFollowUp.isBefore(DateTime.now())) {
-      return ('Overdue', const Color(0xFFDC2626));
-    }
-    return ('Due Soon', const Color(0xFFFF641A));
-  }
-
   Widget _buildBottomSection(BuildContext context, LeadProvider leadProvider) {
     final isNarrow = MediaQuery.sizeOf(context).width < 430;
     final total = leadProvider.totalLeads;
@@ -2734,7 +2701,6 @@ class _CompactLeadBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      constraints: BoxConstraints(maxWidth: 88.w),
       padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
       decoration: BoxDecoration(
         color: background,
@@ -2760,7 +2726,6 @@ class _LeadCardDetail extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.value,
-    this.alignEnd = false,
     this.iconColor = const Color(0xFF475467),
     this.iconBackground,
   });
@@ -2768,16 +2733,13 @@ class _LeadCardDetail extends StatelessWidget {
   final IconData icon;
   final String label;
   final String value;
-  final bool alignEnd;
   final Color iconColor;
   final Color? iconBackground;
 
   @override
   Widget build(BuildContext context) {
     return Row(
-      mainAxisAlignment: alignEnd
-          ? MainAxisAlignment.end
-          : MainAxisAlignment.start,
+      mainAxisAlignment: MainAxisAlignment.start,
       children: [
         Container(
           width: iconBackground == null ? 20.w : 38.w,
@@ -2798,9 +2760,7 @@ class _LeadCardDetail extends StatelessWidget {
         SizedBox(width: 6.w),
         Flexible(
           child: Column(
-            crossAxisAlignment: alignEnd
-                ? CrossAxisAlignment.end
-                : CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 label,
@@ -2816,7 +2776,7 @@ class _LeadCardDetail extends StatelessWidget {
                 value,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                textAlign: alignEnd ? TextAlign.end : TextAlign.start,
+                textAlign: TextAlign.start,
                 style: GoogleFonts.inter(
                   fontSize: 11.5.sp,
                   fontWeight: FontWeight.w700,

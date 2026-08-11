@@ -68,6 +68,23 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
     });
   }
 
+  Future<void> _editLead(_LeadData data) async {
+    final leadId = _string(data.raw['id']) ?? widget.lead?.id;
+    if (leadId == null || leadId.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Lead ID is unavailable.')));
+      return;
+    }
+    final updated = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _EditLeadSheet(leadId: leadId, lead: data),
+    );
+    if (updated == true && mounted) await _loadLead();
+  }
+
   @override
   Widget build(BuildContext context) {
     final fallback = widget.lead == null
@@ -92,7 +109,7 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            const _TopBar(),
+            _TopBar(onEdit: () => _editLead(data)),
             if (_loading) const LinearProgressIndicator(minHeight: 2),
             Expanded(
               child: _error != null && _lead == null && fallback == null
@@ -106,6 +123,8 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
                         child: Column(
                           children: [
                             _SummaryCard(data: data),
+                            SizedBox(height: 10.h),
+                            _NotesCard(data: data),
                             SizedBox(height: 10.h),
                             _ScoreCard(data: data),
                             SizedBox(height: 10.h),
@@ -130,8 +149,6 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
                               SizedBox(height: 10.h),
                               _FollowUpCard(data: data),
                               SizedBox(height: 10.h),
-                              _NotesCard(data: data),
-                              SizedBox(height: 10.h),
                               _CommunicationCard(data: data),
                               SizedBox(height: 10.h),
                               _BookingCard(data: data),
@@ -143,6 +160,374 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
                         ),
                       ),
                     ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EditLeadSheet extends StatefulWidget {
+  const _EditLeadSheet({required this.leadId, required this.lead});
+
+  final String leadId;
+  final _LeadData lead;
+
+  @override
+  State<_EditLeadSheet> createState() => _EditLeadSheetState();
+}
+
+class _EditLeadSheetState extends State<_EditLeadSheet> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _name;
+  late final TextEditingController _mobile;
+  late final TextEditingController _alternateMobile;
+  late final TextEditingController _email;
+  late final TextEditingController _occupation;
+  late final TextEditingController _propertyType;
+  late final TextEditingController _configuration;
+  late final TextEditingController _budget;
+  late final TextEditingController _location;
+  late final TextEditingController _remarks;
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    final raw = widget.lead.raw;
+    final requirement = widget.lead.requirement;
+    _name = TextEditingController(text: _string(raw['name']) ?? '');
+    _mobile = TextEditingController(
+      text: _string(raw['mobile'] ?? raw['phone']) ?? '',
+    );
+    _alternateMobile = TextEditingController(
+      text: _string(raw['alternateMobile'] ?? raw['alternateNumber']) ?? '',
+    );
+    _email = TextEditingController(text: _string(raw['email']) ?? '');
+    _occupation = TextEditingController(text: _string(raw['occupation']) ?? '');
+    _propertyType = TextEditingController(
+      text: _string(requirement['propertyType']) ?? '',
+    );
+    _configuration = TextEditingController(
+      text: _string(requirement['configuration']) ?? '',
+    );
+    _budget = TextEditingController(
+      text: _string(requirement['budgetRange'] ?? requirement['budget']) ?? '',
+    );
+    _location = TextEditingController(
+      text:
+          _string(
+            requirement['preferredLocation'] ?? raw['preferredLocation'],
+          ) ??
+          '',
+    );
+    _remarks = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    for (final controller in [
+      _name,
+      _mobile,
+      _alternateMobile,
+      _email,
+      _occupation,
+      _propertyType,
+      _configuration,
+      _budget,
+      _location,
+      _remarks,
+    ]) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  InputDecoration _input(String label, IconData icon, {String? hint}) {
+    return InputDecoration(
+      labelText: label,
+      hintText: hint,
+      prefixIcon: Icon(icon, size: 19.sp),
+      filled: true,
+      fillColor: const Color(0xFFF8FAFC),
+      contentPadding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 14.h),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(11.r),
+        borderSide: const BorderSide(color: Color(0xFFD9E2EC)),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(11.r),
+        borderSide: const BorderSide(color: Color(0xFFD9E2EC)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(11.r),
+        borderSide: BorderSide(color: AppColors.orangeDeep, width: 1.5),
+      ),
+    );
+  }
+
+  Future<void> _save() async {
+    FocusScope.of(context).unfocus();
+    if (!_formKey.currentState!.validate() || _saving) return;
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    final requirement = <String, dynamic>{
+      ...widget.lead.requirement,
+      'propertyType': _propertyType.text.trim(),
+      'configuration': _configuration.text.trim(),
+      'budgetRange': _budget.text.trim(),
+      'preferredLocation': _location.text.trim(),
+    };
+    final response = await context.read<LeadProvider>().updateLeadFromApi(
+      leadId: widget.leadId,
+      body: {
+        'name': _name.text.trim(),
+        'mobile': _mobile.text.trim(),
+        'alternateMobile': _alternateMobile.text.trim(),
+        'email': _email.text.trim(),
+        'occupation': _occupation.text.trim(),
+        'requirement': requirement,
+        if (_remarks.text.trim().isNotEmpty) 'remarks': _remarks.text.trim(),
+      },
+    );
+    if (!mounted) return;
+    if (response != null) {
+      Navigator.pop(context, true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Lead details updated successfully.')),
+      );
+    } else {
+      setState(() {
+        _saving = false;
+        _error = context.read<LeadProvider>().error ?? 'Unable to update lead.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * .92,
+      ),
+      padding: EdgeInsets.only(bottom: keyboard),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24.r)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 42.w,
+              height: 4.h,
+              margin: EdgeInsets.only(top: 10.h),
+              decoration: BoxDecoration(
+                color: const Color(0xFFCBD5E1),
+                borderRadius: BorderRadius.circular(999.r),
+              ),
+            ),
+            Padding(
+              padding: EdgeInsets.fromLTRB(18.w, 14.h, 10.w, 12.h),
+              child: Row(
+                children: [
+                  Container(
+                    padding: EdgeInsets.all(9.r),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF0E5),
+                      borderRadius: BorderRadius.circular(10.r),
+                    ),
+                    child: Icon(
+                      Icons.edit_note_rounded,
+                      color: AppColors.orangeDeep,
+                    ),
+                  ),
+                  SizedBox(width: 11.w),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Edit Lead Details',
+                          style: _text(17, FontWeight.w800),
+                        ),
+                        SizedBox(height: 2.h),
+                        Text(
+                          'Keep contact and property preferences up to date.',
+                          style: _text(
+                            10.5,
+                            FontWeight.w500,
+                            const Color(0xFF64748B),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: _saving ? null : () => Navigator.pop(context),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Flexible(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(18.w, 16.h, 18.w, 20.h),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Contact information',
+                        style: _text(12, FontWeight.w800),
+                      ),
+                      SizedBox(height: 12.h),
+                      TextFormField(
+                        controller: _name,
+                        decoration: _input('Full name', Icons.person_outline),
+                        validator: (value) =>
+                            value == null || value.trim().isEmpty
+                            ? 'Name is required'
+                            : null,
+                      ),
+                      SizedBox(height: 11.h),
+                      TextFormField(
+                        controller: _mobile,
+                        keyboardType: TextInputType.phone,
+                        decoration: _input(
+                          'Mobile number',
+                          Icons.phone_outlined,
+                        ),
+                        validator: (value) =>
+                            value == null || value.trim().isEmpty
+                            ? 'Mobile number is required'
+                            : null,
+                      ),
+                      SizedBox(height: 11.h),
+                      TextFormField(
+                        controller: _alternateMobile,
+                        keyboardType: TextInputType.phone,
+                        decoration: _input(
+                          'Alternate mobile',
+                          Icons.phone_forwarded_outlined,
+                        ),
+                      ),
+                      SizedBox(height: 11.h),
+                      TextFormField(
+                        controller: _email,
+                        keyboardType: TextInputType.emailAddress,
+                        decoration: _input('Email address', Icons.mail_outline),
+                      ),
+                      SizedBox(height: 11.h),
+                      TextFormField(
+                        controller: _occupation,
+                        decoration: _input('Occupation', Icons.work_outline),
+                      ),
+                      SizedBox(height: 20.h),
+                      Text(
+                        'Property requirements',
+                        style: _text(12, FontWeight.w800),
+                      ),
+                      SizedBox(height: 12.h),
+                      TextFormField(
+                        controller: _propertyType,
+                        decoration: _input(
+                          'Property type',
+                          Icons.apartment_outlined,
+                        ),
+                      ),
+                      SizedBox(height: 11.h),
+                      TextFormField(
+                        controller: _configuration,
+                        decoration: _input(
+                          'Configuration',
+                          Icons.grid_view_outlined,
+                        ),
+                      ),
+                      SizedBox(height: 11.h),
+                      TextFormField(
+                        controller: _budget,
+                        decoration: _input(
+                          'Budget range',
+                          Icons.currency_rupee_rounded,
+                        ),
+                      ),
+                      SizedBox(height: 11.h),
+                      TextFormField(
+                        controller: _location,
+                        decoration: _input(
+                          'Preferred location',
+                          Icons.location_on_outlined,
+                        ),
+                      ),
+                      SizedBox(height: 11.h),
+                      TextFormField(
+                        controller: _remarks,
+                        minLines: 3,
+                        maxLines: 5,
+                        decoration: _input(
+                          'Add note (optional)',
+                          Icons.note_alt_outlined,
+                          hint: 'Add context for the team',
+                        ),
+                      ),
+                      if (_error != null) ...[
+                        SizedBox(height: 12.h),
+                        Text(
+                          _error!,
+                          style: _text(11, FontWeight.w600, Colors.red),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Container(
+              padding: EdgeInsets.fromLTRB(18.w, 12.h, 18.w, 14.h),
+              decoration: const BoxDecoration(
+                border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _saving ? null : () => Navigator.pop(context),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                  SizedBox(width: 10.w),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: _saving ? null : _save,
+                      icon: _saving
+                          ? SizedBox(
+                              width: 16.w,
+                              height: 16.w,
+                              child: const CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.save_outlined),
+                      label: Text(_saving ? 'Saving...' : 'Save Changes'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.orangeDeep,
+                        padding: EdgeInsets.symmetric(vertical: 13.h),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -610,7 +995,9 @@ List<Map<String, dynamic>> _extractNamedMaps(
 }
 
 class _TopBar extends StatelessWidget {
-  const _TopBar();
+  const _TopBar({required this.onEdit});
+
+  final VoidCallback onEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -671,6 +1058,24 @@ class _TopBar extends StatelessWidget {
               ],
             ),
           ),
+          SizedBox(width: 10.w),
+          FilledButton.icon(
+            onPressed: onEdit,
+            icon: Icon(Icons.edit_outlined, size: 16.sp),
+            label: const Text('Edit'),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.orangeDeep,
+              foregroundColor: Colors.white,
+              padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 11.h),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10.r),
+              ),
+              textStyle: GoogleFonts.inter(
+                fontSize: 12.sp,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -703,8 +1108,6 @@ class _SummaryCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _Chip(text: data.stage.toUpperCase()),
-                    SizedBox(height: 5.h),
                     Text(
                       data.name,
                       maxLines: 2,
@@ -732,7 +1135,6 @@ class _SummaryCard extends StatelessWidget {
           Divider(height: 24.h, color: const Color(0xFFE4E7EC)),
           _TwoColumns(
             left: [
-              ('Stage', data.stage),
               ('Assigned To', data.assignedTo),
               ('Created On', data.createdOn),
             ],

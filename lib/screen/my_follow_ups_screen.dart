@@ -945,7 +945,6 @@ class _PipelineFilterTabs extends StatelessWidget {
   final FollowUpsProvider provider;
 
   static const tabs = [
-    'All',
     'New Lead',
     'Interested',
     'Hot Lead',
@@ -960,20 +959,54 @@ class _PipelineFilterTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          for (final tab in tabs) ...[
-            _FilterChip(
-              label: '$tab (${provider.countForPipeline(tab)})',
-              selected: provider.pipelineFilter == tab,
-              onTap: () => provider.setPipelineFilter(tab),
-            ),
-            SizedBox(width: 8.w),
-          ],
-        ],
-      ),
+    final queueTabs = <(String, FollowUpListFilter)>[
+      ('All Follow-Ups', FollowUpListFilter.all),
+      ('Today', FollowUpListFilter.today),
+      ('Overdue', FollowUpListFilter.overdue),
+      ('Upcoming', FollowUpListFilter.upcoming),
+      ('Completed', FollowUpListFilter.completed),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              _FilterChip(
+                label: 'All (${provider.countForPipeline('All')})',
+                selected: provider.pipelineFilter == 'All',
+                onTap: () => provider.setPipelineFilter('All'),
+              ),
+              SizedBox(width: 8.w),
+              for (final tab in tabs) ...[
+                _FilterChip(
+                  label: '$tab (${provider.countForPipeline(tab)})',
+                  selected: provider.pipelineFilter == tab,
+                  onTap: () => provider.setPipelineFilter(tab),
+                ),
+                SizedBox(width: 8.w),
+              ],
+            ],
+          ),
+        ),
+        SizedBox(height: 12.h),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              for (final entry in queueTabs) ...[
+                _FilterChip(
+                  label: '${entry.$1} (${provider.countFor(entry.$2)})',
+                  selected: provider.filter == entry.$2,
+                  onTap: () => provider.setFilter(entry.$2),
+                ),
+                SizedBox(width: 8.w),
+              ],
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

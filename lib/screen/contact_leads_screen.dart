@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:truerealtycrm/constant/colors_screen.dart';
-import 'package:truerealtycrm/provider/dashboard_provider.dart';
+import 'package:truerealtycrm/provider/contact_lead_provider.dart';
+import 'package:truerealtycrm/provider/leads_provider.dart';
 
 class ContactLeadsScreen extends StatefulWidget {
   const ContactLeadsScreen({super.key});
@@ -12,97 +15,121 @@ class ContactLeadsScreen extends StatefulWidget {
 }
 
 class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
-  static const _pageBackground = Color(0xFFF4F7FB);
-  static const _borderColor = Color(0xFFDDE6F2);
-  static const _mutedText = Color(0xFF5F728E);
-
-  final _searchController = TextEditingController();
-  DateTime _dateFrom = DateTime(2026, 7, 31);
-  DateTime _dateTo = DateTime(2026, 8, 7);
-  String _role = 'all';
-  String _teamId = 'all';
-  String _userId = 'all';
-  String _activityType = 'all';
-  bool _isLoading = true;
+  static const _bg = Color(0xFFF4F7FB);
+  static const _border = Color(0xFFDCE5F0);
+  final _search = TextEditingController();
+  final Set<String> _selected = {};
+  Timer? _debounce;
+  List<Map<String, dynamic>> _items = const [];
+  Map<String, dynamic> _filters = const {};
+  int _page = 1;
+  int _limit = 10;
+  int _total = 0;
+  bool _loading = true;
+  bool _updating = false;
   String? _error;
-  Map<String, dynamic> _data = const {};
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadPerformance());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _initialLoad());
   }
 
   @override
   void dispose() {
-    _searchController.dispose();
+    _debounce?.cancel();
+    _search.dispose();
     super.dispose();
   }
 
-  Future<void> _loadPerformance() async {
+  Future<void> _initialLoad() async {
+    await Future.wait([_load(), _loadFilters()]);
+  }
+
+  Future<void> _loadFilters() async {
+    final response = await context.read<LeadProvider>().fetchLeadPipeline(
+      limitPerColumn: 1,
+    );
+    if (!mounted || response == null) return;
+    final root = _map(response.data);
+    final nested = _map(root['data']);
+    final filters = _map(root['filters']).isNotEmpty
+        ? _map(root['filters'])
+        : _map(nested['filters']);
+    if (filters.isNotEmpty) setState(() => _filters = filters);
+  }
+
+  Future<void> _load({int? page}) async {
+    final nextPage = page ?? _page;
     setState(() {
-      _isLoading = true;
+      _loading = true;
       _error = null;
     });
-
-    final provider = context.read<DashboardProvider>();
-    final response = await provider.fetchAdminPerformance(
-      dateFrom: _dateKey(_dateFrom),
-      dateTo: _dateKey(_dateTo),
-      role: _role,
-      teamId: _teamId,
-      userId: _userId,
-      activityType: _activityType,
-      search: _searchController.text.trim(),
-      page: 1,
-      limit: 20,
+    final provider = context.read<ContactLeadProvider>();
+    final response = await provider.fetchContactLeads(
+      search: _search.text.trim(),
+      page: nextPage,
+      limit: _limit,
     );
-
     if (!mounted) return;
+    if (response == null) {
+      setState(() {
+        _loading = false;
+        _error = provider.error ?? 'Unable to load contact leads.';
+      });
+      return;
+    }
+    final root = _map(response.data);
+    final nested = _map(root['data']);
+    final rawItems = root['data'] is List
+        ? _list(root['data'])
+        : _list(nested['data'] ?? nested['items']);
+    final meta = _map(root['meta']).isNotEmpty
+        ? _map(root['meta'])
+        : _map(nested['meta']);
     setState(() {
-      _data = response?.data is Map
-          ? Map<String, dynamic>.from(response!.data as Map)
-          : const {};
-      _error = response == null
-          ? provider.error ?? 'Unable to load contact lead performance.'
-          : null;
-      _isLoading = false;
+      _items = rawItems.map(_map).toList();
+      _page = _int(meta['page'], fallback: nextPage);
+      _limit = _int(meta['limit'], fallback: _limit);
+      _total = _int(meta['total'], fallback: rawItems.length);
+      _selected.removeWhere((id) => !_items.any((item) => item['id'] == id));
+      _loading = false;
     });
   }
 
-  Map<String, dynamic> get _summary => _map(_data['summary']);
-  Map<String, dynamic> get _filters => _map(_data['filters']);
-  List<dynamic> get _users => _list(_data['users']);
+  void _searchChanged(String _) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 450), () => _load(page: 1));
+    setState(() {});
+  }
+
+  int get _first => _total == 0 ? 0 : ((_page - 1) * _limit) + 1;
+  int get _last => (_page * _limit).clamp(0, _total);
+  int get _pages => _total == 0 ? 1 : (_total / _limit).ceil();
+  bool get _allSelected =>
+      _items.isNotEmpty &&
+      _items.every((item) => _selected.contains('${item['id']}'));
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _pageBackground,
+      backgroundColor: _bg,
       body: SafeArea(
         child: RefreshIndicator(
-          onRefresh: _loadPerformance,
+          onRefresh: _initialLoad,
           color: AppColors.orangeStrong,
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(23, 6, 20, 28),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildHeader(),
+                _header(),
+                const SizedBox(height: 16),
+                _toolbar(),
                 const SizedBox(height: 14),
-                _buildFilters(),
-                if (_isLoading) ...[
-                  const SizedBox(height: 12),
-                  const LinearProgressIndicator(minHeight: 2),
-                ],
-                if (_error != null) ...[
-                  const SizedBox(height: 12),
-                  _ErrorPanel(message: _error!, onRetry: _loadPerformance),
-                ],
-                const SizedBox(height: 20),
-                _buildSummaryCards(),
-                const SizedBox(height: 20),
-                _buildPerformanceTable(),
+                if (_error != null) _errorPanel(),
+                _table(),
               ],
             ),
           ),
@@ -111,166 +138,144 @@ class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
     );
   }
 
-  Widget _buildHeader() {
+  Widget _header() {
     return Row(
       children: [
         IconButton(
-          tooltip: 'Back',
           onPressed: () => Navigator.maybePop(context),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
           style: IconButton.styleFrom(
             backgroundColor: Colors.white,
             foregroundColor: AppColors.navy,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-              side: const BorderSide(color: _borderColor),
-            ),
+            side: const BorderSide(color: _border),
           ),
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 17),
         ),
         const SizedBox(width: 10),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Text('Contact Leads', style: _style(22, FontWeight.w800)),
               Text(
-                'Contact Leads',
-                style: _textStyle(22, FontWeight.w800, AppColors.navy),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                'Activity totals and user performance in the selected range.',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: _textStyle(13, FontWeight.w500, _mutedText),
+                'Manage incoming portal and campaign enquiries.',
+                style: _style(12, FontWeight.w500, const Color(0xFF64748B)),
               ),
             ],
           ),
+        ),
+        IconButton(
+          tooltip: 'Refresh',
+          onPressed: _loading ? null : _initialLoad,
+          icon: const Icon(Icons.refresh_rounded),
         ),
       ],
     );
   }
 
-  Widget _buildFilters() {
-    final roles = _list(_filters['roles']).map((e) => e.toString()).toList();
-    final teams = _list(_filters['teams']);
-    final employees = _list(_filters['employees']);
-    final activities = _list(
-      _filters['activityTypes'],
-    ).map((e) => e.toString()).toList();
-
+  Widget _toolbar() {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: _panelDecoration(radius: 8),
+      padding: const EdgeInsets.all(14),
+      decoration: _decoration(),
       child: LayoutBuilder(
-        builder: (context, constraints) {
-          final compact = constraints.maxWidth < 900;
-          final itemWidth = compact
-              ? constraints.maxWidth
-              : (constraints.maxWidth - 48) / 4;
-          return Wrap(
-            spacing: 12,
-            runSpacing: 12,
+        builder: (_, constraints) {
+          final narrow = constraints.maxWidth < 620;
+          final search = SizedBox(
+            width: narrow ? constraints.maxWidth : 360,
+            height: 43,
+            child: TextField(
+              controller: _search,
+              onChanged: _searchChanged,
+              decoration: InputDecoration(
+                hintText: 'Search name, number, project or source',
+                prefixIcon: const Icon(Icons.search_rounded),
+                suffixIcon: _search.text.isEmpty
+                    ? null
+                    : IconButton(
+                        onPressed: () {
+                          _search.clear();
+                          _load(page: 1);
+                        },
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(9),
+                  borderSide: const BorderSide(color: _border),
+                ),
+              ),
+            ),
+          );
+          final actions = Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              _DateFilter(
-                width: itemWidth,
-                value: _dateFrom,
-                onChanged: (value) {
-                  setState(() => _dateFrom = value);
-                  _loadPerformance();
-                },
+              Text(
+                '${_selected.length} selected',
+                style: _style(12, FontWeight.w700),
               ),
-              _DateFilter(
-                width: itemWidth,
-                value: _dateTo,
-                onChanged: (value) {
-                  setState(() => _dateTo = value);
-                  _loadPerformance();
-                },
-              ),
-              _SelectFilter(
-                width: itemWidth,
-                value: _role,
-                options: [
-                  const _SelectOption('all', 'All roles'),
-                  ...roles.map((role) => _SelectOption(role, _titleCase(role))),
-                ],
-                onChanged: (value) {
-                  setState(() => _role = value);
-                  _loadPerformance();
-                },
-              ),
-              _SelectFilter(
-                width: itemWidth,
-                value: _teamId,
-                options: [
-                  const _SelectOption('all', 'All teams'),
-                  ...teams.map(
-                    (team) => _SelectOption(
-                      _text(team, 'id'),
-                      _text(team, 'name', fallback: 'Unnamed team'),
-                    ),
+              const SizedBox(width: 10),
+              PopupMenuButton<_BulkAction>(
+                enabled: !_updating,
+                onSelected: _runBulkAction,
+                itemBuilder: (_) => const [
+                  PopupMenuItem(
+                    value: _BulkAction.assign,
+                    child: Text('Assign To'),
+                  ),
+                  PopupMenuItem(
+                    value: _BulkAction.source,
+                    child: Text('Lead Source'),
+                  ),
+                  PopupMenuItem(
+                    value: _BulkAction.project,
+                    child: Text('Project Name'),
+                  ),
+                  PopupMenuDivider(),
+                  PopupMenuItem(
+                    value: _BulkAction.interested,
+                    child: Text('Mark interested'),
+                  ),
+                  PopupMenuItem(
+                    value: _BulkAction.convert,
+                    child: Text('Convert selected'),
+                  ),
+                  PopupMenuItem(
+                    value: _BulkAction.archive,
+                    child: Text('Archive selected'),
                   ),
                 ],
-                onChanged: (value) {
-                  setState(() => _teamId = value);
-                  _loadPerformance();
-                },
-              ),
-              _SelectFilter(
-                width: itemWidth,
-                value: _userId,
-                options: [
-                  const _SelectOption('all', 'All employees'),
-                  ...employees.map(
-                    (employee) => _SelectOption(
-                      _text(employee, 'id'),
-                      _text(employee, 'name', fallback: 'Unnamed employee'),
-                    ),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 15,
+                    vertical: 10,
                   ),
-                ],
-                onChanged: (value) {
-                  setState(() => _userId = value);
-                  _loadPerformance();
-                },
-              ),
-              _SelectFilter(
-                width: itemWidth,
-                value: _activityType,
-                options: [
-                  const _SelectOption('all', 'All activity'),
-                  ...activities.map(
-                    (activity) => _SelectOption(activity, _titleCase(activity)),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(color: _border),
+                    borderRadius: BorderRadius.circular(9),
                   ),
-                ],
-                onChanged: (value) {
-                  setState(() => _activityType = value);
-                  _loadPerformance();
-                },
-              ),
-              SizedBox(
-                width: compact ? constraints.maxWidth : itemWidth,
-                height: 40,
-                child: TextField(
-                  controller: _searchController,
-                  onSubmitted: (_) => _loadPerformance(),
-                  style: _textStyle(13, FontWeight.w600, AppColors.navy),
-                  decoration: _inputDecoration(
-                    hintText: 'Search',
-                    prefixIcon: Icons.search_rounded,
-                    suffixIcon: _searchController.text.isEmpty
-                        ? null
-                        : IconButton(
-                            tooltip: 'Clear search',
-                            icon: const Icon(Icons.close_rounded, size: 18),
-                            onPressed: () {
-                              _searchController.clear();
-                              _loadPerformance();
-                            },
-                          ),
+                  child: Row(
+                    children: [
+                      Text(
+                        _updating ? 'Updating...' : 'Update',
+                        style: _style(13, FontWeight.w700),
+                      ),
+                      const SizedBox(width: 7),
+                      const Icon(Icons.keyboard_arrow_down_rounded, size: 19),
+                    ],
                   ),
                 ),
               ),
+            ],
+          );
+          if (narrow) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [search, const SizedBox(height: 12), actions],
+            );
+          }
+          return Row(
+            children: [
+              Expanded(child: search),
+              actions,
             ],
           );
         },
@@ -278,313 +283,597 @@ class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
     );
   }
 
-  Widget _buildSummaryCards() {
-    final cards = [
-      _SummaryItem(
-        'Total calls',
-        _int(_summary['totalCalls']),
-        'Call logs in range',
-        Icons.phone_in_talk_outlined,
-        const Color(0xFF2563EB),
-      ),
-      _SummaryItem(
-        'Connected calls',
-        _int(_summary['connectedCalls']),
-        'Successful conversations',
-        Icons.check_circle_outline_rounded,
-        const Color(0xFF059669),
-      ),
-      _SummaryItem(
-        'Follow-ups done',
-        _int(_summary['followUpsCompleted']),
-        'Completed follow-ups',
-        Icons.calendar_month_outlined,
-        const Color(0xFFF97316),
-      ),
-      _SummaryItem(
-        'Site visits done',
-        _int(_summary['siteVisitsDone']),
-        'Completed visits',
-        Icons.groups_2_outlined,
-        const Color(0xFF0F766E),
-      ),
-      _SummaryItem(
-        'Remarks added',
-        _int(_summary['remarksAdded']),
-        'Lead remarks captured',
-        Icons.chat_bubble_outline_rounded,
-        const Color(0xFF7C3AED),
-      ),
-      _SummaryItem(
-        'Score earned',
-        _int(_summary['scoreEarned']),
-        'From lead status changes',
-        Icons.trending_up_rounded,
-        const Color(0xFF16A34A),
-      ),
-      _SummaryItem(
-        'Tasks completed',
-        _int(_summary['tasksCompleted']),
-        'Employee tasks closed',
-        Icons.task_alt_rounded,
-        const Color(0xFF334155),
-      ),
-      _SummaryItem(
-        'Bookings done',
-        _int(_summary['bookingsDone']),
-        'Closed bookings',
-        Icons.emoji_events_outlined,
-        const Color(0xFFEA580C),
-      ),
-    ];
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final columns = constraints.maxWidth >= 1200
-            ? 8
-            : constraints.maxWidth >= 850
-            ? 4
-            : constraints.maxWidth >= 520
-            ? 2
-            : 1;
-        final width = (constraints.maxWidth - ((columns - 1) * 16)) / columns;
-        return Wrap(
-          spacing: 16,
-          runSpacing: 14,
-          children: cards
-              .map((card) => SizedBox(width: width, child: _MetricCard(card)))
-              .toList(),
-        );
-      },
+  Widget _table() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: _decoration(),
+          child: Row(
+            children: [
+              Checkbox(value: _allSelected, onChanged: _toggleAll),
+              Expanded(
+                child: Text(
+                  'Showing $_first to $_last of $_total contact leads',
+                  style: _style(11, FontWeight.w700),
+                ),
+              ),
+              Text('Select all', style: _style(10, FontWeight.w600)),
+            ],
+          ),
+        ),
+        if (_loading) ...[
+          const SizedBox(height: 8),
+          const LinearProgressIndicator(minHeight: 2),
+        ],
+        const SizedBox(height: 12),
+        for (var i = 0; i < _items.length; i++) ...[
+          _contactCard(_items[i]),
+          if (i != _items.length - 1) const SizedBox(height: 12),
+        ],
+        if (!_loading && _items.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(28),
+            decoration: _decoration(),
+            child: Center(
+              child: Text(
+                'No contact leads found.',
+                style: _style(13, FontWeight.w600, const Color(0xFF64748B)),
+              ),
+            ),
+          ),
+        const SizedBox(height: 10),
+        Container(decoration: _decoration(), child: _pagination()),
+      ],
     );
   }
 
-  Widget _buildPerformanceTable() {
-    return Container(
-      width: double.infinity,
-      decoration: _panelDecoration(radius: 8),
+  Widget _contactCard(Map<String, dynamic> item) {
+    final id = '${item['id'] ?? ''}';
+    final note = _value(item, 'note');
+    final selected = _selected.contains(id);
+    final name = _value(item, 'customerName', fallback: 'Unknown contact');
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(14),
       clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-            child: Column(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.fromLTRB(14, 13, 14, 12),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xFFFFF8F3) : Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: selected ? AppColors.orangeStrong : const Color(0xFFD5DDE8),
+          ),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x0A0F172A),
+              blurRadius: 8,
+              offset: Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'User performance',
-                  style: _textStyle(18, FontWeight.w800, AppColors.navy),
+                Checkbox(
+                  value: selected,
+                  activeColor: AppColors.orangeStrong,
+                  visualDensity: VisualDensity.compact,
+                  onChanged: (_) => _toggle(id),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  'Activity totals for each employee in the selected range.',
-                  style: _textStyle(13, FontWeight.w500, _mutedText),
+                const SizedBox(width: 4),
+                CircleAvatar(
+                  radius: 20,
+                  backgroundColor: const Color(0xFF10213D),
+                  child: Text(
+                    _initials(name),
+                    style: _style(11.5, FontWeight.w800, Colors.white),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: _style(15, FontWeight.w700),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        'Added on ${_date(item['createdAt'])}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: _style(
+                          9.5,
+                          FontWeight.w500,
+                          const Color(0xFF667085),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    _status(_value(item, 'status', fallback: 'COLD')),
+                    const SizedBox(height: 5),
+                    _badge(
+                      _value(item, 'sourceName', fallback: 'Unknown'),
+                      const Color(0xFF2563EB),
+                    ),
+                  ],
+                ),
+                PopupMenuButton<_RowAction>(
+                  padding: EdgeInsets.zero,
+                  icon: const Icon(
+                    Icons.more_vert_rounded,
+                    color: Color(0xFF1D4ED8),
+                  ),
+                  onSelected: (action) => _runRowAction(action, item),
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(
+                      value: _RowAction.edit,
+                      child: Text('Edit contact'),
+                    ),
+                    PopupMenuItem(
+                      value: _RowAction.interested,
+                      child: Text('Mark interested'),
+                    ),
+                    PopupMenuItem(
+                      value: _RowAction.convert,
+                      child: Text('Convert to lead'),
+                    ),
+                    PopupMenuItem(
+                      value: _RowAction.archive,
+                      child: Text('Archive'),
+                    ),
+                  ],
                 ),
               ],
             ),
-          ),
-          const Divider(height: 1, color: _borderColor),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: DataTable(
-              headingRowColor: WidgetStateProperty.all(const Color(0xFFF8FAFC)),
-              headingTextStyle: _textStyle(12, FontWeight.w800, AppColors.navy),
-              dataTextStyle: _textStyle(12, FontWeight.w700, AppColors.navy),
-              columnSpacing: 28,
-              horizontalMargin: 16,
-              dataRowMinHeight: 64,
-              dataRowMaxHeight: 82,
-              columns: const [
-                DataColumn(label: Text('Rank')),
-                DataColumn(label: Text('Employee')),
-                DataColumn(label: Text('Leads')),
-                DataColumn(label: Text('Score earned')),
-                DataColumn(label: Text('Calls')),
-                DataColumn(label: Text('Follow-ups')),
-                DataColumn(label: Text('Visits')),
-                DataColumn(label: Text('Remarks')),
-                DataColumn(label: Text('Tasks')),
-                DataColumn(label: Text('Bookings')),
-                DataColumn(label: Text('Latest activity')),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: _mobileDetail(
+                    Icons.phone_rounded,
+                    'Mobile Number',
+                    '${_value(item, 'mobileCountryCode')} ${_value(item, 'mobile')}'
+                        .trim(),
+                    iconColor: const Color(0xFF00A63E),
+                    iconBackground: const Color(0xFFE8F8EE),
+                  ),
+                ),
+                Container(width: 1, height: 48, color: const Color(0xFFE4E7EC)),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _mobileDetail(
+                    Icons.apartment_rounded,
+                    _value(item, 'projectName', fallback: 'Not assigned'),
+                    _value(item, 'projectArea', fallback: '-'),
+                    iconColor: const Color(0xFF1468D4),
+                    iconBackground: const Color(0xFFEAF2FF),
+                  ),
+                ),
               ],
-              rows: _users.map((user) => _buildUserRow(user)).toList(),
             ),
-          ),
-          if (_users.isEmpty && !_isLoading)
-            Padding(
-              padding: const EdgeInsets.all(22),
-              child: Text(
-                'No user performance found for this range.',
-                style: _textStyle(13, FontWeight.w600, _mutedText),
+            const SizedBox(height: 11),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF3F4F6),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _mobileDetail(
+                      Icons.person_pin_circle_outlined,
+                      'Assigned To',
+                      _value(item, 'assignedToName', fallback: 'Unassigned'),
+                      iconColor: const Color(0xFF4D2DDB),
+                      iconBackground: const Color(0xFFEDEAFF),
+                    ),
+                  ),
+                  Container(
+                    width: 1,
+                    height: 48,
+                    color: const Color(0xFFE4E7EC),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _mobileDetail(
+                      Icons.update_rounded,
+                      'Last Update',
+                      _date(item['updatedAt']),
+                      iconColor: const Color(0xFF4D2DDB),
+                      iconBackground: const Color(0xFFEDEAFF),
+                    ),
+                  ),
+                ],
               ),
             ),
+            const SizedBox(height: 11),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(
+                  Icons.notes_rounded,
+                  size: 17,
+                  color: Color(0xFF1454D8),
+                ),
+                const SizedBox(width: 7),
+                Text(
+                  'Note: ',
+                  style: _style(11, FontWeight.w700, const Color(0xFF475467)),
+                ),
+                Expanded(
+                  child: Text(
+                    note.isEmpty ? 'No note added' : note,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: _style(11, FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _mobileDetail(
+    IconData icon,
+    String label,
+    String value, {
+    Color iconColor = AppColors.navy,
+    Color iconBackground = const Color(0xFFF1F5F9),
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            color: iconBackground,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, size: 17, color: iconColor),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: _style(9, FontWeight.w800, const Color(0xFF64748B)),
+              ),
+              const SizedBox(height: 2),
+              Text(value, style: _style(11.5, FontWeight.w700)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _pagination() {
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          Text('Rows $_limit', style: _style(11, FontWeight.w600)),
+          const SizedBox(width: 16),
+          IconButton(
+            onPressed: _page > 1 && !_loading
+                ? () => _load(page: _page - 1)
+                : null,
+            icon: const Icon(Icons.chevron_left_rounded),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: AppColors.navy,
+              borderRadius: BorderRadius.circular(7),
+            ),
+            child: Text(
+              '$_page',
+              style: _style(12, FontWeight.w800, Colors.white),
+            ),
+          ),
+          IconButton(
+            onPressed: _page < _pages && !_loading
+                ? () => _load(page: _page + 1)
+                : null,
+            icon: const Icon(Icons.chevron_right_rounded),
+          ),
         ],
       ),
     );
   }
 
-  DataRow _buildUserRow(dynamic rawUser) {
-    final user = _map(rawUser);
-    final score = _int(user['scoreEarned']);
-    return DataRow(
-      cells: [
-        DataCell(Text('#${_int(user['scoreRank'])}')),
-        DataCell(_EmployeeCell(user: user)),
-        DataCell(
-          Text(
-            '${_int(user['leadsAssigned'])} assigned - '
-            '${_int(user['leadsCreated'])} created',
-          ),
-        ),
-        DataCell(
-          Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '$score',
-                style: _textStyle(
-                  12,
-                  FontWeight.w800,
-                  score > 0 ? const Color(0xFF16803E) : AppColors.navy,
-                ),
-              ),
-              const SizedBox(height: 4),
-              SizedBox(
-                width: 180,
-                child: Text(
-                  _scoreBreakdown(user),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: _textStyle(11, FontWeight.w500, _mutedText),
-                ),
-              ),
-            ],
-          ),
-        ),
-        DataCell(
-          Text(
-            '${_int(user['calls'])} total - '
-            '${_int(user['connectedCalls'])} connected',
-          ),
-        ),
-        DataCell(
-          Text(
-            '${_int(user['followUpsCompleted'])} done - '
-            '${_int(user['overdueFollowUps'])} overdue',
-          ),
-        ),
-        DataCell(
-          Text(
-            '${_int(user['siteVisitsCompleted'])} done - '
-            '${_int(user['siteVisitsScheduled'])} scheduled',
-          ),
-        ),
-        DataCell(Text('${_int(user['remarksAdded'])}')),
-        DataCell(Text('${_int(user['tasksCompleted'])}')),
-        DataCell(Text('${_int(user['bookingsDone'])}')),
-        DataCell(Text(_activityDate(user['latestActivityAt']))),
-      ],
-    );
+  void _toggle(String id) => setState(
+    () => _selected.contains(id) ? _selected.remove(id) : _selected.add(id),
+  );
+  void _toggleAll(bool? checked) => setState(() {
+    if (checked == true) {
+      _selected.addAll(_items.map((item) => '${item['id']}'));
+    } else {
+      _selected.clear();
+    }
+  });
+
+  Future<void> _runBulkAction(_BulkAction action) async {
+    if (_selected.isEmpty) {
+      _message('Select at least one contact lead.');
+      return;
+    }
+    switch (action) {
+      case _BulkAction.assign:
+        await _chooseAndUpdate(
+          'Assign contact leads',
+          'Select employee',
+          _options('users'),
+          'assignedToId',
+        );
+      case _BulkAction.source:
+        await _chooseAndUpdate(
+          'Update lead source',
+          'Select source',
+          _options('sources'),
+          'sourceId',
+        );
+      case _BulkAction.project:
+        await _chooseAndUpdate(
+          'Update project',
+          'Select project',
+          _options('projects'),
+          'preferredProjectId',
+          searchable: true,
+        );
+      case _BulkAction.interested:
+        await _bulkEndpoint(
+          (provider, id) => provider.markInterested(id),
+          'Contacts marked interested.',
+        );
+      case _BulkAction.convert:
+        await _bulkEndpoint(
+          (provider, id) => provider.convertContactLead(id),
+          'Contacts converted successfully.',
+        );
+      case _BulkAction.archive:
+        if (await _confirm('Archive selected contacts?')) {
+          await _bulkEndpoint(
+            (provider, id) => provider.archiveContactLead(id),
+            'Contacts archived.',
+          );
+        }
+    }
   }
 
-  Future<void> _pickDate({
-    required DateTime initial,
-    required ValueChanged<DateTime> onPicked,
+  Future<void> _runRowAction(
+    _RowAction action,
+    Map<String, dynamic> item,
+  ) async {
+    final id = '${item['id']}';
+    switch (action) {
+      case _RowAction.edit:
+        final changed = await showDialog<bool>(
+          context: context,
+          builder: (_) => _EditContactDialog(item: item),
+        );
+        if (changed == true) await _load();
+      case _RowAction.interested:
+        await _single(
+          () => context.read<ContactLeadProvider>().markInterested(id),
+          'Contact marked interested.',
+        );
+      case _RowAction.convert:
+        await _single(
+          () => context.read<ContactLeadProvider>().convertContactLead(id),
+          'Contact converted successfully.',
+        );
+      case _RowAction.archive:
+        if (await _confirm('Archive this contact lead?')) {
+          await _single(
+            () => context.read<ContactLeadProvider>().archiveContactLead(id),
+            'Contact archived.',
+          );
+        }
+    }
+  }
+
+  List<_Option> _options(String key) => _list(_filters[key])
+      .map((raw) {
+        final map = _map(raw);
+        return _Option(
+          '${map['id'] ?? ''}',
+          _value(map, 'name', fallback: 'Unnamed'),
+          subtitle: key == 'projects'
+              ? _value(map, 'location')
+              : _value(map, 'role'),
+        );
+      })
+      .where((option) => option.id.isNotEmpty)
+      .toList();
+
+  Future<void> _chooseAndUpdate(
+    String title,
+    String hint,
+    List<_Option> options,
+    String field, {
+    bool searchable = false,
   }) async {
-    final picked = await showDatePicker(
+    if (options.isEmpty) {
+      _message('No options are available. Pull to refresh and try again.');
+      return;
+    }
+    final option = await showDialog<_Option>(
       context: context,
-      initialDate: initial,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2035),
+      builder: (_) => _OptionDialog(
+        title: title,
+        hint: hint,
+        options: options,
+        searchable: searchable,
+      ),
     );
-    if (picked != null) onPicked(picked);
+    if (option == null) return;
+    await _bulkEndpoint(
+      (provider, id) => provider.updateContactLead(
+        contactLeadId: id,
+        body: {field: option.id},
+      ),
+      '$title updated successfully.',
+    );
   }
 
-  static BoxDecoration _panelDecoration({required double radius}) {
-    return BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(radius),
-      border: Border.all(color: _borderColor),
+  Future<void> _bulkEndpoint(
+    Future<Object?> Function(ContactLeadProvider, String) operation,
+    String success,
+  ) async {
+    setState(() => _updating = true);
+    final provider = context.read<ContactLeadProvider>();
+    var completed = 0;
+    for (final id in _selected.toList()) {
+      if (await operation(provider, id) != null) completed++;
+    }
+    if (!mounted) return;
+    setState(() => _updating = false);
+    if (completed == _selected.length) {
+      _message(success);
+      _selected.clear();
+      await _load();
+    } else {
+      _message('Updated $completed of ${_selected.length} contacts.');
+    }
+  }
+
+  Future<void> _single(
+    Future<Object?> Function() operation,
+    String success,
+  ) async {
+    final result = await operation();
+    if (!mounted) return;
+    _message(result == null ? 'Unable to update contact lead.' : success);
+    if (result != null) await _load();
+  }
+
+  Future<bool> _confirm(String message) async =>
+      await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Please confirm'),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Confirm'),
+            ),
+          ],
+        ),
+      ) ??
+      false;
+
+  void _message(String text) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  Widget _errorPanel() => Container(
+    margin: const EdgeInsets.only(bottom: 12),
+    padding: const EdgeInsets.all(13),
+    decoration: BoxDecoration(
+      color: const Color(0xFFFFF1F2),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Row(
+      children: [
+        const Icon(Icons.error_outline, color: Colors.red),
+        const SizedBox(width: 8),
+        Expanded(child: Text(_error!)),
+        TextButton(onPressed: _load, child: const Text('Retry')),
+      ],
+    ),
+  );
+
+  static String _initials(String name) {
+    final parts = name
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .toList();
+    if (parts.isEmpty) return 'CL';
+    if (parts.length == 1) return parts.first[0].toUpperCase();
+    return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
+  }
+
+  static Widget _badge(String text, Color color) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: .08),
+      borderRadius: BorderRadius.circular(999),
+    ),
+    child: Text(text, style: _style(10, FontWeight.w700, color)),
+  );
+  static Widget _status(String status) {
+    final converted = status.toUpperCase() == 'CONVERTED';
+    return _badge(
+      _title(status),
+      converted ? const Color(0xFF16A34A) : const Color(0xFF2563EB),
     );
   }
 
-  static InputDecoration _inputDecoration({
-    required String hintText,
-    IconData? prefixIcon,
-    Widget? suffixIcon,
+  static BoxDecoration _decoration() => BoxDecoration(
+    color: Colors.white,
+    borderRadius: BorderRadius.circular(10),
+    border: Border.all(color: _border),
+  );
+  static TextStyle _style(
+    double size,
+    FontWeight weight, [
+    Color color = AppColors.navy,
+  ]) => GoogleFonts.inter(fontSize: size, fontWeight: weight, color: color);
+  static Map<String, dynamic> _map(Object? value) =>
+      value is Map ? Map<String, dynamic>.from(value) : {};
+  static List<dynamic> _list(Object? value) => value is List ? value : const [];
+  static int _int(Object? value, {int fallback = 0}) =>
+      value is num ? value.toInt() : int.tryParse('$value') ?? fallback;
+  static String _value(
+    Map<String, dynamic> map,
+    String key, {
+    String fallback = '',
   }) {
-    return InputDecoration(
-      hintText: hintText,
-      prefixIcon: prefixIcon == null
-          ? null
-          : Icon(prefixIcon, size: 20, color: _mutedText),
-      suffixIcon: suffixIcon,
-      filled: true,
-      fillColor: Colors.white,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: const BorderSide(color: _borderColor),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: const BorderSide(color: Color(0xFF94A3B8)),
-      ),
-    );
+    final value = map[key]?.toString().trim() ?? '';
+    return value.isEmpty ? fallback : value;
   }
 
-  static TextStyle _textStyle(double size, FontWeight weight, Color color) {
-    return GoogleFonts.inter(fontSize: size, fontWeight: weight, color: color);
-  }
-
-  static Map<String, dynamic> _map(Object? value) {
-    return value is Map ? Map<String, dynamic>.from(value) : const {};
-  }
-
-  static List<dynamic> _list(Object? value) {
-    return value is List ? value : const [];
-  }
-
-  static int _int(Object? value) {
-    if (value is num) return value.toInt();
-    return int.tryParse(value?.toString() ?? '') ?? 0;
-  }
-
-  static String _text(Object? source, String key, {String fallback = ''}) {
-    final map = _map(source);
-    final value = map[key]?.toString().trim();
-    return value == null || value.isEmpty ? fallback : value;
-  }
-
-  static String _dateKey(DateTime date) {
-    return '${date.year.toString().padLeft(4, '0')}-'
-        '${date.month.toString().padLeft(2, '0')}-'
-        '${date.day.toString().padLeft(2, '0')}';
-  }
-
-  static String _displayDate(DateTime date) {
-    return '${date.day.toString().padLeft(2, '0')}/'
-        '${date.month.toString().padLeft(2, '0')}/'
-        '${date.year}';
-  }
-
-  static String _activityDate(Object? value) {
-    final parsed = DateTime.tryParse(value?.toString() ?? '');
-    if (parsed == null) return 'No activity';
-    final local = parsed.toLocal();
-    final hour = local.hour == 0
-        ? 12
-        : local.hour > 12
-        ? local.hour - 12
-        : local.hour;
-    final minute = local.minute.toString().padLeft(2, '0');
-    final marker = local.hour >= 12 ? 'pm' : 'am';
-    return '${_displayDateWords(local)} : $hour:$minute $marker';
-  }
-
-  static String _displayDateWords(DateTime date) {
+  static String _title(String value) => value
+      .replaceAll('_', ' ')
+      .toLowerCase()
+      .split(' ')
+      .where((e) => e.isNotEmpty)
+      .map((e) => '${e[0].toUpperCase()}${e.substring(1)}')
+      .join(' ');
+  static String _date(Object? value) {
+    final date = DateTime.tryParse('$value')?.toLocal();
+    if (date == null) return '—';
     const months = [
       'Jan',
       'Feb',
@@ -599,316 +888,220 @@ class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
       'Nov',
       'Dec',
     ];
-    return '${date.day.toString().padLeft(2, '0')} '
-        '${months[date.month - 1]} ${date.year}';
-  }
-
-  static String _scoreBreakdown(Map<String, dynamic> user) {
-    final breakdown = _list(user['scoreBreakdown']);
-    if (breakdown.isEmpty) return 'No scored status changes';
-    return breakdown
-        .map((item) {
-          final map = _map(item);
-          return '${_text(map, 'statusName')}: ${_int(map['points'])}';
-        })
-        .join(' / ');
-  }
-
-  static String _titleCase(String value) {
-    final words = value
-        .replaceAll('_', ' ')
-        .toLowerCase()
-        .split(' ')
-        .where((word) => word.isNotEmpty);
-    return words
-        .map((word) => '${word[0].toUpperCase()}${word.substring(1)}')
-        .join(' ');
+    final hour = date.hour == 0
+        ? 12
+        : date.hour > 12
+        ? date.hour - 12
+        : date.hour;
+    return '${date.day.toString().padLeft(2, '0')} ${months[date.month - 1]} ${date.year}, ${hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')} ${date.hour >= 12 ? 'pm' : 'am'}';
   }
 }
 
-class _DateFilter extends StatelessWidget {
-  const _DateFilter({
-    required this.width,
-    required this.value,
-    required this.onChanged,
-  });
-
-  final double width;
-  final DateTime value;
-  final ValueChanged<DateTime> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final state = context.findAncestorStateOfType<_ContactLeadsScreenState>();
-    return SizedBox(
-      width: width,
-      height: 40,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(8),
-        onTap: () => state?._pickDate(initial: value, onPicked: onChanged),
-        child: InputDecorator(
-          decoration: _ContactLeadsScreenState._inputDecoration(
-            hintText: '',
-            prefixIcon: Icons.calendar_month_outlined,
-            suffixIcon: const Icon(
-              Icons.calendar_today_rounded,
-              size: 15,
-              color: Colors.black87,
-            ),
-          ),
-          child: Text(
-            _ContactLeadsScreenState._displayDate(value),
-            style: _ContactLeadsScreenState._textStyle(
-              13,
-              FontWeight.w600,
-              AppColors.navy,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SelectFilter extends StatelessWidget {
-  const _SelectFilter({
-    required this.width,
-    required this.value,
+class _OptionDialog extends StatefulWidget {
+  const _OptionDialog({
+    required this.title,
+    required this.hint,
     required this.options,
-    required this.onChanged,
+    required this.searchable,
   });
-
-  final double width;
-  final String value;
-  final List<_SelectOption> options;
-  final ValueChanged<String> onChanged;
-
+  final String title;
+  final String hint;
+  final List<_Option> options;
+  final bool searchable;
   @override
-  Widget build(BuildContext context) {
-    final safeOptions = options.where((item) => item.value.isNotEmpty).toList();
-    final safeValue = safeOptions.any((item) => item.value == value)
-        ? value
-        : safeOptions.first.value;
-    return SizedBox(
-      width: width,
-      height: 40,
-      child: DropdownButtonFormField<String>(
-        initialValue: safeValue,
-        isExpanded: true,
-        icon: const Icon(
-          Icons.keyboard_arrow_down_rounded,
-          color: _ContactLeadsScreenState._mutedText,
-        ),
-        decoration: _ContactLeadsScreenState._inputDecoration(hintText: ''),
-        style: _ContactLeadsScreenState._textStyle(
-          13,
-          FontWeight.w600,
-          AppColors.navy,
-        ),
-        items: safeOptions
-            .map(
-              (option) => DropdownMenuItem<String>(
-                value: option.value,
-                child: Text(option.label, overflow: TextOverflow.ellipsis),
-              ),
-            )
-            .toList(),
-        onChanged: (next) {
-          if (next != null) onChanged(next);
-        },
-      ),
-    );
-  }
+  State<_OptionDialog> createState() => _OptionDialogState();
 }
 
-class _MetricCard extends StatelessWidget {
-  const _MetricCard(this.item);
-
-  final _SummaryItem item;
-
+class _OptionDialogState extends State<_OptionDialog> {
+  String query = '';
   @override
   Widget build(BuildContext context) {
-    return Container(
-      constraints: const BoxConstraints(minHeight: 116),
-      padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
-      decoration: _ContactLeadsScreenState._panelDecoration(radius: 7),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(item.icon, size: 21, color: item.color),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item.label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: _ContactLeadsScreenState._textStyle(
-                    12,
-                    FontWeight.w800,
-                    _ContactLeadsScreenState._mutedText,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '${item.value}',
-                  style: _ContactLeadsScreenState._textStyle(
-                    23,
-                    FontWeight.w800,
-                    AppColors.navy,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  item.caption,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: _ContactLeadsScreenState._textStyle(
-                    12,
-                    FontWeight.w500,
-                    _ContactLeadsScreenState._mutedText,
-                  ),
-                ),
-              ],
-            ),
+    final visible = widget.options
+        .where(
+          (o) => '${o.label} ${o.subtitle}'.toLowerCase().contains(
+            query.toLowerCase(),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _EmployeeCell extends StatelessWidget {
-  const _EmployeeCell({required this.user});
-
-  final Map<String, dynamic> user;
-
-  @override
-  Widget build(BuildContext context) {
-    final name = _ContactLeadsScreenState._text(
-      user,
-      'name',
-      fallback: 'Unknown',
-    );
-    final image = _ContactLeadsScreenState._text(user, 'image');
-    final initials = name
-        .split(' ')
-        .where((part) => part.isNotEmpty)
-        .take(2)
-        .map((part) => part[0].toUpperCase())
-        .join();
-    return Row(
-      children: [
-        CircleAvatar(
-          radius: 18,
-          backgroundColor: AppColors.navy,
-          backgroundImage: image.isEmpty ? null : NetworkImage(image),
-          child: image.isEmpty
-              ? Text(
-                  initials,
-                  style: _ContactLeadsScreenState._textStyle(
-                    12,
-                    FontWeight.w800,
-                    Colors.white,
+        )
+        .toList();
+    return AlertDialog(
+      title: Text(widget.title),
+      content: SizedBox(
+        width: 520,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (widget.searchable) ...[
+              TextField(
+                onChanged: (v) => setState(() => query = v),
+                decoration: InputDecoration(
+                  hintText: 'Search by project or location',
+                  prefixIcon: const Icon(Icons.search),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(9),
                   ),
-                )
-              : null,
-        ),
-        const SizedBox(width: 12),
-        SizedBox(
-          width: 240,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: _ContactLeadsScreenState._textStyle(
-                  12,
-                  FontWeight.w800,
-                  AppColors.navy,
                 ),
               ),
-              const SizedBox(height: 3),
-              Text(
-                '${_ContactLeadsScreenState._text(user, 'designation')} - '
-                '${_ContactLeadsScreenState._text(user, 'teamName')}',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: _ContactLeadsScreenState._textStyle(
-                  12,
-                  FontWeight.w500,
-                  _ContactLeadsScreenState._mutedText,
-                ),
-              ),
+              const SizedBox(height: 10),
             ],
-          ),
+            Flexible(
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: visible.length,
+                itemBuilder: (_, i) => ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: const Color(0xFFFFF0E5),
+                    child: Icon(
+                      widget.searchable
+                          ? Icons.apartment
+                          : Icons.person_outline,
+                      color: AppColors.orangeDeep,
+                    ),
+                  ),
+                  title: Text(visible[i].label),
+                  subtitle: visible[i].subtitle.isEmpty
+                      ? null
+                      : Text(visible[i].subtitle),
+                  onTap: () => Navigator.pop(context, visible[i]),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Close'),
         ),
       ],
     );
   }
 }
 
-class _ErrorPanel extends StatelessWidget {
-  const _ErrorPanel({required this.message, required this.onRetry});
+class _EditContactDialog extends StatefulWidget {
+  const _EditContactDialog({required this.item});
+  final Map<String, dynamic> item;
+  @override
+  State<_EditContactDialog> createState() => _EditContactDialogState();
+}
 
-  final String message;
-  final VoidCallback onRetry;
+class _EditContactDialogState extends State<_EditContactDialog> {
+  final key = GlobalKey<FormState>();
+  late final TextEditingController name = TextEditingController(
+    text: '${widget.item['customerName'] ?? ''}',
+  );
+  late final TextEditingController mobile = TextEditingController(
+    text: '${widget.item['mobile'] ?? ''}',
+  );
+  late final TextEditingController email = TextEditingController(
+    text: '${widget.item['email'] ?? ''}',
+  );
+  late final TextEditingController note = TextEditingController(
+    text: '${widget.item['note'] ?? ''}',
+  );
+  bool saving = false;
+  @override
+  void dispose() {
+    name.dispose();
+    mobile.dispose();
+    email.dispose();
+    note.dispose();
+    super.dispose();
+  }
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFF1F2),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFFECACA)),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.error_outline_rounded, color: Color(0xFFB91C1C)),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              message,
-              style: _ContactLeadsScreenState._textStyle(
-                13,
-                FontWeight.w600,
-                const Color(0xFF991B1B),
-              ),
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Edit contact lead'),
+    content: SizedBox(
+      width: 520,
+      child: Form(
+        key: key,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _field(name, 'Customer name', Icons.person_outline, required: true),
+            const SizedBox(height: 12),
+            _field(
+              mobile,
+              'Mobile number',
+              Icons.phone_outlined,
+              required: true,
+              keyboard: TextInputType.phone,
             ),
-          ),
-          TextButton(onPressed: onRetry, child: const Text('Retry')),
-        ],
+            const SizedBox(height: 12),
+            _field(
+              email,
+              'Email address',
+              Icons.mail_outline,
+              keyboard: TextInputType.emailAddress,
+            ),
+            const SizedBox(height: 12),
+            _field(note, 'Note', Icons.note_alt_outlined, lines: 3),
+          ],
+        ),
       ),
-    );
+    ),
+    actions: [
+      TextButton(
+        onPressed: saving ? null : () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed: saving ? null : _save,
+        child: Text(saving ? 'Saving...' : 'Save changes'),
+      ),
+    ],
+  );
+  Widget _field(
+    TextEditingController controller,
+    String label,
+    IconData icon, {
+    bool required = false,
+    int lines = 1,
+    TextInputType? keyboard,
+  }) => TextFormField(
+    controller: controller,
+    maxLines: lines,
+    keyboardType: keyboard,
+    validator: required
+        ? (v) => v == null || v.trim().isEmpty ? '$label is required' : null
+        : null,
+    decoration: InputDecoration(
+      labelText: label,
+      prefixIcon: Icon(icon),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(9)),
+    ),
+  );
+  Future<void> _save() async {
+    if (!key.currentState!.validate()) return;
+    setState(() => saving = true);
+    final response = await context
+        .read<ContactLeadProvider>()
+        .updateContactLead(
+          contactLeadId: '${widget.item['id']}',
+          body: {
+            'customerName': name.text.trim(),
+            'mobile': mobile.text.trim(),
+            'email': email.text.trim(),
+            'note': note.text.trim(),
+          },
+        );
+    if (!mounted) return;
+    if (response != null) {
+      Navigator.pop(context, true);
+    } else {
+      setState(() => saving = false);
+    }
   }
 }
 
-class _SummaryItem {
-  const _SummaryItem(
-    this.label,
-    this.value,
-    this.caption,
-    this.icon,
-    this.color,
-  );
-
+class _Option {
+  const _Option(this.id, this.label, {this.subtitle = ''});
+  final String id;
   final String label;
-  final int value;
-  final String caption;
-  final IconData icon;
-  final Color color;
+  final String subtitle;
 }
 
-class _SelectOption {
-  const _SelectOption(this.value, this.label);
+enum _BulkAction { assign, source, project, interested, convert, archive }
 
-  final String value;
-  final String label;
-}
+enum _RowAction { edit, interested, convert, archive }

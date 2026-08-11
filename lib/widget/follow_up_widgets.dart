@@ -276,15 +276,14 @@ class FollowUpLeadCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final statusColors = _statusColors(item.statusLabel);
-    final typeColors = _typeColors(item.leadType);
-    final leadStatusColors = _leadStatusColors(item.leadStatus);
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(18.r),
+        borderRadius: BorderRadius.circular(14.r),
         child: FollowUpSectionCard(
+          borderRadius: 14,
           padding: EdgeInsets.fromLTRB(14.w, 14.h, 14.w, 14.h),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -309,19 +308,22 @@ class FollowUpLeadCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          item.leadName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.inter(
-                            fontSize: 15.sp,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.navy,
+                        InkWell(
+                          onTap: onMore,
+                          child: Text(
+                            item.leadName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.inter(
+                              fontSize: 15.sp,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.navy,
+                            ),
                           ),
                         ),
-                        SizedBox(height: 2.h),
+                        SizedBox(height: 3.h),
                         Text(
-                          item.phone,
+                          'Added on ${_formatDateTime(_leadCreatedAt(item))}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: GoogleFonts.inter(
@@ -337,107 +339,101 @@ class FollowUpLeadCard extends StatelessWidget {
                     foreground: statusColors.$1,
                     background: statusColors.$2,
                   ),
-                  if (onMore != null) ...[
-                    SizedBox(width: 2.w),
-                    IconButton(
-                      tooltip: 'View lead details',
-                      onPressed: onMore,
-                      visualDensity: VisualDensity.compact,
-                      icon: Icon(
-                        Icons.visibility_outlined,
-                        size: 20.sp,
-                        color: AppColors.textTertiary,
+                ],
+              ),
+              SizedBox(height: 14.h),
+              Row(
+                children: [
+                  Expanded(
+                    child: _FollowUpCardDetail(
+                      icon: Icons.phone_rounded,
+                      label: 'Mobile Number',
+                      value: item.phone,
+                      iconColor: const Color(0xFF00A63E),
+                      iconBackground: const Color(0xFFE8F8EE),
+                    ),
+                  ),
+                  const _FollowUpVerticalDivider(),
+                  SizedBox(width: 12.w),
+                  Expanded(
+                    child: _FollowUpCardDetail(
+                      icon: Icons.apartment_rounded,
+                      label: item.project,
+                      value: item.location.isEmpty ? '-' : item.location,
+                      iconColor: const Color(0xFF1468D4),
+                      iconBackground: const Color(0xFFEAF2FF),
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: 11.h),
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 10.h),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF3F4F6),
+                  borderRadius: BorderRadius.circular(10.r),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _FollowUpCardDetail(
+                        icon: Icons.other_houses_outlined,
+                        label: 'Configuration',
+                        value: item.configuration.trim().isEmpty
+                            ? 'Not specified'
+                            : item.configuration,
+                        iconColor: const Color(0xFF4D2DDB),
+                        iconBackground: const Color(0xFFEDEAFF),
+                      ),
+                    ),
+                    const _FollowUpVerticalDivider(),
+                    SizedBox(width: 12.w),
+                    Expanded(
+                      child: _FollowUpCardDetail(
+                        icon: Icons.event_available_outlined,
+                        label: 'Next follow-up',
+                        value: _formatDateTime(item.scheduledAt),
+                        iconColor: const Color(0xFF4D2DDB),
+                        iconBackground: const Color(0xFFEDEAFF),
                       ),
                     ),
                   ],
-                ],
-              ),
-              SizedBox(height: 12.h),
-              Text(
-                item.project,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.inter(
-                  fontSize: 13.sp,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary,
                 ),
               ),
-              SizedBox(height: 2.h),
-              Text(
-                item.propertyLine,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.inter(
-                  fontSize: 12.sp,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-              SizedBox(height: 12.h),
-              Wrap(
-                spacing: 8.w,
-                runSpacing: 8.h,
+              SizedBox(height: 11.h),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  FollowUpStatusChip(
-                    label: item.source,
-                    foreground: AppColors.textSecondary,
-                    background: const Color(0xFFF1F5F9),
+                  Icon(
+                    Icons.notes_rounded,
+                    size: 17.sp,
+                    color: const Color(0xFF1454D8),
                   ),
-                  FollowUpStatusChip(
-                    label: item.leadStatus,
-                    foreground: leadStatusColors.$1,
-                    background: leadStatusColors.$2,
-                  ),
-                  if (item.leadType.trim().isNotEmpty && item.leadType != '-')
-                    FollowUpStatusChip(
-                      label: item.leadType,
-                      foreground: typeColors.$1,
-                      background: typeColors.$2,
-                      borderColor: typeColors.$1.withValues(alpha: 0.35),
+                  SizedBox(width: 7.w),
+                  Text(
+                    'Remark: ',
+                    style: GoogleFonts.inter(
+                      fontSize: 10.5.sp,
+                      color: const Color(0xFF667085),
                     ),
-                  FollowUpStatusChip(
-                    label: item.type,
-                    foreground: AppColors.blueBright,
-                    background: const Color(0xFFEAF2FF),
+                  ),
+                  Expanded(
+                    child: Text(
+                      (item.notes?.trim().isNotEmpty == true)
+                          ? item.notes!.trim()
+                          : (item.nextAction?.trim().isNotEmpty == true)
+                          ? item.nextAction!.trim()
+                          : 'No remarks added',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.inter(
+                        fontSize: 10.5.sp,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF263248),
+                      ),
+                    ),
                   ),
                 ],
-              ),
-              SizedBox(height: 12.h),
-              const Divider(height: 1, color: Color(0xFFE6ECF4)),
-              SizedBox(height: 12.h),
-              _MetaRow(
-                icon: Icons.person_outline_rounded,
-                label: 'Executive',
-                value: item.assignedToName,
-              ),
-              SizedBox(height: 8.h),
-              _MetaRow(
-                icon: Icons.event_outlined,
-                label: 'Follow-up',
-                value: _formatDateTime(item.scheduledAt),
-              ),
-              SizedBox(height: 8.h),
-              _MetaRow(
-                icon: Icons.history_rounded,
-                label: 'Last contact',
-                value: _formatDateTime(item.lastContactAt),
-                trailing: item.isOverdue
-                    ? FollowUpStatusChip(
-                        label: 'Overdue',
-                        foreground: const Color(0xFFEF4444),
-                        background: const Color(0xFFFFE8E8),
-                      )
-                    : null,
-              ),
-              SizedBox(height: 8.h),
-              _MetaRow(
-                icon: Icons.notes_rounded,
-                label: 'Remark',
-                value: (item.notes?.trim().isNotEmpty == true)
-                    ? item.notes!.trim()
-                    : (item.nextAction?.trim().isNotEmpty == true)
-                    ? item.nextAction!.trim()
-                    : 'No remarks added',
               ),
               if ((onCall != null || onWhatsApp != null) &&
                   item.phone != '-') ...[
@@ -448,11 +444,11 @@ class FollowUpLeadCard extends StatelessWidget {
                       Expanded(
                         child: OutlinedButton.icon(
                           onPressed: onCall,
-                          icon: Icon(Icons.call_outlined, size: 18.sp),
+                          icon: Icon(Icons.phone_rounded, size: 17.sp),
                           label: const Text('Call'),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: AppColors.orangeDeep,
-                            side: const BorderSide(color: Color(0xFFFFD8C2)),
+                            side: const BorderSide(color: Color(0xFFE97842)),
                             padding: EdgeInsets.symmetric(vertical: 8.h),
                           ),
                         ),
@@ -463,7 +459,7 @@ class FollowUpLeadCard extends StatelessWidget {
                       Expanded(
                         child: OutlinedButton.icon(
                           onPressed: onWhatsApp,
-                          icon: Icon(Icons.chat_outlined, size: 18.sp),
+                          icon: Icon(Icons.chat_rounded, size: 17.sp),
                           label: const Text('WhatsApp'),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: const Color(0xFF168553),
@@ -517,6 +513,16 @@ class FollowUpLeadCard extends StatelessWidget {
     return '$day $month, ${hour.toString().padLeft(2, '0')}:$minute $suffix';
   }
 
+  static DateTime? _leadCreatedAt(FollowUpModel item) {
+    final raw = item.leadRaw;
+    if (raw == null) return item.lastContactAt;
+    for (final key in const ['createdAt', 'created_at', 'addedDate']) {
+      final parsed = DateTime.tryParse(raw[key]?.toString() ?? '');
+      if (parsed != null) return parsed.toLocal();
+    }
+    return item.lastContactAt;
+  }
+
   static (Color, Color) _statusColors(String status) {
     final value = status.toLowerCase();
     if (value.contains('overdue') || value.contains('breach')) {
@@ -530,80 +536,74 @@ class FollowUpLeadCard extends StatelessWidget {
     }
     return (AppColors.orangeDeep, AppColors.orangeSoft);
   }
-
-  static (Color, Color) _typeColors(String type) {
-    final value = type.toLowerCase();
-    if (value.contains('hot')) {
-      return (const Color(0xFFDC2626), const Color(0xFFFFE8E8));
-    }
-    if (value.contains('warm')) {
-      return (const Color(0xFF16A34A), const Color(0xFFE8F8EC));
-    }
-    if (value.contains('cold')) {
-      return (AppColors.blueBright, const Color(0xFFEAF2FF));
-    }
-    return (AppColors.textSecondary, const Color(0xFFF1F5F9));
-  }
-
-  static (Color, Color) _leadStatusColors(String status) {
-    final value = status.toLowerCase();
-    if (value.contains('visit')) {
-      return (AppColors.blueBright, const Color(0xFFEAF2FF));
-    }
-    if (value.contains('interest')) {
-      return (AppColors.purpleDeep, AppColors.purpleSoft);
-    }
-    if (value.contains('book')) {
-      return (AppColors.greenDeep, AppColors.greenBg);
-    }
-    return (AppColors.blueBright, const Color(0xFFEAF2FF));
-  }
 }
 
-class _MetaRow extends StatelessWidget {
-  const _MetaRow({
+class _FollowUpCardDetail extends StatelessWidget {
+  const _FollowUpCardDetail({
     required this.icon,
     required this.label,
     required this.value,
-    this.trailing,
+    required this.iconColor,
+    required this.iconBackground,
   });
 
   final IconData icon;
   final String label;
   final String value;
-  final Widget? trailing;
+  final Color iconColor;
+  final Color iconBackground;
 
   @override
   Widget build(BuildContext context) {
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 16.sp, color: AppColors.textTertiary),
-        SizedBox(width: 8.w),
-        SizedBox(
-          width: 88.w,
-          child: Text(
-            label,
-            style: GoogleFonts.inter(
-              fontSize: 11.sp,
-              color: AppColors.textTertiary,
-            ),
+        Container(
+          width: 38.w,
+          height: 38.h,
+          decoration: BoxDecoration(
+            color: iconBackground,
+            borderRadius: BorderRadius.circular(9.r),
+          ),
+          alignment: Alignment.center,
+          child: Icon(icon, size: 22.sp, color: iconColor),
+        ),
+        SizedBox(width: 6.w),
+        Flexible(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.inter(
+                  fontSize: 9.5.sp,
+                  color: const Color(0xFF667085),
+                ),
+              ),
+              SizedBox(height: 2.h),
+              Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.inter(
+                  fontSize: 11.5.sp,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF111A32),
+                ),
+              ),
+            ],
           ),
         ),
-        Expanded(
-          child: Text(
-            value,
-            maxLines: 3,
-            overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.inter(
-              fontSize: 12.sp,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textPrimary,
-            ),
-          ),
-        ),
-        if (trailing != null) ...[SizedBox(width: 8.w), trailing!],
       ],
     );
   }
+}
+
+class _FollowUpVerticalDivider extends StatelessWidget {
+  const _FollowUpVerticalDivider();
+
+  @override
+  Widget build(BuildContext context) =>
+      Container(width: 1, height: 48.h, color: const Color(0xFFE4E7EC));
 }
