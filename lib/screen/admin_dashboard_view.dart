@@ -582,134 +582,140 @@ class _AdminDashboardViewState extends State<AdminDashboardView> {
       ).copyWith(textScaler: const TextScaler.linear(1.15)),
       child: Stack(
         children: [
-          SingleChildScrollView(
-            padding: EdgeInsets.only(bottom: 88.h),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _DashboardHero(
-                  onMenuTap: widget.onMenuTap,
-                  onNotificationTap: _openNotifications,
-                  onProfileTap: _openProfile,
-                  notificationCount: _notificationCount,
-                  profileName: _profileName(_currentEmployee),
-                  isLoading: _isLoadingDashboard,
-                ),
-                Transform.translate(
-                  offset: Offset(0, -34.h),
-                  child: Container(
-                    width: double.infinity,
-                    padding: EdgeInsets.fromLTRB(18.w, 18.h, 18.w, 24.h),
-                    decoration: BoxDecoration(
-                      color: AppColors.white,
-                      borderRadius: BorderRadius.only(
-                        topLeft: Radius.circular(26.r),
-                        topRight: Radius.circular(26.r),
+          RefreshIndicator(
+            onRefresh: () async {
+              await _loadDashboardApis();
+            },
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: EdgeInsets.only(bottom: 88.h),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _DashboardHero(
+                    onMenuTap: widget.onMenuTap,
+                    onNotificationTap: _openNotifications,
+                    onProfileTap: _openProfile,
+                    notificationCount: _notificationCount,
+                    profileName: _profileName(_currentEmployee),
+                    isLoading: _isLoadingDashboard,
+                  ),
+                  Transform.translate(
+                    offset: Offset(0, -34.h),
+                    child: Container(
+                      width: double.infinity,
+                      padding: EdgeInsets.fromLTRB(18.w, 18.h, 18.w, 24.h),
+                      decoration: BoxDecoration(
+                        color: AppColors.white,
+                        borderRadius: BorderRadius.only(
+                          topLeft: Radius.circular(26.r),
+                          topRight: Radius.circular(26.r),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _AdvancedFiltersPanel(
+                            isExpanded: _showAdvancedFilters,
+                            activeCount: _activeFilterCount,
+                            dateLabel: _filterLabel,
+                            selectedDateRange: _selectedDateRange,
+                            customDateRangeLabel: _customDateRange == null
+                                ? null
+                                : _filterLabel,
+                            selectedLeadSource: _selectedLeadSource,
+                            selectedLeadStatus: _selectedLeadStatus,
+                            selectedLeadType: _selectedLeadType,
+                            selectedPropertyType: _selectedPropertyType,
+                            selectedConfiguration: _selectedConfiguration,
+                            selectedAssignedTo: _selectedAssignedTo,
+                            selectedTeam: _selectedTeam,
+                            selectedArea: _selectedArea,
+                            selectedSlaStatus: _selectedSlaStatus,
+                            dateRangeOptions: _dateRangeOptions,
+                            leadSourceOptions: _leadSourceOptions,
+                            leadStatusOptions: _leadStatusOptions,
+                            leadTypeOptions: _leadTypeOptions,
+                            propertyTypeOptions: _propertyTypeOptions,
+                            configurationOptions: _configurationOptions,
+                            assignedToOptions: _assignedToOptions,
+                            teamOptions: _teamOptions,
+                            areaOptions: _areaOptions,
+                            slaStatusOptions: _slaStatusOptions,
+                            onToggle: () {
+                              setState(
+                                () => _showAdvancedFilters =
+                                    !_showAdvancedFilters,
+                              );
+                            },
+                            onDateRangeChanged: (value) async {
+                              setState(() {
+                                _selectedDateRange = value;
+                                if (value != 'custom') {
+                                  _customDateRange = null;
+                                }
+                              });
+                              if (value == 'custom') {
+                                await _pickCustomDateRange();
+                              }
+                            },
+                            onLeadSourceChanged: (value) =>
+                                setState(() => _selectedLeadSource = value),
+                            onLeadStatusChanged: (value) =>
+                                setState(() => _selectedLeadStatus = value),
+                            onLeadTypeChanged: (value) =>
+                                setState(() => _selectedLeadType = value),
+                            onPropertyTypeChanged: (value) =>
+                                setState(() => _selectedPropertyType = value),
+                            onConfigurationChanged: (value) =>
+                                setState(() => _selectedConfiguration = value),
+                            onAssignedToChanged: (value) =>
+                                setState(() => _selectedAssignedTo = value),
+                            onTeamChanged: (value) =>
+                                setState(() => _selectedTeam = value),
+                            onAreaChanged: (value) =>
+                                setState(() => _selectedArea = value),
+                            onSlaStatusChanged: (value) =>
+                                setState(() => _selectedSlaStatus = value),
+                            onApply: _applyDashboardFilters,
+                            onReset: _resetDashboardFilters,
+                          ),
+                          SizedBox(height: 20.h),
+                          _MetricSection(
+                            metrics: _topMetrics,
+                            columns: 3,
+                            itemHeight: 112.h,
+                          ),
+                          SizedBox(height: 8.h),
+                          _MetricSection(
+                            metrics: _bottomMetrics,
+                            columns: 2,
+                            itemHeight: 104.h,
+                          ),
+                          SizedBox(height: 16.h),
+                          const _LeadsBySourceCard(),
+                          SizedBox(height: 16.h),
+                          const _LeadFunnelOverviewCard(),
+                          SizedBox(height: 16.h),
+                          const _SiteVisitsOverviewCard(),
+                          SizedBox(height: 16.h),
+                          const _SlaHealthCard(),
+                          SizedBox(height: 16.h),
+                          const _LiveExecutivesMapCard(),
+                          SizedBox(height: 16.h),
+                          const _SystemUsersCard(),
+                          SizedBox(height: 16.h),
+                          const _TeamPerformanceCard(),
+                          SizedBox(height: 16.h),
+                          _QuickActionsCard(onActionTap: _handleQuickAction),
+                          SizedBox(height: 16.h),
+                          const _ReportsShortcutsCard(),
+                        ],
                       ),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _AdvancedFiltersPanel(
-                          isExpanded: _showAdvancedFilters,
-                          activeCount: _activeFilterCount,
-                          dateLabel: _filterLabel,
-                          selectedDateRange: _selectedDateRange,
-                          customDateRangeLabel: _customDateRange == null
-                              ? null
-                              : _filterLabel,
-                          selectedLeadSource: _selectedLeadSource,
-                          selectedLeadStatus: _selectedLeadStatus,
-                          selectedLeadType: _selectedLeadType,
-                          selectedPropertyType: _selectedPropertyType,
-                          selectedConfiguration: _selectedConfiguration,
-                          selectedAssignedTo: _selectedAssignedTo,
-                          selectedTeam: _selectedTeam,
-                          selectedArea: _selectedArea,
-                          selectedSlaStatus: _selectedSlaStatus,
-                          dateRangeOptions: _dateRangeOptions,
-                          leadSourceOptions: _leadSourceOptions,
-                          leadStatusOptions: _leadStatusOptions,
-                          leadTypeOptions: _leadTypeOptions,
-                          propertyTypeOptions: _propertyTypeOptions,
-                          configurationOptions: _configurationOptions,
-                          assignedToOptions: _assignedToOptions,
-                          teamOptions: _teamOptions,
-                          areaOptions: _areaOptions,
-                          slaStatusOptions: _slaStatusOptions,
-                          onToggle: () {
-                            setState(
-                              () =>
-                                  _showAdvancedFilters = !_showAdvancedFilters,
-                            );
-                          },
-                          onDateRangeChanged: (value) async {
-                            setState(() {
-                              _selectedDateRange = value;
-                              if (value != 'custom') {
-                                _customDateRange = null;
-                              }
-                            });
-                            if (value == 'custom') {
-                              await _pickCustomDateRange();
-                            }
-                          },
-                          onLeadSourceChanged: (value) =>
-                              setState(() => _selectedLeadSource = value),
-                          onLeadStatusChanged: (value) =>
-                              setState(() => _selectedLeadStatus = value),
-                          onLeadTypeChanged: (value) =>
-                              setState(() => _selectedLeadType = value),
-                          onPropertyTypeChanged: (value) =>
-                              setState(() => _selectedPropertyType = value),
-                          onConfigurationChanged: (value) =>
-                              setState(() => _selectedConfiguration = value),
-                          onAssignedToChanged: (value) =>
-                              setState(() => _selectedAssignedTo = value),
-                          onTeamChanged: (value) =>
-                              setState(() => _selectedTeam = value),
-                          onAreaChanged: (value) =>
-                              setState(() => _selectedArea = value),
-                          onSlaStatusChanged: (value) =>
-                              setState(() => _selectedSlaStatus = value),
-                          onApply: _applyDashboardFilters,
-                          onReset: _resetDashboardFilters,
-                        ),
-                        SizedBox(height: 20.h),
-                        _MetricSection(
-                          metrics: _topMetrics,
-                          columns: 3,
-                          itemHeight: 112.h,
-                        ),
-                        SizedBox(height: 8.h),
-                        _MetricSection(
-                          metrics: _bottomMetrics,
-                          columns: 2,
-                          itemHeight: 104.h,
-                        ),
-                        SizedBox(height: 16.h),
-                        const _LeadsBySourceCard(),
-                        SizedBox(height: 16.h),
-                        const _LeadFunnelOverviewCard(),
-                        SizedBox(height: 16.h),
-                        const _SiteVisitsOverviewCard(),
-                        SizedBox(height: 16.h),
-                        const _SlaHealthCard(),
-                        SizedBox(height: 16.h),
-                        const _LiveExecutivesMapCard(),
-                        SizedBox(height: 16.h),
-                        const _SystemUsersCard(),
-                        SizedBox(height: 16.h),
-                        const _TeamPerformanceCard(),
-                        SizedBox(height: 16.h),
-                        _QuickActionsCard(onActionTap: _handleQuickAction),
-                        SizedBox(height: 16.h),
-                        const _ReportsShortcutsCard(),
-                      ],
-                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           Positioned(

@@ -4,8 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:truerealtycrm/constant/colors_screen.dart';
+import 'package:truerealtycrm/provider/auth_provider.dart';
 import 'package:truerealtycrm/provider/contact_lead_provider.dart';
 import 'package:truerealtycrm/provider/leads_provider.dart';
+import 'package:truerealtycrm/router/app_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class ContactLeadsScreen extends StatefulWidget {
   const ContactLeadsScreen({super.key});
@@ -27,6 +30,8 @@ class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
   int _total = 0;
   bool _loading = true;
   bool _updating = false;
+  bool _loggingOut = false;
+  bool _requiresReauthentication = false;
   String? _error;
 
   @override
@@ -64,12 +69,28 @@ class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
     setState(() {
       _loading = true;
       _error = null;
+      _requiresReauthentication = false;
     });
+    final auth = context.read<AuthProvider>();
+    final assignedToId = auth.role == UserRole.owner
+        ? null
+        : _authenticatedEmployeeId(auth);
+    if (auth.role != UserRole.owner && assignedToId == null) {
+      setState(() {
+        _items = const [];
+        _total = 0;
+        _loading = false;
+        _requiresReauthentication = true;
+        _error = 'Unable to identify the signed-in employee.';
+      });
+      return;
+    }
     final provider = context.read<ContactLeadProvider>();
     final response = await provider.fetchContactLeads(
       search: _search.text.trim(),
       page: nextPage,
       limit: _limit,
+      assignedToId: assignedToId,
     );
     if (!mounted) return;
     if (response == null) {
@@ -95,6 +116,25 @@ class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
       _selected.removeWhere((id) => !_items.any((item) => item['id'] == id));
       _loading = false;
     });
+  }
+
+  String? _authenticatedEmployeeId(AuthProvider auth) {
+    String? find(Object? value, [int depth = 0]) {
+      if (value == null || depth > 4) return null;
+      if (value is Map) {
+        for (final key in const ['employeeId', 'id', 'userId', '_id']) {
+          final candidate = value[key]?.toString().trim() ?? '';
+          if (candidate.isNotEmpty) return candidate;
+        }
+        for (final key in const ['employee', 'user', 'profile', 'data']) {
+          final candidate = find(value[key], depth + 1);
+          if (candidate != null) return candidate;
+        }
+      }
+      return null;
+    }
+
+    return find(auth.session?.user) ?? find(auth.session?.raw);
   }
 
   void _searchChanged(String _) {
@@ -234,6 +274,10 @@ class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
                     child: Text('Mark interested'),
                   ),
                   PopupMenuItem(
+                    value: _BulkAction.notInterested,
+                    child: Text('Mark not interested'),
+                  ),
+                  PopupMenuItem(
                     value: _BulkAction.convert,
                     child: Text('Convert selected'),
                   ),
@@ -335,6 +379,7 @@ class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
     final note = _value(item, 'note');
     final selected = _selected.contains(id);
     final name = _value(item, 'customerName', fallback: 'Unknown contact');
+    final phone = _contactPhone(item);
     return Material(
       color: Colors.white,
       borderRadius: BorderRadius.circular(14),
@@ -506,25 +551,82 @@ class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
               ),
             ),
             const SizedBox(height: 11),
+            InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () => _showNoteDialog(item),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(
+                      Icons.notes_rounded,
+                      size: 17,
+                      color: Color(0xFF1454D8),
+                    ),
+                    const SizedBox(width: 7),
+                    Text(
+                      'Note: ',
+                      style: _style(
+                        11,
+                        FontWeight.w700,
+                        const Color(0xFF475467),
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        note.isEmpty ? 'Add note' : note,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: _style(
+                          11,
+                          FontWeight.w600,
+                        ).copyWith(decoration: TextDecoration.underline),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
             Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(
-                  Icons.notes_rounded,
-                  size: 17,
-                  color: Color(0xFF1454D8),
-                ),
-                const SizedBox(width: 7),
-                Text(
-                  'Note: ',
-                  style: _style(11, FontWeight.w700, const Color(0xFF475467)),
-                ),
                 Expanded(
-                  child: Text(
-                    note.isEmpty ? 'No note added' : note,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: _style(11, FontWeight.w600),
+                  child: SizedBox(
+                    height: 40,
+                    child: OutlinedButton.icon(
+                      onPressed: phone.isEmpty ? null : () => _call(phone),
+                      icon: const Icon(Icons.phone_rounded, size: 17),
+                      label: Text('Call', style: _style(11, FontWeight.w600)),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.orangeDeep,
+                        side: const BorderSide(color: Color(0xFFE97842)),
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: SizedBox(
+                    height: 40,
+                    child: OutlinedButton.icon(
+                      onPressed: phone.isEmpty
+                          ? null
+                          : () => _openWhatsApp(phone),
+                      icon: const Icon(Icons.chat_rounded, size: 17),
+                      label: Text(
+                        'WhatsApp',
+                        style: _style(11, FontWeight.w600),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF168553),
+                        side: const BorderSide(color: Color(0xFFB7E4C7)),
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -533,6 +635,60 @@ class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
         ),
       ),
     );
+  }
+
+  String _contactPhone(Map<String, dynamic> item) {
+    final mobile = _value(item, 'mobile');
+    if (mobile.isEmpty || mobile == '-') return '';
+    final countryCode = _value(item, 'mobileCountryCode');
+    return countryCode.isEmpty ? mobile : '$countryCode $mobile';
+  }
+
+  Future<void> _call(String phone) async {
+    final cleaned = phone.replaceAll(RegExp(r'\s+'), '');
+    if (cleaned.isEmpty) return;
+    try {
+      final launched = await launchUrl(
+        Uri(scheme: 'tel', path: cleaned),
+        mode: LaunchMode.externalApplication,
+      );
+      if (launched) return;
+    } catch (_) {}
+    if (mounted) _message('Unable to open the phone dialer.');
+  }
+
+  Future<void> _openWhatsApp(String phone) async {
+    var digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isEmpty) {
+      _message('No valid phone number for WhatsApp.');
+      return;
+    }
+    if (digits.length == 10) digits = '91$digits';
+    final candidates = <Uri>[
+      Uri.parse('whatsapp://send?phone=$digits'),
+      Uri.parse('https://api.whatsapp.com/send?phone=$digits'),
+      Uri.parse('https://wa.me/$digits'),
+    ];
+    for (final uri in candidates) {
+      try {
+        if (await launchUrl(uri, mode: LaunchMode.externalApplication)) return;
+      } catch (_) {}
+    }
+    if (mounted) _message('Unable to open WhatsApp. Please install WhatsApp.');
+  }
+
+  Future<void> _showNoteDialog(Map<String, dynamic> item) async {
+    final id = '${item['id'] ?? ''}'.trim();
+    if (id.isEmpty) {
+      _message('Contact lead ID is unavailable.');
+      return;
+    }
+    final changed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _ContactNoteDialog(item: item),
+    );
+    if (changed == true && mounted) await _load(page: _page);
   }
 
   Widget _mobileDetail(
@@ -652,6 +808,14 @@ class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
           (provider, id) => provider.markInterested(id),
           'Contacts marked interested.',
         );
+      case _BulkAction.notInterested:
+        await _bulkEndpoint(
+          (provider, id) => provider.updateContactLead(
+            contactLeadId: id,
+            body: const {'status': 'NOT_INTERESTED'},
+          ),
+          'Contacts marked not interested.',
+        );
       case _BulkAction.convert:
         await _bulkEndpoint(
           (provider, id) => provider.convertContactLead(id),
@@ -750,8 +914,13 @@ class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
     setState(() => _updating = true);
     final provider = context.read<ContactLeadProvider>();
     var completed = 0;
+    String? failureMessage;
     for (final id in _selected.toList()) {
-      if (await operation(provider, id) != null) completed++;
+      if (await operation(provider, id) != null) {
+        completed++;
+      } else {
+        failureMessage = _contactLeadError(provider);
+      }
     }
     if (!mounted) return;
     setState(() => _updating = false);
@@ -759,8 +928,13 @@ class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
       _message(success);
       _selected.clear();
       await _load();
+    } else if (completed == 0) {
+      _message(failureMessage ?? 'Unable to update contact leads.');
     } else {
-      _message('Updated $completed of ${_selected.length} contacts.');
+      _message(
+        'Updated $completed of ${_selected.length} contacts. '
+        '${failureMessage ?? 'Some contacts could not be updated.'}',
+      );
     }
   }
 
@@ -768,10 +942,30 @@ class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
     Future<Object?> Function() operation,
     String success,
   ) async {
+    final provider = context.read<ContactLeadProvider>();
     final result = await operation();
     if (!mounted) return;
-    _message(result == null ? 'Unable to update contact lead.' : success);
+    _message(result == null ? _contactLeadError(provider) : success);
     if (result != null) await _load();
+  }
+
+  String _contactLeadError(ContactLeadProvider provider) {
+    final body = _map(provider.errorBody);
+    final existingLead = _map(body['existingLead']);
+    if (existingLead.isNotEmpty) {
+      final displayId = _value(existingLead, 'displayId');
+      final name = _value(existingLead, 'name');
+      final mobile = _value(existingLead, 'mobile');
+      final details = [
+        displayId,
+        name,
+        mobile,
+      ].where((value) => value.isNotEmpty).join(' — ');
+      return details.isEmpty
+          ? 'A lead with this mobile number already exists.'
+          : 'Lead already exists: $details.';
+    }
+    return provider.error ?? 'Unable to update contact lead.';
   }
 
   Future<bool> _confirm(String message) async =>
@@ -794,21 +988,76 @@ class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
       ) ??
       false;
 
-  void _message(String text) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  void _message(String text) => ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(content: Text(text), duration: const Duration(seconds: 5)),
+  );
+
+  Future<void> _logout() async {
+    if (_loggingOut) return;
+    setState(() => _loggingOut = true);
+    await context.read<AuthProvider>().logout();
+    if (!mounted) return;
+    Navigator.of(
+      context,
+    ).pushNamedAndRemoveUntil(AppRouter.login, (_) => false);
+  }
+
   Widget _errorPanel() => Container(
     margin: const EdgeInsets.only(bottom: 12),
-    padding: const EdgeInsets.all(13),
+    padding: const EdgeInsets.all(16),
     decoration: BoxDecoration(
       color: const Color(0xFFFFF1F2),
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: const Color(0xFFFECACA)),
     ),
     child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Icon(Icons.error_outline, color: Colors.red),
-        const SizedBox(width: 8),
-        Expanded(child: Text(_error!)),
-        TextButton(onPressed: _load, child: const Text('Retry')),
+        const Icon(Icons.error_outline_rounded, color: Color(0xFFDC2626)),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _requiresReauthentication
+                    ? 'Session needs attention'
+                    : 'Unable to load contact leads',
+                style: _style(13, FontWeight.w800, const Color(0xFF991B1B)),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                _requiresReauthentication
+                    ? 'Please log out and sign in again to refresh your employee account.'
+                    : _error!,
+                style: _style(11, FontWeight.w500, const Color(0xFF7F1D1D)),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 10),
+        if (_requiresReauthentication)
+          FilledButton.icon(
+            onPressed: _loggingOut ? null : _logout,
+            icon: _loggingOut
+                ? const SizedBox.square(
+                    dimension: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.logout_rounded, size: 16),
+            label: Text(_loggingOut ? 'Logging out' : 'Log out'),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFB91C1C),
+              foregroundColor: Colors.white,
+              visualDensity: VisualDensity.compact,
+            ),
+          )
+        else
+          TextButton.icon(
+            onPressed: _loading ? null : _load,
+            icon: const Icon(Icons.refresh_rounded, size: 17),
+            label: const Text('Retry'),
+          ),
       ],
     ),
   );
@@ -833,11 +1082,31 @@ class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
     child: Text(text, style: _style(10, FontWeight.w700, color)),
   );
   static Widget _status(String status) {
-    final converted = status.toUpperCase() == 'CONVERTED';
-    return _badge(
-      _title(status),
-      converted ? const Color(0xFF16A34A) : const Color(0xFF2563EB),
-    );
+    final normalized = status.trim().toUpperCase().replaceAll(' ', '_');
+    final label = switch (normalized) {
+      'COLD' => 'Cold Lead',
+      'WARM' => 'Warm Lead',
+      'HOT' => 'Hot Lead',
+      'INTERESTED' => 'Interested Lead',
+      'NOT_INTERESTED' => 'Not Interested Lead',
+      'NEW' => 'New Lead',
+      'CONVERTED' => 'Converted',
+      'ARCHIVED' => 'Archived',
+      _ => _leadStatusLabel(status),
+    };
+    final color = switch (normalized) {
+      'INTERESTED' || 'HOT' || 'CONVERTED' => const Color(0xFF16A34A),
+      'NOT_INTERESTED' || 'ARCHIVED' => const Color(0xFFDC2626),
+      'WARM' => const Color(0xFFF59E0B),
+      'COLD' => const Color(0xFF2563EB),
+      _ => const Color(0xFF64748B),
+    };
+    return _badge(label, color);
+  }
+
+  static String _leadStatusLabel(String status) {
+    final label = _title(status.isEmpty ? 'COLD' : status);
+    return label.toLowerCase().endsWith('lead') ? label : '$label Lead';
   }
 
   static BoxDecoration _decoration() => BoxDecoration(
@@ -895,6 +1164,106 @@ class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
         : date.hour;
     return '${date.day.toString().padLeft(2, '0')} ${months[date.month - 1]} ${date.year}, ${hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')} ${date.hour >= 12 ? 'pm' : 'am'}';
   }
+}
+
+class _ContactNoteDialog extends StatefulWidget {
+  const _ContactNoteDialog({required this.item});
+
+  final Map<String, dynamic> item;
+
+  @override
+  State<_ContactNoteDialog> createState() => _ContactNoteDialogState();
+}
+
+class _ContactNoteDialogState extends State<_ContactNoteDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _controller = TextEditingController(
+    text: '${widget.item['note'] ?? ''}',
+  );
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    final response = await context
+        .read<ContactLeadProvider>()
+        .updateContactLead(
+          contactLeadId: '${widget.item['id']}',
+          body: {'note': _controller.text.trim()},
+        );
+    if (!mounted) return;
+    if (response != null) {
+      Navigator.pop(context, true);
+      return;
+    }
+    setState(() {
+      _saving = false;
+      _error =
+          context.read<ContactLeadProvider>().error ??
+          'Unable to save the note.';
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Add note'),
+    content: SizedBox(
+      width: 520,
+      child: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextFormField(
+              controller: _controller,
+              autofocus: true,
+              minLines: 3,
+              maxLines: 6,
+              textCapitalization: TextCapitalization.sentences,
+              validator: (value) => value == null || value.trim().isEmpty
+                  ? 'Enter a note.'
+                  : null,
+              decoration: InputDecoration(
+                hintText: 'Write a note about this contact lead',
+                alignLabelWithHint: true,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(9),
+                ),
+              ),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 10),
+              Text(
+                _error!,
+                style: const TextStyle(color: Colors.red, fontSize: 12),
+              ),
+            ],
+          ],
+        ),
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: _saving ? null : () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed: _saving ? null : _save,
+        child: Text(_saving ? 'Saving...' : 'Save note'),
+      ),
+    ],
+  );
 }
 
 class _OptionDialog extends StatefulWidget {
@@ -1102,6 +1471,14 @@ class _Option {
   final String subtitle;
 }
 
-enum _BulkAction { assign, source, project, interested, convert, archive }
+enum _BulkAction {
+  assign,
+  source,
+  project,
+  interested,
+  notInterested,
+  convert,
+  archive,
+}
 
 enum _RowAction { edit, interested, convert, archive }

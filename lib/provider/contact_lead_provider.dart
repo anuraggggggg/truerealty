@@ -12,12 +12,14 @@ class ContactLeadProvider extends ApiProviderBase {
     String search = '',
     int page = 1,
     int limit = 10,
+    String? assignedToId,
   }) {
     return runApiRequest(
       () => _repository.listContactLeads(
         search: search,
         page: page,
         limit: limit,
+        assignedToId: assignedToId,
       ),
     );
   }

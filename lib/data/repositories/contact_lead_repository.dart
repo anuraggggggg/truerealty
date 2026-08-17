@@ -11,10 +11,17 @@ class ContactLeadRepository {
     String search = '',
     int page = 1,
     int limit = 10,
+    String? assignedToId,
   }) {
     return _apiClient.get(
       '/contact-leads',
-      queryParameters: {'search': search, 'page': page, 'limit': limit},
+      queryParameters: {
+        'search': search,
+        'page': page,
+        'limit': limit,
+        if (assignedToId != null && assignedToId.isNotEmpty)
+          'assignedToId': assignedToId,
+      },
     );
   }
 

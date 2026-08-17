@@ -276,15 +276,30 @@ class FollowUpLeadCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final statusColors = _statusColors(item.statusLabel);
+    final completionColors = _statusColors(item.completionLabel);
+    final leadStatusColors = _statusColors(item.leadStatusLabel);
 
     return Material(
-      color: Colors.transparent,
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(14.r),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(14.r),
-        child: FollowUpSectionCard(
-          borderRadius: 14,
+        child: Container(
           padding: EdgeInsets.fromLTRB(14.w, 14.h, 14.w, 14.h),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14.r),
+            border: Border.all(color: const Color(0xFFD5DDE8)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x0A0F172A),
+                blurRadius: 8,
+                offset: Offset(0, 2),
+              ),
+            ],
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -334,10 +349,32 @@ class FollowUpLeadCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  FollowUpStatusChip(
-                    label: item.statusLabel,
-                    foreground: statusColors.$1,
-                    background: statusColors.$2,
+                  SizedBox(width: 8.w),
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      FollowUpStatusChip(
+                        label: item.statusLabel,
+                        foreground: statusColors.$1,
+                        background: statusColors.$2,
+                      ),
+                      SizedBox(height: 5.h),
+                      FollowUpStatusChip(
+                        label: item.completionLabel,
+                        foreground: completionColors.$1,
+                        background: completionColors.$2,
+                      ),
+                      SizedBox(height: 5.h),
+                      ConstrainedBox(
+                        constraints: BoxConstraints(maxWidth: 140.w),
+                        child: FollowUpStatusChip(
+                          label: item.leadStatusLabel,
+                          foreground: leadStatusColors.$1,
+                          background: leadStatusColors.$2,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -525,10 +562,21 @@ class FollowUpLeadCard extends StatelessWidget {
 
   static (Color, Color) _statusColors(String status) {
     final value = status.toLowerCase();
+    if (value.contains('not interested') ||
+        value.contains('cancel') ||
+        value.contains('lost')) {
+      return (const Color(0xFFDC2626), const Color(0xFFFFE8E8));
+    }
     if (value.contains('overdue') || value.contains('breach')) {
       return (const Color(0xFFEF4444), const Color(0xFFFFE8E8));
     }
-    if (value.contains('complete') || value.contains('done')) {
+    if (value.contains('not done') || value.contains('pending')) {
+      return (const Color(0xFFB45309), const Color(0xFFFFF4D6));
+    }
+    if (value.contains('complete') ||
+        value.contains('done') ||
+        value.contains('interested') ||
+        value.contains('book')) {
       return (AppColors.greenDeep, AppColors.greenBg);
     }
     if (value.contains('schedule') || value.contains('upcoming')) {

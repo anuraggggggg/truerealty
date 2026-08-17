@@ -77,9 +77,11 @@ class FollowUpModel {
     if (date == null || isClosed || isOverdue) return false;
     final reference = now ?? DateTime.now();
     final today = DateTime(reference.year, reference.month, reference.day);
-    return date.isAfter(today.add(const Duration(days: 1)).subtract(
-          const Duration(milliseconds: 1),
-        )) ||
+    return date.isAfter(
+          today
+              .add(const Duration(days: 1))
+              .subtract(const Duration(milliseconds: 1)),
+        ) ||
         (!isDueToday(reference) && date.isAfter(reference));
   }
 
@@ -118,6 +120,20 @@ class FollowUpModel {
   }
 
   String get statusLabel => isOverdue ? 'Overdue' : status;
+
+  String get completionLabel => isClosed ? 'Done' : 'Not Done';
+
+  String get leadStatusLabel {
+    final value = leadStatus.trim();
+    if (value.isEmpty || value == '-') return 'Not Set';
+    return value
+        .replaceAll('_', ' ')
+        .toLowerCase()
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
+        .join(' ');
+  }
 
   factory FollowUpModel.fromJson(Object? source) {
     final map = source is Map
@@ -178,10 +194,7 @@ class FollowUpModel {
             'preferredLocation',
             'location',
           ]) ??
-          _readString(requirement, const [
-            'preferredLocation',
-            'location',
-          ]) ??
+          _readString(requirement, const ['preferredLocation', 'location']) ??
           '',
       leadStatus:
           _readString(lead, const ['statusName', 'status', 'leadStatus']) ??
@@ -214,10 +227,8 @@ class FollowUpModel {
         'dueAt',
       ]),
       completedAt: _readDate(map, const ['completedAt', 'completed_at']),
-      lastContactAt: _readDate(map, const [
-        'lastContactAt',
-        'last_contact_at',
-      ]) ??
+      lastContactAt:
+          _readDate(map, const ['lastContactAt', 'last_contact_at']) ??
           _readDate(lead, const ['lastContactedAt', 'last_contacted_at']),
       slaDueAt: _readDate(map, const ['slaDueAt', 'sla_due_at']),
       leadRaw: lead.isEmpty ? null : lead,
@@ -355,6 +366,19 @@ String? _readString(Map<String, dynamic>? map, List<String> keys) {
   for (final key in keys) {
     final value = map[key];
     if (value == null) continue;
+    if (value is Map) {
+      for (final nestedKey in const [
+        'name',
+        'label',
+        'title',
+        'statusName',
+        'value',
+      ]) {
+        final nested = value[nestedKey]?.toString().trim() ?? '';
+        if (nested.isNotEmpty) return nested;
+      }
+      continue;
+    }
     final text = value.toString().trim();
     if (text.isNotEmpty) return text;
   }

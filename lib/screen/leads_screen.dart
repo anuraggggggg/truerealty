@@ -391,17 +391,13 @@ class _LeadListWidgetState extends State<LeadListWidget> {
         else if (leadProvider.leads.isEmpty)
           _buildEmptyState()
         else
-          RefreshIndicator(
-            onRefresh: () => _fetchLeads(page: _page),
-            child: ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: leadProvider.leads.length,
-              separatorBuilder: (context, index) =>
-                  SizedBox(height: _cardGap.h),
-              itemBuilder: (context, index) =>
-                  _buildLeadCard(context, leadProvider.leads[index], index),
-            ),
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: leadProvider.leads.length,
+            separatorBuilder: (context, index) => SizedBox(height: _cardGap.h),
+            itemBuilder: (context, index) =>
+                _buildLeadCard(context, leadProvider.leads[index], index),
           ),
         SizedBox(height: 20.h),
         _buildBottomSection(context, leadProvider),
@@ -411,9 +407,13 @@ class _LeadListWidgetState extends State<LeadListWidget> {
     if (widget.isInsideScrollView) {
       return Container(
         color: AppColors.leadListBg,
-        child: SingleChildScrollView(
-          padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 16.h),
-          child: bodyContent,
+        child: RefreshIndicator(
+          onRefresh: () => _fetchLeads(page: 1),
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 16.h),
+            child: bodyContent,
+          ),
         ),
       );
     }
@@ -426,9 +426,13 @@ class _LeadListWidgetState extends State<LeadListWidget> {
       body: SafeArea(
         child: Container(
           color: AppColors.leadListBg,
-          child: SingleChildScrollView(
-            padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 16.h),
-            child: bodyContent,
+          child: RefreshIndicator(
+            onRefresh: () => _fetchLeads(page: 1),
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 16.h),
+              child: bodyContent,
+            ),
           ),
         ),
       ),

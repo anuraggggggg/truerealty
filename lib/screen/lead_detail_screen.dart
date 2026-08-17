@@ -5,7 +5,9 @@ import 'package:provider/provider.dart';
 import 'package:truerealtycrm/constant/colors_screen.dart';
 import 'package:truerealtycrm/provider/employee_provider.dart';
 import 'package:truerealtycrm/provider/leads_provider.dart';
+import 'package:truerealtycrm/provider/project_provider.dart';
 import 'package:truerealtycrm/provider/site_visits_provider.dart';
+import 'package:truerealtycrm/data/models/project_model.dart';
 
 class LeadDetailScreenArgs {
   const LeadDetailScreenArgs({this.initialTabIndex = 0, this.lead});
@@ -184,12 +186,15 @@ class _EditLeadSheetState extends State<_EditLeadSheet> {
   late final TextEditingController _mobile;
   late final TextEditingController _alternateMobile;
   late final TextEditingController _email;
-  late final TextEditingController _occupation;
   late final TextEditingController _propertyType;
   late final TextEditingController _configuration;
   late final TextEditingController _budget;
   late final TextEditingController _location;
   late final TextEditingController _remarks;
+  List<ProjectModel> _projects = const [];
+  String? _selectedProjectId;
+  bool _loadingProjects = true;
+  String? _projectError;
   bool _saving = false;
   String? _error;
 
@@ -206,7 +211,11 @@ class _EditLeadSheetState extends State<_EditLeadSheet> {
       text: _string(raw['alternateMobile'] ?? raw['alternateNumber']) ?? '',
     );
     _email = TextEditingController(text: _string(raw['email']) ?? '');
-    _occupation = TextEditingController(text: _string(raw['occupation']) ?? '');
+    _selectedProjectId = _string(
+      requirement['preferredProjectId'] ??
+          raw['preferredProjectId'] ??
+          raw['projectId'],
+    );
     _propertyType = TextEditingController(
       text: _string(requirement['propertyType']) ?? '',
     );
@@ -224,6 +233,37 @@ class _EditLeadSheetState extends State<_EditLeadSheet> {
           '',
     );
     _remarks = TextEditingController();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadProjects());
+  }
+
+  Future<void> _loadProjects() async {
+    final provider = context.read<ProjectProvider>();
+    await provider.fetchProjects();
+    if (!mounted) return;
+    final projects = provider.projects
+        .where((project) => project.id.isNotEmpty)
+        .toList();
+    var selectedId = _selectedProjectId;
+    if (selectedId == null ||
+        !projects.any((project) => project.id == selectedId)) {
+      final currentName = widget.lead.project.trim().toLowerCase();
+      for (final project in projects) {
+        if (project.name.trim().toLowerCase() == currentName) {
+          selectedId = project.id;
+          break;
+        }
+      }
+    }
+    setState(() {
+      _projects = projects;
+      _selectedProjectId =
+          selectedId != null &&
+              projects.any((project) => project.id == selectedId)
+          ? selectedId
+          : null;
+      _loadingProjects = false;
+      _projectError = provider.error;
+    });
   }
 
   @override
@@ -233,7 +273,6 @@ class _EditLeadSheetState extends State<_EditLeadSheet> {
       _mobile,
       _alternateMobile,
       _email,
-      _occupation,
       _propertyType,
       _configuration,
       _budget,
@@ -268,6 +307,68 @@ class _EditLeadSheetState extends State<_EditLeadSheet> {
     );
   }
 
+  Widget _formSection({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required List<Widget> children,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(14.r),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14.r),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0A0F172A),
+            blurRadius: 10,
+            offset: Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36.r,
+                height: 36.r,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF1E8),
+                  borderRadius: BorderRadius.circular(10.r),
+                ),
+                child: Icon(icon, size: 19.sp, color: AppColors.orangeDeep),
+              ),
+              SizedBox(width: 10.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: _text(12.5, FontWeight.w800)),
+                    SizedBox(height: 2.h),
+                    Text(
+                      subtitle,
+                      style: _text(
+                        9.5,
+                        FontWeight.w500,
+                        const Color(0xFF64748B),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 14.h),
+          ...children,
+        ],
+      ),
+    );
+  }
+
   Future<void> _save() async {
     FocusScope.of(context).unfocus();
     if (!_formKey.currentState!.validate() || _saving) return;
@@ -281,6 +382,7 @@ class _EditLeadSheetState extends State<_EditLeadSheet> {
       'configuration': _configuration.text.trim(),
       'budgetRange': _budget.text.trim(),
       'preferredLocation': _location.text.trim(),
+      if (_selectedProjectId != null) 'preferredProjectId': _selectedProjectId,
     };
     final response = await context.read<LeadProvider>().updateLeadFromApi(
       leadId: widget.leadId,
@@ -289,7 +391,6 @@ class _EditLeadSheetState extends State<_EditLeadSheet> {
         'mobile': _mobile.text.trim(),
         'alternateMobile': _alternateMobile.text.trim(),
         'email': _email.text.trim(),
-        'occupation': _occupation.text.trim(),
         'requirement': requirement,
         if (_remarks.text.trim().isNotEmpty) 'remarks': _remarks.text.trim(),
       },
@@ -334,7 +435,14 @@ class _EditLeadSheetState extends State<_EditLeadSheet> {
                 borderRadius: BorderRadius.circular(999.r),
               ),
             ),
-            Padding(
+            Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFFFFFAF7), Colors.white],
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                ),
+              ),
               padding: EdgeInsets.fromLTRB(18.w, 14.h, 10.w, 12.h),
               child: Row(
                 children: [
@@ -380,111 +488,219 @@ class _EditLeadSheetState extends State<_EditLeadSheet> {
             const Divider(height: 1),
             Flexible(
               child: SingleChildScrollView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
                 padding: EdgeInsets.fromLTRB(18.w, 16.h, 18.w, 20.h),
                 child: Form(
                   key: _formKey,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Contact information',
-                        style: _text(12, FontWeight.w800),
+                      _formSection(
+                        icon: Icons.person_outline_rounded,
+                        title: 'Contact Information',
+                        subtitle: 'Primary details used to reach this lead',
+                        children: [
+                          TextFormField(
+                            controller: _name,
+                            textCapitalization: TextCapitalization.words,
+                            decoration: _input(
+                              'Full name',
+                              Icons.person_outline,
+                            ),
+                            validator: (value) =>
+                                value == null || value.trim().isEmpty
+                                ? 'Name is required'
+                                : null,
+                          ),
+                          SizedBox(height: 11.h),
+                          TextFormField(
+                            controller: _mobile,
+                            keyboardType: TextInputType.phone,
+                            decoration: _input(
+                              'Mobile number',
+                              Icons.phone_outlined,
+                            ),
+                            validator: (value) =>
+                                value == null || value.trim().isEmpty
+                                ? 'Mobile number is required'
+                                : null,
+                          ),
+                          SizedBox(height: 11.h),
+                          TextFormField(
+                            controller: _alternateMobile,
+                            keyboardType: TextInputType.phone,
+                            decoration: _input(
+                              'Alternate mobile',
+                              Icons.phone_forwarded_outlined,
+                            ),
+                          ),
+                          SizedBox(height: 11.h),
+                          TextFormField(
+                            controller: _email,
+                            keyboardType: TextInputType.emailAddress,
+                            decoration: _input(
+                              'Email address',
+                              Icons.mail_outline,
+                            ),
+                          ),
+                        ],
                       ),
-                      SizedBox(height: 12.h),
-                      TextFormField(
-                        controller: _name,
-                        decoration: _input('Full name', Icons.person_outline),
-                        validator: (value) =>
-                            value == null || value.trim().isEmpty
-                            ? 'Name is required'
-                            : null,
+                      SizedBox(height: 14.h),
+                      _formSection(
+                        icon: Icons.home_work_outlined,
+                        title: 'Property Requirements',
+                        subtitle: 'Match the lead with the right inventory',
+                        children: [
+                          DropdownButtonFormField<String>(
+                            key: ValueKey(_selectedProjectId),
+                            initialValue: _selectedProjectId,
+                            isExpanded: true,
+                            decoration: _input(
+                              'Project name',
+                              Icons.apartment_outlined,
+                              hint: _loadingProjects
+                                  ? 'Loading projects...'
+                                  : 'Select a project',
+                            ),
+                            items: _projects
+                                .map(
+                                  (project) => DropdownMenuItem<String>(
+                                    value: project.id,
+                                    child: Text(
+                                      project.location.isEmpty
+                                          ? project.name
+                                          : '${project.name} — ${project.location}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: _loadingProjects
+                                ? null
+                                : (value) => setState(
+                                    () => _selectedProjectId = value,
+                                  ),
+                          ),
+                          if (_projectError != null) ...[
+                            SizedBox(height: 6.h),
+                            Row(
+                              children: [
+                                const Icon(
+                                  Icons.info_outline_rounded,
+                                  size: 16,
+                                  color: Colors.red,
+                                ),
+                                SizedBox(width: 6.w),
+                                Expanded(
+                                  child: Text(
+                                    'Projects could not be loaded.',
+                                    style: _text(
+                                      10,
+                                      FontWeight.w600,
+                                      Colors.red,
+                                    ),
+                                  ),
+                                ),
+                                TextButton(
+                                  onPressed: _loadingProjects
+                                      ? null
+                                      : () {
+                                          setState(() {
+                                            _loadingProjects = true;
+                                            _projectError = null;
+                                          });
+                                          _loadProjects();
+                                        },
+                                  child: const Text('Retry'),
+                                ),
+                              ],
+                            ),
+                          ],
+                          SizedBox(height: 11.h),
+                          TextFormField(
+                            controller: _propertyType,
+                            decoration: _input(
+                              'Property type',
+                              Icons.domain_outlined,
+                            ),
+                          ),
+                          SizedBox(height: 11.h),
+                          TextFormField(
+                            controller: _configuration,
+                            decoration: _input(
+                              'Configuration',
+                              Icons.grid_view_outlined,
+                            ),
+                          ),
+                          SizedBox(height: 11.h),
+                          TextFormField(
+                            controller: _budget,
+                            decoration: _input(
+                              'Budget range',
+                              Icons.currency_rupee_rounded,
+                            ),
+                          ),
+                          SizedBox(height: 11.h),
+                          TextFormField(
+                            controller: _location,
+                            decoration: _input(
+                              'Preferred location',
+                              Icons.location_on_outlined,
+                            ),
+                          ),
+                        ],
                       ),
-                      SizedBox(height: 11.h),
-                      TextFormField(
-                        controller: _mobile,
-                        keyboardType: TextInputType.phone,
-                        decoration: _input(
-                          'Mobile number',
-                          Icons.phone_outlined,
-                        ),
-                        validator: (value) =>
-                            value == null || value.trim().isEmpty
-                            ? 'Mobile number is required'
-                            : null,
-                      ),
-                      SizedBox(height: 11.h),
-                      TextFormField(
-                        controller: _alternateMobile,
-                        keyboardType: TextInputType.phone,
-                        decoration: _input(
-                          'Alternate mobile',
-                          Icons.phone_forwarded_outlined,
-                        ),
-                      ),
-                      SizedBox(height: 11.h),
-                      TextFormField(
-                        controller: _email,
-                        keyboardType: TextInputType.emailAddress,
-                        decoration: _input('Email address', Icons.mail_outline),
-                      ),
-                      SizedBox(height: 11.h),
-                      TextFormField(
-                        controller: _occupation,
-                        decoration: _input('Occupation', Icons.work_outline),
-                      ),
-                      SizedBox(height: 20.h),
-                      Text(
-                        'Property requirements',
-                        style: _text(12, FontWeight.w800),
-                      ),
-                      SizedBox(height: 12.h),
-                      TextFormField(
-                        controller: _propertyType,
-                        decoration: _input(
-                          'Property type',
-                          Icons.apartment_outlined,
-                        ),
-                      ),
-                      SizedBox(height: 11.h),
-                      TextFormField(
-                        controller: _configuration,
-                        decoration: _input(
-                          'Configuration',
-                          Icons.grid_view_outlined,
-                        ),
-                      ),
-                      SizedBox(height: 11.h),
-                      TextFormField(
-                        controller: _budget,
-                        decoration: _input(
-                          'Budget range',
-                          Icons.currency_rupee_rounded,
-                        ),
-                      ),
-                      SizedBox(height: 11.h),
-                      TextFormField(
-                        controller: _location,
-                        decoration: _input(
-                          'Preferred location',
-                          Icons.location_on_outlined,
-                        ),
-                      ),
-                      SizedBox(height: 11.h),
-                      TextFormField(
-                        controller: _remarks,
-                        minLines: 3,
-                        maxLines: 5,
-                        decoration: _input(
-                          'Add note (optional)',
-                          Icons.note_alt_outlined,
-                          hint: 'Add context for the team',
-                        ),
+                      SizedBox(height: 14.h),
+                      _formSection(
+                        icon: Icons.note_alt_outlined,
+                        title: 'Internal Note',
+                        subtitle: 'Optional context visible to your team',
+                        children: [
+                          TextFormField(
+                            controller: _remarks,
+                            minLines: 3,
+                            maxLines: 5,
+                            textCapitalization: TextCapitalization.sentences,
+                            decoration: _input(
+                              'Add note (optional)',
+                              Icons.notes_rounded,
+                              hint: 'Add context for the team',
+                            ),
+                          ),
+                        ],
                       ),
                       if (_error != null) ...[
                         SizedBox(height: 12.h),
-                        Text(
-                          _error!,
-                          style: _text(11, FontWeight.w600, Colors.red),
+                        Container(
+                          width: double.infinity,
+                          padding: EdgeInsets.all(11.r),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFF1F2),
+                            borderRadius: BorderRadius.circular(10.r),
+                            border: Border.all(color: const Color(0xFFFECACA)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.error_outline_rounded,
+                                color: Color(0xFFDC2626),
+                                size: 18,
+                              ),
+                              SizedBox(width: 8.w),
+                              Expanded(
+                                child: Text(
+                                  _error!,
+                                  style: _text(
+                                    10.5,
+                                    FontWeight.w600,
+                                    const Color(0xFF991B1B),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ],
@@ -502,6 +718,13 @@ class _EditLeadSheetState extends State<_EditLeadSheet> {
                   Expanded(
                     child: OutlinedButton(
                       onPressed: _saving ? null : () => Navigator.pop(context),
+                      style: OutlinedButton.styleFrom(
+                        padding: EdgeInsets.symmetric(vertical: 13.h),
+                        side: const BorderSide(color: Color(0xFFCBD5E1)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10.r),
+                        ),
+                      ),
                       child: const Text('Cancel'),
                     ),
                   ),
@@ -523,6 +746,9 @@ class _EditLeadSheetState extends State<_EditLeadSheet> {
                       style: FilledButton.styleFrom(
                         backgroundColor: AppColors.orangeDeep,
                         padding: EdgeInsets.symmetric(vertical: 13.h),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10.r),
+                        ),
                       ),
                     ),
                   ),
@@ -1336,7 +1562,7 @@ class _AboutCard extends StatelessWidget {
           _DetailRow('Mobile', data.phone),
           _DetailRow('Alternate Number', data.alternatePhone),
           _DetailRow('Email Address', data.email),
-          _DetailRow('Occupation', data.occupation),
+          _DetailRow('Project Name', data.project),
           _DetailRow('Address', data.location, divider: false),
         ],
       ),
@@ -1917,7 +2143,6 @@ class _LeadData {
   String get manager => value(['managerName'], 'Unassigned');
   String get createdOn => _date(value(['createdAt'], ''));
   String get updatedOn => _date(value(['updatedAt'], ''));
-  String get occupation => value(['occupation'], 'Not captured');
   String get propertyType =>
       _from(requirement, ['propertyType', 'configuration'], 'Not captured');
   String get budget =>
