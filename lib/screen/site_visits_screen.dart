@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:truerealtycrm/provider/employee_provider.dart';
@@ -529,13 +530,48 @@ class _FilterTabs extends StatelessWidget {
   }
 }
 
-class _SiteVisitMobileCard extends StatelessWidget {
+enum _VisitState { notStarted, started, checkedIn, checkedOut }
+
+class _SiteVisitMobileCard extends StatefulWidget {
   const _SiteVisitMobileCard({required this.visit});
 
   final SiteVisitModel visit;
 
-  Future<void> _callLead(BuildContext context) async {
-    final digits = visit.phone.replaceAll(RegExp(r'[^0-9+]'), '');
+  @override
+  State<_SiteVisitMobileCard> createState() => _SiteVisitMobileCardState();
+}
+
+class _SiteVisitMobileCardState extends State<_SiteVisitMobileCard> {
+  late _VisitState _actionState;
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncState();
+  }
+
+  @override
+  void didUpdateWidget(covariant _SiteVisitMobileCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.visit.raw != widget.visit.raw) {
+      _syncState();
+    }
+  }
+
+  void _syncState() {
+    final raw = widget.visit.raw;
+    if (raw['checkedOutAt'] != null) {
+      _actionState = _VisitState.checkedOut;
+    } else if (raw['checkedInAt'] != null) {
+      _actionState = _VisitState.checkedIn;
+    } else {
+      _actionState = _VisitState.notStarted;
+    }
+  }
+
+  Future<void> _callLead() async {
+    final digits = widget.visit.phone.replaceAll(RegExp(r'[^0-9+]'), '');
     if (digits.replaceAll('+', '').length < 7) return;
     await launchUrl(
       Uri(scheme: 'tel', path: digits),
@@ -543,17 +579,219 @@ class _SiteVisitMobileCard extends StatelessWidget {
     );
   }
 
+  Future<Position?> _currentPosition() async {
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      _showSnack('Location services are disabled.');
+      return null;
+    }
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        _showSnack('Location permissions are denied.');
+        return null;
+      }
+    }
+    if (permission == LocationPermission.deniedForever) {
+      _showSnack('Location permission is permanently denied.');
+      return null;
+    }
+    try {
+      return await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 10),
+        ),
+      );
+    } catch (_) {
+      try {
+        return await Geolocator.getLastKnownPosition();
+      } catch (_) {
+        return null;
+      }
+    }
+  }
+
+  void _showSnack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  Future<void> _startRoute() async {
+    final raw = widget.visit.raw;
+    final projectMap = _map(raw['project'] ?? raw['property']);
+    
+    double? latitude;
+    double? longitude;
+
+    final candidates = <Map<String, dynamic>>[
+      projectMap,
+      _map(projectMap['location']),
+      _map(projectMap['coordinates']),
+      _map(projectMap['geo']),
+      _map(projectMap['position']),
+      _map(projectMap['project']),
+      _map(projectMap['property']),
+      _map(_map(projectMap['project'])['location']),
+      _map(_map(projectMap['property'])['location']),
+      _map(_map(projectMap['project'])['coordinates']),
+      _map(_map(projectMap['property'])['coordinates']),
+    ];
+    for (final candidate in candidates) {
+      if (candidate.isEmpty) continue;
+      final latVal = candidate['latitude'] ??
+          candidate['lat'] ??
+          candidate['projectLatitude'] ??
+          candidate['propertyLatitude'];
+      final lngVal = candidate['longitude'] ??
+          candidate['lng'] ??
+          candidate['lon'] ??
+          candidate['long'] ??
+          candidate['projectLongitude'] ??
+          candidate['propertyLongitude'];
+      if (latVal != null && lngVal != null) {
+        latitude = latVal is num ? latVal.toDouble() : double.tryParse(latVal.toString());
+        longitude = lngVal is num ? lngVal.toDouble() : double.tryParse(lngVal.toString());
+        if (latitude != null && longitude != null) break;
+      }
+    }
+
+    Uri url;
+    if (latitude != null && longitude != null) {
+      url = Uri.parse('https://www.google.com/maps/dir/?api=1&destination=$latitude,$longitude');
+    } else {
+      final dest = '${widget.visit.project} ${widget.visit.location}'.trim();
+      url = Uri.parse('https://www.google.com/maps/dir/?api=1&destination=${Uri.encodeComponent(dest)}');
+    }
+
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+      setState(() {
+        _actionState = _VisitState.started;
+      });
+    } else {
+      _showSnack('Could not open map navigation.');
+    }
+  }
+
+  Future<void> _checkIn() async {
+    if (_loading) return;
+    final provider = context.read<SiteVisitProvider>();
+    setState(() => _loading = true);
+    final pos = await _currentPosition();
+    if (pos == null) {
+      setState(() => _loading = false);
+      return;
+    }
+
+    final response = await provider.checkIn(
+      siteVisitId: widget.visit.id,
+      body: {
+        'latitude': pos.latitude,
+        'longitude': pos.longitude,
+        'accuracy': pos.accuracy,
+      },
+    );
+
+    if (!mounted) return;
+    setState(() => _loading = false);
+
+    if (response != null) {
+      setState(() => _actionState = _VisitState.checkedIn);
+      _showSnack('Checked in successfully.');
+      await provider.fetchSiteVisits(limit: 100);
+    } else {
+      _showSnack(provider.error ?? 'Check in failed.');
+    }
+  }
+
+  Future<void> _checkOut() async {
+    if (_loading) return;
+    final provider = context.read<SiteVisitProvider>();
+    setState(() => _loading = true);
+    final pos = await _currentPosition();
+    if (pos == null) {
+      setState(() => _loading = false);
+      return;
+    }
+
+    final response = await provider.checkOut(
+      siteVisitId: widget.visit.id,
+      body: {
+        'latitude': pos.latitude,
+        'longitude': pos.longitude,
+        'accuracy': pos.accuracy,
+      },
+    );
+
+    if (!mounted) return;
+    setState(() => _loading = false);
+
+    if (response != null) {
+      setState(() => _actionState = _VisitState.checkedOut);
+      _showSnack('Checked out successfully.');
+      await provider.fetchSiteVisits(limit: 100);
+    } else {
+      _showSnack(provider.error ?? 'Check out failed.');
+    }
+  }
+
+  Future<void> _undo() async {
+    if (_loading) return;
+    if (_actionState == _VisitState.started) {
+      setState(() {
+        _actionState = _VisitState.notStarted;
+      });
+      _showSnack('Visit returned to Start.');
+      return;
+    }
+
+    final provider = context.read<SiteVisitProvider>();
+    setState(() => _loading = true);
+    final response = await provider.updateSiteVisitFromApi(
+      siteVisitId: widget.visit.id,
+      body: {
+        'status': 'Scheduled',
+        'checkedInAt': null,
+        'checkedOutAt': null,
+      },
+    );
+
+    if (!mounted) return;
+    setState(() => _loading = false);
+
+    if (response != null) {
+      setState(() => _actionState = _VisitState.notStarted);
+      _showSnack('Visit returned to Start.');
+      await provider.fetchSiteVisits(limit: 100);
+    } else {
+      _showSnack(provider.error ?? 'Undo failed.');
+    }
+  }
+
+  Map<String, dynamic> _map(Object? value) {
+    if (value is Map) return Map<String, dynamic>.from(value);
+    return const {};
+  }
+
   @override
   Widget build(BuildContext context) {
-    final statusColors = _statusColors(visit.status);
-    final typeColors = _typeColors(visit.type);
+    final statusColors = _statusColors(widget.visit.status);
+    final typeColors = _typeColors(widget.visit.type);
+    final auth = context.watch<AuthProvider>();
+    final isFieldExecutive = auth.role == UserRole.fieldExecutive;
+    final isScheduled = !widget.visit.status.toLowerCase().contains('completed') &&
+        !widget.visit.status.toLowerCase().contains('cancel');
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: () => Navigator.of(context).push(
           MaterialPageRoute<void>(
-            builder: (_) => SiteVisitDetailScreen(visit: visit),
+            builder: (_) => SiteVisitDetailScreen(visit: widget.visit),
           ),
         ),
         borderRadius: BorderRadius.circular(16.r),
@@ -575,7 +813,7 @@ class _SiteVisitMobileCard extends StatelessWidget {
                     radius: 22.r,
                     backgroundColor: const Color(0xFFE9EEF8),
                     child: Text(
-                      _initials(visit.leadName),
+                      _initials(widget.visit.leadName),
                       style: GoogleFonts.inter(
                         fontSize: 13.sp,
                         fontWeight: FontWeight.w800,
@@ -589,7 +827,7 @@ class _SiteVisitMobileCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          visit.leadName,
+                          widget.visit.leadName,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: GoogleFonts.inter(
@@ -600,9 +838,9 @@ class _SiteVisitMobileCard extends StatelessWidget {
                         ),
                         SizedBox(height: 2.h),
                         InkWell(
-                          onTap: () => _callLead(context),
+                          onTap: _callLead,
                           child: Text(
-                            visit.formattedPhone,
+                            widget.visit.formattedPhone,
                             style: GoogleFonts.inter(
                               fontSize: 12.5.sp,
                               color: const Color(0xFF2563EB),
@@ -617,13 +855,13 @@ class _SiteVisitMobileCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       _Pill(
-                        label: visit.status,
+                        label: widget.visit.status,
                         foreground: statusColors.$1,
                         background: statusColors.$2,
                       ),
                       SizedBox(height: 6.h),
                       _Pill(
-                        label: visit.type,
+                        label: widget.visit.type,
                         foreground: typeColors.$1,
                         background: typeColors.$2,
                       ),
@@ -637,10 +875,10 @@ class _SiteVisitMobileCard extends StatelessWidget {
                   Expanded(
                     child: _InfoTile(
                       label: 'Schedule',
-                      title: visit.date,
-                      subtitle: visit.durationMinutes == null
-                          ? visit.time
-                          : '${visit.time} · ${visit.durationMinutes} min',
+                      title: widget.visit.date,
+                      subtitle: widget.visit.durationMinutes == null
+                          ? widget.visit.time
+                          : '${widget.visit.time} · ${widget.visit.durationMinutes} min',
                       icon: Icons.event_outlined,
                     ),
                   ),
@@ -648,8 +886,8 @@ class _SiteVisitMobileCard extends StatelessWidget {
                   Expanded(
                     child: _InfoTile(
                       label: 'Reminder',
-                      title: visit.reminderAt == null ? 'No reminder' : 'Set',
-                      subtitle: visit.reminderLabel,
+                      title: widget.visit.reminderAt == null ? 'No reminder' : 'Set',
+                      subtitle: widget.visit.reminderLabel,
                       icon: Icons.notifications_none_rounded,
                     ),
                   ),
@@ -671,7 +909,7 @@ class _SiteVisitMobileCard extends StatelessWidget {
                       child: SizedBox(
                         width: 46.w,
                         height: 46.w,
-                        child: visit.projectImageUrl.isEmpty
+                        child: widget.visit.projectImageUrl.isEmpty
                             ? ColoredBox(
                                 color: const Color(0xFFEAF2FF),
                                 child: Icon(
@@ -681,7 +919,7 @@ class _SiteVisitMobileCard extends StatelessWidget {
                                 ),
                               )
                             : Image.network(
-                                visit.projectImageUrl,
+                                widget.visit.projectImageUrl,
                                 fit: BoxFit.cover,
                                 errorBuilder: (_, _, _) => ColoredBox(
                                   color: const Color(0xFFEAF2FF),
@@ -700,7 +938,7 @@ class _SiteVisitMobileCard extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            visit.project,
+                            widget.visit.project,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: GoogleFonts.inter(
@@ -711,11 +949,11 @@ class _SiteVisitMobileCard extends StatelessWidget {
                           ),
                           SizedBox(height: 2.h),
                           Text(
-                            visit.unitLabel.isEmpty
-                                ? (visit.location.isEmpty
+                            widget.visit.unitLabel.isEmpty
+                                ? (widget.visit.location.isEmpty
                                       ? 'Location not available'
-                                      : visit.location)
-                                : visit.unitLabel,
+                                      : widget.visit.location)
+                                : widget.visit.unitLabel,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: GoogleFonts.inter(
@@ -735,12 +973,12 @@ class _SiteVisitMobileCard extends StatelessWidget {
                   CircleAvatar(
                     radius: 14.r,
                     backgroundColor: const Color(0xFFE9EEF8),
-                    backgroundImage: visit.executiveImageUrl.isEmpty
+                    backgroundImage: widget.visit.executiveImageUrl.isEmpty
                         ? null
-                        : NetworkImage(visit.executiveImageUrl),
-                    child: visit.executiveImageUrl.isEmpty
+                        : NetworkImage(widget.visit.executiveImageUrl),
+                    child: widget.visit.executiveImageUrl.isEmpty
                         ? Text(
-                            _initials(visit.executiveName),
+                            _initials(widget.visit.executiveName),
                             style: GoogleFonts.inter(
                               fontSize: 10.sp,
                               fontWeight: FontWeight.w700,
@@ -755,7 +993,7 @@ class _SiteVisitMobileCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          visit.executiveName,
+                          widget.visit.executiveName,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: GoogleFonts.inter(
@@ -765,9 +1003,9 @@ class _SiteVisitMobileCard extends StatelessWidget {
                           ),
                         ),
                         Text(
-                          visit.executiveRole.isEmpty
+                          widget.visit.executiveRole.isEmpty
                               ? 'Field executive'
-                              : visit.executiveRole,
+                              : widget.visit.executiveRole,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: GoogleFonts.inter(
@@ -780,6 +1018,204 @@ class _SiteVisitMobileCard extends StatelessWidget {
                   ),
                 ],
               ),
+              if (isFieldExecutive && isScheduled) ...[
+                SizedBox(height: 12.h),
+                if (_actionState == _VisitState.notStarted) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _loading ? null : _startRoute,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFEA580C),
+                        foregroundColor: Colors.white,
+                        minimumSize: Size.fromHeight(42.h),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10.r),
+                        ),
+                        elevation: 0,
+                      ),
+                      icon: Icon(Icons.near_me_rounded, size: 18.sp),
+                      label: Text(
+                        'Start Visit',
+                        style: GoogleFonts.inter(
+                          fontSize: 14.sp,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: 4.h),
+                  Align(
+                    alignment: Alignment.center,
+                    child: Text(
+                      'Starts route only. Check-in appears next.',
+                      style: GoogleFonts.inter(
+                        fontSize: 11.sp,
+                        color: const Color(0xFF667085),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ] else if (_actionState == _VisitState.started) ...[
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: _loading ? null : _checkIn,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFEA580C),
+                            foregroundColor: Colors.white,
+                            minimumSize: Size.fromHeight(42.h),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10.r),
+                            ),
+                            elevation: 0,
+                          ),
+                          icon: _loading
+                              ? SizedBox(
+                                  width: 16.w,
+                                  height: 16.w,
+                                  child: const CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : Icon(Icons.location_on_outlined, size: 18.sp),
+                          label: Text(
+                            'Check In',
+                            style: GoogleFonts.inter(
+                              fontSize: 14.sp,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: 10.w),
+                      OutlinedButton(
+                        onPressed: _loading ? null : _undo,
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: Size(80.w, 42.h),
+                          side: const BorderSide(color: Color(0xFFCBD5E1)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10.r),
+                          ),
+                        ),
+                        child: Text(
+                          'Undo',
+                          style: GoogleFonts.inter(
+                            fontSize: 14.sp,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF475569),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 4.h),
+                  Align(
+                    alignment: Alignment.center,
+                    child: Text(
+                      'Route active. Check in when you reach the site.',
+                      style: GoogleFonts.inter(
+                        fontSize: 11.sp,
+                        color: const Color(0xFF667085),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ] else if (_actionState == _VisitState.checkedIn) ...[
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: _loading ? null : _checkOut,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF1E3A8A),
+                            foregroundColor: Colors.white,
+                            minimumSize: Size.fromHeight(42.h),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10.r),
+                            ),
+                            elevation: 0,
+                          ),
+                          icon: _loading
+                              ? SizedBox(
+                                  width: 16.w,
+                                  height: 16.w,
+                                  child: const CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : Icon(Icons.logout_rounded, size: 18.sp),
+                          label: Text(
+                            'Check Out',
+                            style: GoogleFonts.inter(
+                              fontSize: 14.sp,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: 10.w),
+                      OutlinedButton(
+                        onPressed: _loading ? null : _undo,
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: Size(80.w, 42.h),
+                          side: const BorderSide(color: Color(0xFFCBD5E1)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10.r),
+                          ),
+                        ),
+                        child: Text(
+                          'Undo',
+                          style: GoogleFonts.inter(
+                            fontSize: 14.sp,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF475569),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 4.h),
+                  Align(
+                    alignment: Alignment.center,
+                    child: Text(
+                      'Checked in. Tap Check Out when the visit is complete.',
+                      style: GoogleFonts.inter(
+                        fontSize: 11.sp,
+                        color: const Color(0xFF667085),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ] else if (_actionState == _VisitState.checkedOut) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: null,
+                      style: ElevatedButton.styleFrom(
+                        disabledBackgroundColor: const Color(0xFFD1FAE5),
+                        disabledForegroundColor: const Color(0xFF065F46),
+                        minimumSize: Size.fromHeight(42.h),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10.r),
+                        ),
+                        elevation: 0,
+                      ),
+                      icon: Icon(Icons.check_circle_outline, size: 18.sp),
+                      label: Text(
+                        'Completed',
+                        style: GoogleFonts.inter(
+                          fontSize: 14.sp,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ],
           ),
         ),

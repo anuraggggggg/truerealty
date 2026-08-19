@@ -19,6 +19,7 @@ import 'package:truerealtycrm/provider/employee_provider.dart';
 import 'package:truerealtycrm/provider/project_provider.dart';
 import 'package:truerealtycrm/provider/site_visits_provider.dart';
 import 'package:truerealtycrm/provider/upload_provider.dart';
+import 'package:truerealtycrm/router/app_router.dart';
 import 'package:truerealtycrm/screen/telecaller_dashboard_screen.dart';
 import 'package:truerealtycrm/widget/app_loading.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -791,18 +792,22 @@ class _FieldDashboardHeader extends StatelessWidget {
                   ),
                 ),
                 const Spacer(),
-                Container(
-                  width: 38.w,
-                  height: 38.w,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF4F6FA),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: const Color(0xFFE1E7F0)),
-                  ),
-                  child: Icon(
-                    Icons.engineering_outlined,
-                    color: AppColors.navy,
-                    size: 21.sp,
+                InkWell(
+                  onTap: () => _openProfile(context),
+                  borderRadius: BorderRadius.circular(19.r),
+                  child: Container(
+                    width: 38.w,
+                    height: 38.w,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF4F6FA),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: const Color(0xFFE1E7F0)),
+                    ),
+                    child: Icon(
+                      Icons.engineering_outlined,
+                      color: AppColors.navy,
+                      size: 21.sp,
+                    ),
                   ),
                 ),
               ],
@@ -839,6 +844,50 @@ class _FieldDashboardHeader extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  Future<void> _openProfile(BuildContext context) {
+    return showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Dismiss profile menu',
+      barrierColor: Colors.transparent,
+      transitionDuration: const Duration(milliseconds: 140),
+      pageBuilder: (context, animation, secondaryAnimation) {
+        return _ProfilePopoverFrame(
+          child: _ProfilePopup(
+            onProfileTap: (popupContext) {
+              Navigator.of(popupContext).pop();
+              Navigator.of(context).pushNamed(AppRouter.profile);
+            },
+            onSettingsTap: (popupContext) {
+              Navigator.of(popupContext).pop();
+              Navigator.of(context).pushNamed(AppRouter.personalSettings);
+            },
+            onSignOutTap: (popupContext) {
+              Navigator.of(popupContext).pop();
+              Navigator.of(context).pushNamed(AppRouter.logoutConfirmation);
+            },
+          ),
+        );
+      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        );
+        return FadeTransition(
+          opacity: curved,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0, -0.03),
+              end: Offset.zero,
+            ).animate(curved),
+            child: child,
+          ),
+        );
+      },
     );
   }
 }
@@ -4157,4 +4206,141 @@ LatLngBounds _dashboardLatLngBounds(List<LatLng> points) {
     southwest: LatLng(south, west),
     northeast: LatLng(north, east),
   );
+}
+
+class _ProfilePopoverFrame extends StatelessWidget {
+  const _ProfilePopoverFrame({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Align(
+        alignment: Alignment.topRight,
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(32.w, 68.h, 16.w, 0),
+          child: Material(
+            color: Colors.transparent,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minWidth: 176.w, maxWidth: 196.w),
+              child: child,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProfilePopup extends StatelessWidget {
+  const _ProfilePopup({
+    required this.onProfileTap,
+    required this.onSettingsTap,
+    required this.onSignOutTap,
+  });
+
+  final ValueChanged<BuildContext> onProfileTap;
+  final ValueChanged<BuildContext> onSettingsTap;
+  final ValueChanged<BuildContext> onSignOutTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8.r),
+        border: Border.all(color: AppColors.orangeDeep, width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0x2206172A),
+            blurRadius: 18.r,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8.r),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: EdgeInsets.fromLTRB(14.w, 12.h, 14.w, 10.h),
+              child: Text(
+                'My Account',
+                style: GoogleFonts.inter(
+                  fontSize: 13.sp,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.navy,
+                ),
+              ),
+            ),
+            Divider(height: 1.h, color: const Color(0xFFE1E7F0)),
+            _ProfileMenuItem(
+              icon: Icons.person_outline_rounded,
+              label: 'Profile',
+              onTap: () => onProfileTap(context),
+            ),
+            _ProfileMenuItem(
+              icon: Icons.settings_outlined,
+              label: 'Settings',
+              onTap: () => onSettingsTap(context),
+            ),
+            Divider(height: 1.h, color: const Color(0xFFE1E7F0)),
+            _ProfileMenuItem(
+              icon: Icons.logout_rounded,
+              label: 'Sign out',
+              onTap: () => onSignOutTap(context),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ProfileMenuItem extends StatelessWidget {
+  const _ProfileMenuItem({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 11.h),
+          child: Row(
+            children: [
+              Icon(
+                icon,
+                size: 17.sp,
+                color: AppColors.textSecondary,
+              ),
+              SizedBox(width: 10.w),
+              Expanded(
+                child: Text(
+                  label,
+                  style: GoogleFonts.inter(
+                    fontSize: 13.sp,
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

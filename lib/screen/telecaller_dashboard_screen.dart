@@ -4141,14 +4141,19 @@ class _TodayPunchCard extends StatelessWidget {
                 final punchIn = ElevatedButton.icon(
                   onPressed: !isLoading && data.canPunchIn ? onPunchIn : null,
                   style: ElevatedButton.styleFrom(
-                    minimumSize: Size.fromHeight(42.h),
+                    minimumSize: Size.fromHeight(46.h),
+                    elevation: 0,
                     backgroundColor: AppColors.orangeDeep,
                     foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(11.r),
+                    ),
                   ),
                   icon: isLoading
-                      ? const SizedBox.square(
-                          dimension: 16,
-                          child: CircularProgressIndicator(
+                      ? SizedBox(
+                          width: 17.w,
+                          height: 17.w,
+                          child: const CircularProgressIndicator(
                             strokeWidth: 2,
                             color: Colors.white,
                           ),
@@ -4159,9 +4164,23 @@ class _TodayPunchCard extends StatelessWidget {
                 final punchOut = OutlinedButton.icon(
                   onPressed: !isLoading && data.canPunchOut ? onPunchOut : null,
                   style: OutlinedButton.styleFrom(
-                    minimumSize: Size.fromHeight(42.h),
+                    minimumSize: Size.fromHeight(46.h),
+                    foregroundColor: const Color(0xFF123B7A),
+                    side: const BorderSide(color: Color(0xFF123B7A)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(11.r),
+                    ),
                   ),
-                  icon: const Icon(Icons.logout_rounded),
+                  icon: isLoading
+                      ? SizedBox(
+                          width: 17.w,
+                          height: 17.w,
+                          child: const CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Color(0xFF123B7A),
+                          ),
+                        )
+                      : const Icon(Icons.logout_rounded),
                   label: const Text('Punch Out'),
                 );
                 if (constraints.maxWidth < 520) {

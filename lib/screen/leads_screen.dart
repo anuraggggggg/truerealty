@@ -12,6 +12,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:truerealtycrm/constant/colors_screen.dart';
 import 'package:truerealtycrm/provider/lead_master_provider.dart';
 import 'package:truerealtycrm/provider/project_provider.dart';
+import '../data/models/project_model.dart';
 import 'package:truerealtycrm/router/app_router.dart';
 import 'package:truerealtycrm/screen/projects_screen.dart';
 import '../provider/leads_provider.dart';
@@ -662,22 +663,93 @@ class _LeadListWidgetState extends State<LeadListWidget> {
               Text(
                 '${_selectedLeadIds.length} selected',
                 style: GoogleFonts.inter(
-                  fontSize: 12.5.sp,
-                  fontWeight: FontWeight.w600,
-                  color: const Color(0xFF64748B),
+                  fontSize: 14.sp,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF1E293B),
                 ),
               ),
-              const Spacer(),
-              ElevatedButton.icon(
-                onPressed: _selectedLeadIds.isEmpty
-                    ? null
-                    : () => _openSelectedLeadUpdate(),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.orangeStrong,
-                  foregroundColor: Colors.white,
+              SizedBox(width: 14.w),
+              PopupMenuButton<String>(
+                enabled: _selectedLeadIds.isNotEmpty,
+                onSelected: (value) => _openSelectedLeadUpdate(value),
+                offset: const Offset(0, 42),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10.r),
+                  side: const BorderSide(color: Color(0xFFE2E8F0)),
                 ),
-                icon: const Icon(Icons.edit_outlined, size: 17),
-                label: const Text('Update selected'),
+                color: Colors.white,
+                surfaceTintColor: Colors.transparent,
+                itemBuilder: (context) => [
+                  PopupMenuItem(
+                    value: 'status',
+                    child: Text(
+                      'Status',
+                      style: GoogleFonts.inter(
+                        fontSize: 14.sp,
+                        fontWeight: FontWeight.w500,
+                        color: const Color(0xFF334155),
+                      ),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'leadType',
+                    child: Text(
+                      'Lead Type',
+                      style: GoogleFonts.inter(
+                        fontSize: 14.sp,
+                        fontWeight: FontWeight.w500,
+                        color: const Color(0xFF334155),
+                      ),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'projectName',
+                    child: Text(
+                      'Project Name',
+                      style: GoogleFonts.inter(
+                        fontSize: 14.sp,
+                        fontWeight: FontWeight.w500,
+                        color: const Color(0xFF334155),
+                      ),
+                    ),
+                  ),
+                ],
+                child: Container(
+                  padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(8.r),
+                    border: Border.all(
+                      color: _selectedLeadIds.isEmpty
+                          ? const Color(0xFFCBD5E1)
+                          : const Color(0xFFFF7A1A),
+                      width: 1.2,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Update',
+                        style: GoogleFonts.inter(
+                          fontSize: 13.sp,
+                          fontWeight: FontWeight.w600,
+                          color: _selectedLeadIds.isEmpty
+                              ? const Color(0xFF94A3B8)
+                              : const Color(0xFF334155),
+                        ),
+                      ),
+                      SizedBox(width: 4.w),
+                      Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        size: 18.sp,
+                        color: _selectedLeadIds.isEmpty
+                            ? const Color(0xFF94A3B8)
+                            : const Color(0xFF64748B),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ],
           ),
@@ -941,6 +1013,9 @@ class _LeadListWidgetState extends State<LeadListWidget> {
       'SLA Status' => 'All SLA Statuses',
       _ => 'All $label',
     };
+
+    final displayText = selected ?? allLabel;
+
     return SizedBox(
       width: width,
       child: Column(
@@ -955,48 +1030,82 @@ class _LeadListWidgetState extends State<LeadListWidget> {
             ),
           ),
           SizedBox(height: 7.h),
-          DropdownButtonFormField<String?>(
-            key: ValueKey('$label-$selected-${unique.length}'),
-            initialValue: selected,
-            isExpanded: true,
-            icon: Icon(Icons.keyboard_arrow_down_rounded, size: 20.sp),
-            style: GoogleFonts.inter(
-              fontSize: 12.5.sp,
-              fontWeight: FontWeight.w500,
-              color: const Color(0xFF344054),
+          InkWell(
+            onTap: () => _showSearchableFilterPicker(
+              context: context,
+              title: label,
+              selected: selected,
+              allLabel: allLabel,
+              options: unique,
+              onChanged: onChanged,
             ),
-            decoration: InputDecoration(
-              isDense: true,
-              filled: true,
-              fillColor: const Color(0xFFFCFDFE),
-              contentPadding: EdgeInsets.symmetric(
-                horizontal: 13.w,
-                vertical: 13.h,
-              ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10.r),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10.r),
-                borderSide: const BorderSide(color: Color(0xFFD8E0EC)),
-              ),
-            ),
-            items: [
-              DropdownMenuItem<String?>(
-                value: null,
-                child: Text(allLabel, overflow: TextOverflow.ellipsis),
-              ),
-              ...unique.map(
-                (item) => DropdownMenuItem<String?>(
-                  value: item,
-                  child: Text(item, overflow: TextOverflow.ellipsis),
+            borderRadius: BorderRadius.circular(10.r),
+            child: InputDecorator(
+              decoration: InputDecoration(
+                isDense: true,
+                filled: true,
+                fillColor: const Color(0xFFFCFDFE),
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 13.w,
+                  vertical: 13.h,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10.r),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10.r),
+                  borderSide: const BorderSide(color: Color(0xFFD8E0EC)),
                 ),
               ),
-            ],
-            onChanged: onChanged,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Text(
+                      displayText,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.inter(
+                        fontSize: 12.5.sp,
+                        fontWeight: FontWeight.w500,
+                        color: const Color(0xFF344054),
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    size: 20.sp,
+                    color: const Color(0xFF667085),
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
+    );
+  }
+
+  void _showSearchableFilterPicker({
+    required BuildContext context,
+    required String title,
+    required String? selected,
+    required String allLabel,
+    required List<String> options,
+    required ValueChanged<String?> onChanged,
+  }) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return _SearchablePickerSheet(
+          title: title,
+          selected: selected,
+          allLabel: allLabel,
+          options: options,
+          onChanged: onChanged,
+        );
+      },
     );
   }
 
@@ -1065,9 +1174,6 @@ class _LeadListWidgetState extends State<LeadListWidget> {
             )
             .map((value) => value.toString().trim())
             .firstOrNull;
-    final location = lead.location?.trim().isNotEmpty == true
-        ? lead.location!
-        : '-';
     final addedOn = lead.createdAt == null
         ? (lead.createdLabel?.trim().isNotEmpty == true
               ? lead.createdLabel!
@@ -1130,19 +1236,6 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                     ),
                     SizedBox(width: 4.w),
                   ],
-                  CircleAvatar(
-                    radius: 20.r,
-                    backgroundColor: const Color(0xFF10213D),
-                    child: Text(
-                      _leadInitials(lead.name),
-                      style: GoogleFonts.inter(
-                        color: Colors.white,
-                        fontSize: 11.5.sp,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                  SizedBox(width: 10.w),
                   Expanded(
                     child: InkWell(
                       onTap: () => Navigator.pushNamed(
@@ -1150,27 +1243,46 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                         AppRouter.leadDetail,
                         arguments: lead,
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      child: Row(
                         children: [
-                          Text(
-                            lead.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.inter(
-                              fontSize: 15.sp,
-                              fontWeight: FontWeight.w700,
-                              color: const Color(0xFF0B1735),
+                          CircleAvatar(
+                            radius: 20.r,
+                            backgroundColor: const Color(0xFF10213D),
+                            child: Text(
+                              _leadInitials(lead.name),
+                              style: GoogleFonts.inter(
+                                color: Colors.white,
+                                fontSize: 11.5.sp,
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
                           ),
-                          SizedBox(height: 3.h),
-                          Text(
-                            'Added on $addedOn',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.inter(
-                              fontSize: 9.5.sp,
-                              color: const Color(0xFF667085),
+                          SizedBox(width: 10.w),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  lead.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.inter(
+                                    fontSize: 15.sp,
+                                    fontWeight: FontWeight.w700,
+                                    color: const Color(0xFF0B1735),
+                                  ),
+                                ),
+                                SizedBox(height: 3.h),
+                                Text(
+                                  'Added on $addedOn',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.inter(
+                                    fontSize: 9.5.sp,
+                                    color: const Color(0xFF667085),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
@@ -1233,8 +1345,8 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                             ),
                       child: _LeadCardDetail(
                         icon: Icons.apartment_rounded,
-                        label: project,
-                        value: location,
+                        label: 'Project Name',
+                        value: project,
                         iconColor: const Color(0xFF1468D4),
                         iconBackground: const Color(0xFFEAF2FF),
                       ),
@@ -1381,13 +1493,15 @@ class _LeadListWidgetState extends State<LeadListWidget> {
     if (added == true && mounted) await _fetchLeads(page: _page);
   }
 
-  Future<void> _openSelectedLeadUpdate() async {
+  Future<void> _openSelectedLeadUpdate(String mode) async {
     final selected = context
         .read<LeadProvider>()
         .leads
         .where((lead) => _selectedLeadIds.contains(lead.id ?? lead.phone))
         .toList();
-    if (selected.isNotEmpty) await _showLeadUpdateSheet(selected);
+    if (selected.isNotEmpty) {
+      await _showLeadUpdateSheet(selected, isProjectOnly: mode == 'projectName');
+    }
   }
 
   Future<List<_LeadUpdateOption>> _loadUpdateOptions(
@@ -1404,7 +1518,10 @@ class _LeadListWidgetState extends State<LeadListWidget> {
     return const [];
   }
 
-  Future<void> _showLeadUpdateSheet(List<LeadModel> leads) async {
+  Future<void> _showLeadUpdateSheet(
+    List<LeadModel> leads, {
+    bool isProjectOnly = false,
+  }) async {
     final optionGroups = await Future.wait([
       _loadUpdateOptions(const ['status', 'lead_status', 'lead-status']),
       _loadUpdateOptions(const [
@@ -1415,6 +1532,13 @@ class _LeadListWidgetState extends State<LeadListWidget> {
     ]);
     if (!mounted) return;
 
+    var projects = context.read<ProjectProvider>().projects;
+    if (projects.isEmpty) {
+      await context.read<ProjectProvider>().fetchProjects();
+      if (!mounted) return;
+      projects = context.read<ProjectProvider>().projects;
+    }
+
     final updated = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -1422,6 +1546,9 @@ class _LeadListWidgetState extends State<LeadListWidget> {
         leads: leads,
         statuses: optionGroups[0],
         temperatures: optionGroups[1],
+        locations: _areas,
+        projects: projects,
+        isProjectOnly: isProjectOnly,
       ),
     );
     if (updated == true && mounted) {
@@ -2539,11 +2666,8 @@ class _LeadListWidgetState extends State<LeadListWidget> {
   }
 
   bool _isHotTemperature(LeadModel lead) {
-    final text =
-        '${lead.leadType ?? ''} ${lead.raw?['temperatureName'] ?? ''} '
-                '${lead.raw?['temperature'] ?? ''} ${lead.status}'
-            .toLowerCase();
-    return text.contains('hot');
+    final type = (lead.leadType ?? '').trim().toLowerCase();
+    return type == 'hot' || type == 'hot lead';
   }
 
   ({String? status, String? leadType}) _filtersForSelectedTab() {
@@ -2860,11 +2984,17 @@ class _LeadUpdateDialog extends StatefulWidget {
     required this.leads,
     required this.statuses,
     required this.temperatures,
+    required this.locations,
+    required this.projects,
+    this.isProjectOnly = false,
   });
 
   final List<LeadModel> leads;
   final List<_LeadUpdateOption> statuses;
   final List<_LeadUpdateOption> temperatures;
+  final List<String> locations;
+  final List<ProjectModel> projects;
+  final bool isProjectOnly;
 
   @override
   State<_LeadUpdateDialog> createState() => _LeadUpdateDialogState();
@@ -2894,6 +3024,8 @@ class _LeadUpdateDialogState extends State<_LeadUpdateDialog> {
   String? _temperatureId;
   String? _budget;
   String? _configuration;
+  String? _location;
+  String? _projectId;
   DateTime? _followUpDate;
   TimeOfDay? _followUpTime;
   bool _saving = false;
@@ -2918,6 +3050,12 @@ class _LeadUpdateDialogState extends State<_LeadUpdateDialog> {
     _temperatureId = _isSingle ? text(raw['temperatureId']) : null;
     _budget = _isSingle ? text(requirement['budgetRange']) : null;
     _configuration = _isSingle ? text(requirement['configuration']) : null;
+    _location = _isSingle
+        ? (text(requirement['preferredLocation']) ?? text(raw['location']))
+        : null;
+    _projectId = _isSingle
+        ? (text(requirement['preferredProjectId']) ?? text(raw['projectId']))
+        : null;
     _remarkController = TextEditingController(
       text: _isSingle ? text(raw['remarks']) ?? '' : '',
     );
@@ -2960,23 +3098,31 @@ class _LeadUpdateDialogState extends State<_LeadUpdateDialog> {
 
   Future<void> _submit() async {
     final body = <String, dynamic>{
-      if (_statusId != null) 'statusId': _statusId,
-      if (_temperatureId != null) 'temperatureId': _temperatureId,
-      if (_budget != null) 'budgetRange': _budget,
-      if (_configuration != null) 'configuration': _configuration,
-      if (_remarkController.text.trim().isNotEmpty)
-        'remarks': _remarkController.text.trim(),
-      if (_followUpDate != null && _followUpTime != null)
-        'nextFollowUpAt': DateTime(
-          _followUpDate!.year,
-          _followUpDate!.month,
-          _followUpDate!.day,
-          _followUpTime!.hour,
-          _followUpTime!.minute,
-        ).toUtc().toIso8601String(),
+      if (widget.isProjectOnly) ...{
+        if (_projectId != null) 'preferredProjectId': _projectId,
+      } else ...{
+        if (_statusId != null) 'statusId': _statusId,
+        if (_temperatureId != null) 'temperatureId': _temperatureId,
+        if (_budget != null) 'budgetRange': _budget,
+        if (_location != null) 'preferredLocation': _location,
+        if (_configuration != null) 'configuration': _configuration,
+        if (_projectId != null) 'preferredProjectId': _projectId,
+        if (_remarkController.text.trim().isNotEmpty)
+          'remarks': _remarkController.text.trim(),
+        if (_followUpDate != null && _followUpTime != null)
+          'nextFollowUpAt': DateTime(
+            _followUpDate!.year,
+            _followUpDate!.month,
+            _followUpDate!.day,
+            _followUpTime!.hour,
+            _followUpTime!.minute,
+          ).toUtc().toIso8601String(),
+      }
     };
     if (body.isEmpty) {
-      setState(() => _error = 'Choose at least one field to update.');
+      setState(() => _error = widget.isProjectOnly
+          ? 'Select a project to update.'
+          : 'Choose at least one field to update.');
       return;
     }
 
@@ -3039,21 +3185,23 @@ class _LeadUpdateDialogState extends State<_LeadUpdateDialog> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Update reminder, status & remark',
+                          widget.isProjectOnly ? 'Update Project' : 'Update reminder, status & remark',
                           style: GoogleFonts.inter(
                             fontSize: 19.sp,
                             fontWeight: FontWeight.w800,
                             color: AppColors.navy,
                           ),
                         ),
-                        SizedBox(height: 5.h),
-                        Text(
-                          'Update only the fields you fill. ${widget.leads.length} selected lead${widget.leads.length == 1 ? '' : 's'} will receive the updates.',
-                          style: GoogleFonts.inter(
-                            fontSize: 12.sp,
-                            color: const Color(0xFF64748B),
+                        if (!widget.isProjectOnly) ...[
+                          SizedBox(height: 5.h),
+                          Text(
+                            'Update only the fields you fill. ${widget.leads.length} selected lead${widget.leads.length == 1 ? '' : 's'} will receive the updates.',
+                            style: GoogleFonts.inter(
+                              fontSize: 12.sp,
+                              color: const Color(0xFF64748B),
+                            ),
                           ),
-                        ),
+                        ],
                       ],
                     ),
                   ),
@@ -3068,87 +3216,136 @@ class _LeadUpdateDialogState extends State<_LeadUpdateDialog> {
             Flexible(
               child: SingleChildScrollView(
                 padding: EdgeInsets.all(22.r),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _responsiveFields([
-                      _optionField(
-                        'Status',
-                        _validOption(_statusId, widget.statuses),
-                        widget.statuses,
-                        (value) => setState(() => _statusId = value),
-                      ),
-                      _optionField(
-                        'Type',
-                        _validOption(_temperatureId, widget.temperatures),
-                        widget.temperatures,
-                        (value) => setState(() => _temperatureId = value),
-                      ),
-                    ]),
-                    SizedBox(height: 16.h),
-                    Container(
-                      padding: EdgeInsets.all(16.r),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12.r),
-                        border: Border.all(color: const Color(0xFFDCE3ED)),
-                      ),
-                      child: Column(
+                child: widget.isProjectOnly
+                    ? Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          _projectDropdown(
+                            'Project Name',
+                            _projectId,
+                            widget.projects,
+                            (value) => setState(() => _projectId = value),
+                          ),
+                          SizedBox(height: 16.h),
                           Text(
-                            'Follow-up reminder',
+                            '${widget.leads.length} selected lead${widget.leads.length == 1 ? '' : 's'} will be linked to this project.',
                             style: GoogleFonts.inter(
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.navy,
+                              fontSize: 13.sp,
+                              color: const Color(0xFF64748B),
                             ),
                           ),
-                          SizedBox(height: 12.h),
-                          _responsiveFields([
-                            _pickerField(
-                              'Follow-up date',
-                              _followUpDate == null
-                                  ? 'dd/mm/yyyy'
-                                  : '${_followUpDate!.day.toString().padLeft(2, '0')}/${_followUpDate!.month.toString().padLeft(2, '0')}/${_followUpDate!.year}',
-                              Icons.calendar_today_outlined,
-                              _pickDate,
+                          if (_error != null) ...[
+                            SizedBox(height: 12.h),
+                            Text(
+                              _error!,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.error,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
-                            _pickerField(
-                              'Follow-up time',
-                              _followUpTime?.format(context) ?? 'Select time',
-                              Icons.schedule_rounded,
-                              _pickTime,
+                          ],
+                        ],
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _responsiveFields([
+                            _optionField(
+                              'Status',
+                              _validOption(_statusId, widget.statuses),
+                              widget.statuses,
+                              (value) => setState(() => _statusId = value),
+                            ),
+                            _optionField(
+                              'Type',
+                              _validOption(_temperatureId, widget.temperatures),
+                              widget.temperatures,
+                              (value) => setState(() => _temperatureId = value),
                             ),
                           ]),
+                          SizedBox(height: 16.h),
+                          Container(
+                            padding: EdgeInsets.all(16.r),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12.r),
+                              border: Border.all(color: const Color(0xFFDCE3ED)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Follow-up reminder',
+                                  style: GoogleFonts.inter(
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.navy,
+                                  ),
+                                ),
+                                SizedBox(height: 12.h),
+                                _responsiveFields([
+                                  _pickerField(
+                                    'Follow-up date',
+                                    _followUpDate == null
+                                        ? 'dd/mm/yyyy'
+                                        : '${_followUpDate!.day.toString().padLeft(2, '0')}/${_followUpDate!.month.toString().padLeft(2, '0')}/${_followUpDate!.year}',
+                                    Icons.calendar_today_outlined,
+                                    _pickDate,
+                                  ),
+                                  _pickerField(
+                                    'Follow-up time',
+                                    _followUpTime?.format(context) ?? 'Select time',
+                                    Icons.schedule_rounded,
+                                    _pickTime,
+                                  ),
+                                ]),
+                              ],
+                            ),
+                          ),
+                          SizedBox(height: 16.h),
+                          _responsiveFields([
+                            _stringDropdown('Budget', _budget, _budgets, (value) {
+                              setState(() => _budget = value);
+                            }),
+                            _stringDropdown(
+                              'Location',
+                              _location,
+                              widget.locations
+                                  .where((loc) => loc.trim().isNotEmpty)
+                                  .toSet()
+                                  .toList()
+                                ..sort(),
+                              (value) => setState(() => _location = value),
+                            ),
+                          ]),
+                          SizedBox(height: 16.h),
+                          _responsiveFields([
+                            _stringDropdown(
+                              'Configuration',
+                              _configuration,
+                              _configurations,
+                              (value) => setState(() => _configuration = value),
+                            ),
+                            _projectDropdown(
+                              'Project Name',
+                              _projectId,
+                              widget.projects,
+                              (value) => setState(() => _projectId = value),
+                            ),
+                          ]),
+                          SizedBox(height: 16.h),
+                          _textField('Remark', _remarkController, maxLines: 3),
+                          if (_error != null) ...[
+                            SizedBox(height: 12.h),
+                            Text(
+                              _error!,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.error,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
                         ],
                       ),
-                    ),
-                    SizedBox(height: 16.h),
-                    _responsiveFields([
-                      _stringDropdown('Budget', _budget, _budgets, (value) {
-                        setState(() => _budget = value);
-                      }),
-                      _stringDropdown(
-                        'Configuration',
-                        _configuration,
-                        _configurations,
-                        (value) => setState(() => _configuration = value),
-                      ),
-                    ]),
-                    SizedBox(height: 16.h),
-                    _textField('Remark', _remarkController, maxLines: 3),
-                    if (_error != null) ...[
-                      SizedBox(height: 12.h),
-                      Text(
-                        _error!,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.error,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
               ),
             ),
             const Divider(height: 1),
@@ -3181,7 +3378,7 @@ class _LeadUpdateDialogState extends State<_LeadUpdateDialog> {
                               color: Colors.white,
                             ),
                           )
-                        : const Text('Update Lead'),
+                        : Text(widget.isProjectOnly ? 'Update Project' : 'Update Lead'),
                   ),
                 ],
               ),
@@ -3285,6 +3482,59 @@ class _LeadUpdateDialogState extends State<_LeadUpdateDialog> {
               (item) => DropdownMenuItem(
                 value: item,
                 child: Text(item, overflow: TextOverflow.ellipsis),
+              ),
+            )
+            .toList(),
+        onChanged: onChanged,
+      ),
+    );
+  }
+
+  Widget _projectDropdown(
+    String label,
+    String? value,
+    List<ProjectModel> projects,
+    ValueChanged<String?> onChanged,
+  ) {
+    final hasProject = projects.any((p) => p.id == value);
+    final itemsList = projects.toList();
+    if (value != null && !hasProject) {
+      final leadWithProj = widget.leads.firstWhere(
+        (lead) => (lead.raw?['preferredProjectId'] == value || lead.raw?['projectId'] == value),
+        orElse: () => widget.leads.first,
+      );
+      final projectName = leadWithProj.project ?? 'Selected Project';
+      itemsList.add(ProjectModel(
+        id: value,
+        name: projectName,
+        location: '',
+        status: '',
+        developer: '',
+        imageUrl: '',
+        priceRange: '',
+        totalUnits: 0,
+        availableUnits: 0,
+        activeLeads: 0,
+        visits: 0,
+        brochureUrl: null,
+        brochureFileName: null,
+        configurations: const [],
+        raw: const {},
+      ));
+    }
+
+    return _fieldLabel(
+      label,
+      DropdownButtonFormField<String>(
+        initialValue: value,
+        isExpanded: true,
+        hint: Text('Select $label'),
+        decoration: _decoration,
+        items: itemsList
+            .map(
+              (project) => DropdownMenuItem(
+                value: project.id,
+                child: Text(project.name, overflow: TextOverflow.ellipsis),
               ),
             )
             .toList(),
@@ -4004,6 +4254,222 @@ class _RemarkHistoryCard extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SearchablePickerSheet extends StatefulWidget {
+  const _SearchablePickerSheet({
+    required this.title,
+    required this.selected,
+    required this.allLabel,
+    required this.options,
+    required this.onChanged,
+  });
+
+  final String title;
+  final String? selected;
+  final String allLabel;
+  final List<String> options;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  State<_SearchablePickerSheet> createState() => _SearchablePickerSheetState();
+}
+
+class _SearchablePickerSheetState extends State<_SearchablePickerSheet> {
+  final TextEditingController _queryController = TextEditingController();
+  List<String> _filtered = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _filtered = widget.options;
+    _queryController.addListener(_onSearchChanged);
+  }
+
+  @override
+  void dispose() {
+    _queryController.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged() {
+    final query = _queryController.text.trim().toLowerCase();
+    setState(() {
+      if (query.isEmpty) {
+        _filtered = widget.options;
+      } else {
+        _filtered = widget.options
+            .where((opt) => opt.toLowerCase().contains(query))
+            .toList();
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(20.r),
+          topRight: Radius.circular(20.r),
+        ),
+      ),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.75,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 40.w,
+            height: 4.h,
+            margin: EdgeInsets.symmetric(vertical: 12.h),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE2E8F0),
+              borderRadius: BorderRadius.circular(2.r),
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 18.w),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Filter by ${widget.title}',
+                  style: GoogleFonts.inter(
+                    fontSize: 16.sp,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF0F172A),
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close_rounded),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+            child: TextField(
+              controller: _queryController,
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: 'Search ${widget.title}...',
+                hintStyle: GoogleFonts.inter(
+                  fontSize: 13.sp,
+                  color: const Color(0xFF94A3B8),
+                ),
+                prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF64748B)),
+                suffixIcon: _queryController.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear_rounded, color: Color(0xFF64748B)),
+                        onPressed: () => _queryController.clear(),
+                      )
+                    : null,
+                filled: true,
+                fillColor: const Color(0xFFF8FAFC),
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 14.w,
+                  vertical: 12.h,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10.r),
+                  borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10.r),
+                  borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10.r),
+                  borderSide: const BorderSide(color: Color(0xFFFF641A)),
+                ),
+              ),
+            ),
+          ),
+          Divider(height: 1.h, color: const Color(0xFFE2E8F0)),
+          Flexible(
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                ListTile(
+                  title: Text(
+                    widget.allLabel,
+                    style: GoogleFonts.inter(
+                      fontSize: 14.sp,
+                      fontWeight: widget.selected == null
+                          ? FontWeight.w700
+                          : FontWeight.w500,
+                      color: widget.selected == null
+                          ? const Color(0xFFFF641A)
+                          : const Color(0xFF334155),
+                    ),
+                  ),
+                  trailing: widget.selected == null
+                      ? Icon(
+                          Icons.check_rounded,
+                          color: const Color(0xFFFF641A),
+                          size: 20.sp,
+                        )
+                      : null,
+                  onTap: () {
+                    widget.onChanged(null);
+                    Navigator.pop(context);
+                  },
+                ),
+                const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                if (_filtered.isEmpty)
+                  Padding(
+                    padding: EdgeInsets.symmetric(vertical: 40.h),
+                    child: Center(
+                      child: Text(
+                        'No matching options',
+                        style: GoogleFonts.inter(
+                          fontSize: 13.5.sp,
+                          color: const Color(0xFF64748B),
+                        ),
+                      ),
+                    ),
+                  )
+                else
+                  ..._filtered.map((item) {
+                    final isSel = widget.selected == item;
+                    return ListTile(
+                      title: Text(
+                        item,
+                        style: GoogleFonts.inter(
+                          fontSize: 14.sp,
+                          fontWeight: isSel ? FontWeight.w700 : FontWeight.w500,
+                          color: isSel
+                              ? const Color(0xFFFF641A)
+                              : const Color(0xFF334155),
+                        ),
+                      ),
+                      trailing: isSel
+                          ? Icon(
+                              Icons.check_rounded,
+                              color: const Color(0xFFFF641A),
+                              size: 20.sp,
+                            )
+                          : null,
+                      onTap: () {
+                        widget.onChanged(item);
+                        Navigator.pop(context);
+                      },
+                    );
+                  }),
+              ],
+            ),
           ),
         ],
       ),

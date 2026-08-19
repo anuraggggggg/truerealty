@@ -73,10 +73,6 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
     final highlights = _shareList(
       raw['highlights'] ?? raw['projectHighlights'],
     );
-    final images = <String>{
-      if (project.imageUrl.trim().isNotEmpty) project.imageUrl.trim(),
-      ..._shareUrls(raw['imageGallery'] ?? raw['images']),
-    };
     final possession = _shareText(raw, const [
       'possession',
       'possessionDate',
@@ -93,39 +89,91 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
         ? rawPrice
         : '$rawPrice onwards';
 
-    final buffer = StringBuffer()
-      ..writeln('Greetings from Truroot Realty')
-      ..writeln()
-      ..writeln(project.name)
-      ..writeln()
-      ..writeln('Configurations')
-      ..writeln(configurations.isEmpty ? '-' : configurations.join(', '))
-      ..writeln()
-      ..writeln('Price')
-      ..writeln(rawPrice.isEmpty ? '-' : price)
-      ..writeln()
-      ..writeln('Possession')
-      ..writeln(possession.isEmpty ? '-' : possession)
-      ..writeln()
-      ..writeln('Amenities')
-      ..writeln(
-        amenities.isEmpty ? '-' : amenities.map((e) => '- $e').join('\n'),
-      )
-      ..writeln()
-      ..writeln('Highlights')
-      ..writeln(
-        highlights.isEmpty ? '-' : highlights.map((e) => '- $e').join('\n'),
-      )
-      ..writeln()
-      ..writeln('Project Location')
-      ..writeln(project.location.isEmpty ? '-' : project.location)
-      ..writeln()
-      ..writeln('Project Images')
-      ..writeln(images.isEmpty ? '-' : images.join('\n'))
-      ..writeln()
-      ..writeln('Thanks and Regards')
-      ..write(senderName);
-    await Share.share(buffer.toString(), subject: project.name);
+    String generateText({
+      required bool includeImages,
+      required bool includePdf,
+      required bool includeVideo,
+    }) {
+      final buffer = StringBuffer()
+        ..writeln(project.name)
+        ..writeln()
+        ..writeln('Configurations')
+        ..writeln(configurations.isEmpty ? '-' : configurations.join(', '))
+        ..writeln()
+        ..writeln('Price')
+        ..writeln(rawPrice.isEmpty ? '-' : price)
+        ..writeln()
+        ..writeln('Possession')
+        ..writeln(possession.isEmpty ? '-' : possession)
+        ..writeln()
+        ..writeln('Amenities')
+        ..writeln(
+          amenities.isEmpty ? '-' : amenities.map((e) => '- $e').join('\n'),
+        )
+        ..writeln()
+        ..writeln('Highlights')
+        ..writeln(
+          highlights.isEmpty ? '-' : highlights.map((e) => '- $e').join('\n'),
+        )
+        ..writeln()
+        ..writeln('Project Location')
+        ..writeln(project.location.isEmpty ? '-' : project.location);
+
+      if (includeImages) {
+        final images = <String>{
+          if (project.imageUrl.trim().isNotEmpty) project.imageUrl.trim(),
+          ..._shareUrls(raw['imageGallery'] ?? raw['images']),
+        };
+        if (images.isNotEmpty) {
+          buffer
+            ..writeln()
+            ..writeln('Project Images')
+            ..writeln(images.join('\n'));
+        }
+      }
+
+      if (includePdf && project.hasBrochure) {
+        buffer
+          ..writeln()
+          ..writeln('Project Brochure')
+          ..writeln(project.brochureUrl);
+      }
+
+      final videoUrl = _shareText(raw, const ['videoUrl', 'video', 'videoLink', 'youtubeUrl', 'youtube']);
+      if (includeVideo && videoUrl.isNotEmpty) {
+        buffer
+          ..writeln()
+          ..writeln('Project Video')
+          ..writeln(videoUrl);
+      }
+
+      buffer
+        ..writeln()
+        ..writeln('Thanks and Regards')
+        ..write(senderName);
+
+      return buffer.toString();
+    }
+
+    if (!mounted) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: _ProjectShareSheet(
+          project: project,
+          generateText: generateText,
+          onShare: (text) async {
+            await Share.share(text, subject: project.name);
+          },
+        ),
+      ),
+    );
   }
 
   String _shareText(
@@ -1754,6 +1802,246 @@ class _MessageState extends StatelessWidget {
             OutlinedButton(onPressed: onRetry, child: const Text('Retry')),
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _ProjectShareSheet extends StatefulWidget {
+  const _ProjectShareSheet({
+    required this.project,
+    required this.onShare,
+    required this.generateText,
+  });
+
+  final ProjectModel project;
+  final ValueChanged<String> onShare;
+  final String Function({
+    required bool includeImages,
+    required bool includePdf,
+    required bool includeVideo,
+  }) generateText;
+
+  @override
+  State<_ProjectShareSheet> createState() => _ProjectShareSheetState();
+}
+
+class _ProjectShareSheetState extends State<_ProjectShareSheet> {
+  late final TextEditingController _controller;
+  bool _includeImages = true;
+  late bool _includePdf;
+  late bool _includeVideo;
+
+  @override
+  void initState() {
+    super.initState();
+    _includePdf = widget.project.hasBrochure;
+    final raw = widget.project.raw;
+    final videoUrl = _shareText(raw, const ['videoUrl', 'video', 'videoLink', 'youtubeUrl', 'youtube']);
+    _includeVideo = videoUrl.isNotEmpty;
+    
+    _controller = TextEditingController(
+      text: widget.generateText(
+        includeImages: _includeImages,
+        includePdf: _includePdf,
+        includeVideo: _includeVideo,
+      ),
+    );
+  }
+
+  String _shareText(Map<String, dynamic> source, List<String> keys) {
+    for (final key in keys) {
+      final value = source[key];
+      if (value == null) continue;
+      final text = value.toString().trim();
+      if (text.isNotEmpty && text.toLowerCase() != 'null') return text;
+    }
+    return '';
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _updateText() {
+    setState(() {
+      _controller.text = widget.generateText(
+        includeImages: _includeImages,
+        includePdf: _includePdf,
+        includeVideo: _includeVideo,
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasVideo = _shareText(widget.project.raw, const ['videoUrl', 'video', 'videoLink', 'youtubeUrl', 'youtube']).isNotEmpty;
+
+    return Container(
+      padding: EdgeInsets.fromLTRB(16.w, 16.h, 16.w, 32.h),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20.r)),
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Align(
+              alignment: Alignment.center,
+              child: Container(
+                width: 38.w,
+                height: 4.h,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFCBD5E1),
+                  borderRadius: BorderRadius.circular(10.r),
+                ),
+              ),
+            ),
+            SizedBox(height: 16.h),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Share Project Details',
+                  style: GoogleFonts.inter(
+                    fontSize: 18.sp,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.navy,
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close_rounded),
+                ),
+              ],
+            ),
+            const Divider(),
+            SizedBox(height: 12.h),
+            Text(
+              'Select elements to include:',
+              style: GoogleFonts.inter(
+                fontSize: 12.5.sp,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF475569),
+              ),
+            ),
+            SizedBox(height: 8.h),
+            Wrap(
+              spacing: 12.w,
+              runSpacing: 8.h,
+              children: [
+                FilterChip(
+                  label: const Text('Images'),
+                  selected: _includeImages,
+                  onSelected: (val) {
+                    setState(() => _includeImages = val);
+                    _updateText();
+                  },
+                  selectedColor: AppColors.orangeSoft,
+                  checkmarkColor: AppColors.orangeStrong,
+                  labelStyle: GoogleFonts.inter(
+                    fontSize: 12.sp,
+                    fontWeight: FontWeight.w600,
+                    color: _includeImages ? AppColors.orangeStrong : const Color(0xFF475569),
+                  ),
+                ),
+                FilterChip(
+                  label: const Text('PDF Brochure'),
+                  selected: _includePdf,
+                  onSelected: widget.project.hasBrochure
+                      ? (val) {
+                          setState(() => _includePdf = val);
+                          _updateText();
+                        }
+                      : null,
+                  selectedColor: AppColors.orangeSoft,
+                  checkmarkColor: AppColors.orangeStrong,
+                  labelStyle: GoogleFonts.inter(
+                    fontSize: 12.sp,
+                    fontWeight: FontWeight.w600,
+                    color: _includePdf ? AppColors.orangeStrong : const Color(0xFF475569),
+                  ),
+                ),
+                FilterChip(
+                  label: const Text('Video'),
+                  selected: _includeVideo,
+                  onSelected: hasVideo
+                      ? (val) {
+                          setState(() => _includeVideo = val);
+                          _updateText();
+                        }
+                      : null,
+                  selectedColor: AppColors.orangeSoft,
+                  checkmarkColor: AppColors.orangeStrong,
+                  labelStyle: GoogleFonts.inter(
+                    fontSize: 12.sp,
+                    fontWeight: FontWeight.w600,
+                    color: _includeVideo ? AppColors.orangeStrong : const Color(0xFF475569),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 16.h),
+            Text(
+              'Edit Message:',
+              style: GoogleFonts.inter(
+                fontSize: 12.5.sp,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF475569),
+              ),
+            ),
+            SizedBox(height: 8.h),
+            TextField(
+              controller: _controller,
+              maxLines: 8,
+              style: GoogleFonts.inter(
+                fontSize: 13.sp,
+                color: const Color(0xFF1E293B),
+              ),
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: const Color(0xFFF8FAFC),
+                contentPadding: EdgeInsets.all(12.r),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10.r),
+                  borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10.r),
+                  borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10.r),
+                  borderSide: const BorderSide(color: AppColors.orangeStrong),
+                ),
+              ),
+            ),
+            SizedBox(height: 20.h),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.pop(context);
+                  widget.onShare(_controller.text);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.orangeStrong,
+                  foregroundColor: Colors.white,
+                  minimumSize: Size.fromHeight(48.h),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10.r),
+                  ),
+                ),
+                icon: const Icon(Icons.share_rounded),
+                label: const Text('Share Now'),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
