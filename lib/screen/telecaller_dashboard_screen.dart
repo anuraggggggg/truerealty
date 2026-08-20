@@ -2970,8 +2970,26 @@ class _SlaActionCard extends StatelessWidget {
   }
 }
 
-class _DailyCallingTrendSection extends StatelessWidget {
+class _DailyCallingTrendSection extends StatefulWidget {
   const _DailyCallingTrendSection();
+
+  @override
+  State<_DailyCallingTrendSection> createState() => _DailyCallingTrendSectionState();
+}
+
+class _DailyCallingTrendSectionState extends State<_DailyCallingTrendSection> {
+  String _selectedMetric = 'Total calls';
+
+  static const List<String> _metrics = [
+    'Total calls',
+    'Connected calls',
+    'Not connected',
+    'Incoming calls',
+    'Outgoing calls',
+    'Total duration',
+    'Call/hour',
+    'Missed calls',
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -2982,7 +3000,60 @@ class _DailyCallingTrendSection extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Expanded(child: _SectionTitle('Daily Calling Trend')),
+              Expanded(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Calling Trend:',
+                      style: GoogleFonts.inter(
+                        fontSize: 15.sp,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.navy,
+                      ),
+                    ),
+                    SizedBox(width: 6.w),
+                    Flexible(
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: _selectedMetric,
+                          isDense: true,
+                          icon: Icon(
+                            Icons.keyboard_arrow_down_rounded,
+                            color: const Color(0xFFFF641A),
+                            size: 18.sp,
+                          ),
+                          style: GoogleFonts.inter(
+                            fontSize: 14.sp,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFFFF641A),
+                          ),
+                          items: _metrics.map((String value) {
+                            return DropdownMenuItem<String>(
+                              value: value,
+                              child: Text(
+                                value,
+                                style: GoogleFonts.inter(
+                                  fontSize: 13.5.sp,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.navy,
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                          onChanged: (newValue) {
+                            if (newValue != null) {
+                              setState(() {
+                                _selectedMetric = newValue;
+                              });
+                            }
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               Container(
                 padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 5.h),
                 decoration: BoxDecoration(
@@ -3001,7 +3072,10 @@ class _DailyCallingTrendSection extends StatelessWidget {
             ],
           ),
           SizedBox(height: 18.h),
-          SizedBox(height: 176.h, child: const _DailyCallingTrendChart()),
+          SizedBox(
+            height: 176.h,
+            child: _DailyCallingTrendChart(metric: _selectedMetric),
+          ),
         ],
       ),
     );
@@ -3009,9 +3083,22 @@ class _DailyCallingTrendSection extends StatelessWidget {
 }
 
 class _DailyCallingTrendChart extends StatelessWidget {
-  const _DailyCallingTrendChart();
+  const _DailyCallingTrendChart({required this.metric});
 
-  static const List<double> _bars = [1.2, 1.6, 3.4, 1.0, 0.8, 1.4, 2.0];
+  final String metric;
+
+  List<double> get _bars {
+    final hash = metric.hashCode;
+    return [
+      ((hash.abs() % 4) + 1) * 0.8,
+      (((hash.abs() >> 2) % 4) + 1) * 0.9,
+      (((hash.abs() >> 4) % 4) + 1) * 0.7,
+      (((hash.abs() >> 6) % 4) + 1) * 0.8,
+      (((hash.abs() >> 8) % 3) + 1) * 1.1,
+      (((hash.abs() >> 10) % 4) + 1) * 0.7,
+      (((hash.abs() >> 12) % 4) + 1) * 0.6,
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {

@@ -13,6 +13,7 @@ class ContactLeadProvider extends ApiProviderBase {
     int page = 1,
     int limit = 10,
     String? assignedToId,
+    String? status,
   }) {
     return runApiRequest(
       () => _repository.listContactLeads(
@@ -20,6 +21,7 @@ class ContactLeadProvider extends ApiProviderBase {
         page: page,
         limit: limit,
         assignedToId: assignedToId,
+        status: status,
       ),
     );
   }

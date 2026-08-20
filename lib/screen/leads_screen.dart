@@ -58,6 +58,7 @@ class _LeadListWidgetState extends State<LeadListWidget> {
   String? _area;
   String? _slaStatus;
   String? _dateRange;
+  String? _project;
   DateTime? _customDateFrom;
   DateTime? _customDateTo;
   List<String> _leadTypes = const ['Hot', 'Warm', 'Cold'];
@@ -78,13 +79,25 @@ class _LeadListWidgetState extends State<LeadListWidget> {
   ];
   List<String> _assignees = const [];
   List<String> _teams = const [];
-  List<String> _areas = const [];
+  List<String> _areas = const [
+    'Andheri (E), Mumbai',
+    'Andheri (W), Mumbai',
+    'Bandra, Mumbai',
+    'Goregaon (E), Mumbai',
+    'Malad, Mumbai',
+    'Mira Road East',
+    'Powai, Mumbai',
+    'Thane West, Mumbai',
+    'Kharghar, Navi Mumbai',
+    'Worli, Mumbai',
+  ];
   final List<String> _slaStatuses = const [
     'On Track',
     'Due Soon',
     'Overdue',
     'No SLA',
   ];
+  List<String> _projects = const [];
 
   static const double _sectionGap = 18;
   static const double _cardGap = 14;
@@ -125,6 +138,7 @@ class _LeadListWidgetState extends State<LeadListWidget> {
       status: _leadStatus ?? tabFilter.status,
       leadType: _leadType ?? tabFilter.leadType,
       configuration: _configuration,
+      project: _project,
       propertyType: _propertyType,
       assignedTo: _assignedTo,
       team: _team,
@@ -156,19 +170,40 @@ class _LeadListWidgetState extends State<LeadListWidget> {
     if (_loadingFilters) return;
     setState(() => _loadingFilters = true);
     try {
+      debugPrint('DEBUG PROJECTS: calling fetchProjects()...');
       final projectResponse = await context
           .read<ProjectProvider>()
           .fetchProjects();
       if (!mounted) return;
+      debugPrint('DEBUG PROJECTS: projectResponse isSuccess=${projectResponse?.isSuccess}, statusCode=${projectResponse?.statusCode}, message=${projectResponse?.message}');
       final fromProjects = _configurationLabelsFromProjects(
         projectResponse?.data,
       );
+      final projectList = context.read<ProjectProvider>().projects;
+      debugPrint('DEBUG PROJECTS: projectList length=${projectList.length}');
+      final projectNames = projectList
+          .map((p) => p.name)
+          .where((name) => name.isNotEmpty)
+          .toList();
+      final projectLocations = projectList
+          .map((p) => p.location)
+          .where((loc) => loc.isNotEmpty)
+          .toList();
+      debugPrint('DEBUG PROJECTS: projectNames length=${projectNames.length}, names=$projectNames');
       setState(() {
         _configurations = _mergeOptions(_configurations, fromProjects);
+        _projects = _mergeOptions(_projects, projectNames);
+        _areas = _mergeOptions(_areas, projectLocations);
         _loadingFilters = false;
       });
-    } catch (_) {
-      if (mounted) setState(() => _loadingFilters = false);
+    } catch (e, stack) {
+      debugPrint('DEBUG PROJECTS EXCEPTION: $e\n$stack');
+      if (mounted) {
+        setState(() => _loadingFilters = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load project filters: $e')),
+        );
+      }
     }
   }
 
@@ -179,6 +214,7 @@ class _LeadListWidgetState extends State<LeadListWidget> {
     final assignees = <String>{..._assignees};
     final teams = <String>{..._teams};
     final areas = <String>{..._areas};
+    final projectsList = <String>{..._projects};
     for (final lead in leads) {
       final type = lead.leadType?.trim() ?? '';
       if (type.isNotEmpty) types.add(type);
@@ -188,6 +224,8 @@ class _LeadListWidgetState extends State<LeadListWidget> {
       if (propertyType.isNotEmpty) propertyTypes.add(propertyType);
       final assigned = lead.assignedTo?.trim() ?? '';
       if (assigned.isNotEmpty) assignees.add(assigned);
+      final project = lead.project?.trim() ?? '';
+      if (project.isNotEmpty) projectsList.add(project);
       final raw = lead.raw ?? const <String, dynamic>{};
       final team = _firstFilterValue(raw, const [
         'teamName',
@@ -195,11 +233,15 @@ class _LeadListWidgetState extends State<LeadListWidget> {
         'assignedTeamName',
       ]);
       if (team.isNotEmpty) teams.add(team);
+      final directLoc = lead.location?.trim() ?? '';
+      if (directLoc.isNotEmpty) areas.add(directLoc);
       final area = _firstFilterValue(raw, const [
         'areaName',
         'area',
         'projectArea',
         'preferredLocation',
+        'location',
+        'city',
       ]);
       if (area.isNotEmpty) areas.add(area);
     }
@@ -209,12 +251,14 @@ class _LeadListWidgetState extends State<LeadListWidget> {
     final nextAssignees = assignees.toList()..sort();
     final nextTeams = teams.toList()..sort();
     final nextAreas = areas.toList()..sort();
+    final nextProjects = projectsList.toList()..sort();
     if (!_listEquals(nextTypes, _leadTypes) ||
         !_listEquals(nextConfigs, _configurations) ||
         !_listEquals(nextPropertyTypes, _propertyTypes) ||
         !_listEquals(nextAssignees, _assignees) ||
         !_listEquals(nextTeams, _teams) ||
-        !_listEquals(nextAreas, _areas)) {
+        !_listEquals(nextAreas, _areas) ||
+        !_listEquals(nextProjects, _projects)) {
       setState(() {
         _leadTypes = nextTypes;
         _configurations = nextConfigs;
@@ -222,6 +266,7 @@ class _LeadListWidgetState extends State<LeadListWidget> {
         _assignees = nextAssignees;
         _teams = nextTeams;
         _areas = nextAreas;
+        _projects = nextProjects;
       });
     }
   }
@@ -802,6 +847,7 @@ class _LeadListWidgetState extends State<LeadListWidget> {
       _leadType,
       _propertyType,
       _configuration,
+      _project,
       _assignedTo,
       _team,
       _area,
@@ -901,6 +947,13 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                       _configurations,
                       width,
                       (v) => setState(() => _configuration = v),
+                    ),
+                    _filterDropdown(
+                      'Project Name',
+                      _project,
+                      _projects,
+                      width,
+                      (v) => setState(() => _project = v),
                     ),
                     _filterDropdown(
                       'Assigned To',
@@ -1133,6 +1186,7 @@ class _LeadListWidgetState extends State<LeadListWidget> {
       _leadType = null;
       _propertyType = null;
       _configuration = null;
+      _project = null;
       _assignedTo = null;
       _team = null;
       _area = null;
@@ -1427,7 +1481,7 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                     child: SizedBox(
                       height: 40.h,
                       child: OutlinedButton.icon(
-                        onPressed: () => _callLead(lead.phone),
+                        onPressed: () => _callLead(lead),
                         icon: Icon(Icons.phone_rounded, size: 17.sp),
                         label: Text(
                           'Call',
@@ -1529,6 +1583,14 @@ class _LeadListWidgetState extends State<LeadListWidget> {
         'lead_temperature',
         'lead-temperature',
       ]),
+      _loadUpdateOptions(const [
+        'location',
+        'lead_location',
+        'lead-location',
+        'area',
+        'preferred_location',
+        'preferred-location',
+      ]),
     ]);
     if (!mounted) return;
 
@@ -1539,6 +1601,17 @@ class _LeadListWidgetState extends State<LeadListWidget> {
       projects = context.read<ProjectProvider>().projects;
     }
 
+    final apiLocations = optionGroups.length > 2
+        ? optionGroups[2].map((opt) => opt.label).toList()
+        : <String>[];
+    final allLocations = _mergeOptions(
+      _areas,
+      [
+        ...apiLocations,
+        ...projects.map((p) => p.location),
+      ],
+    );
+
     final updated = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -1546,7 +1619,7 @@ class _LeadListWidgetState extends State<LeadListWidget> {
         leads: leads,
         statuses: optionGroups[0],
         temperatures: optionGroups[1],
-        locations: _areas,
+        locations: allLocations,
         projects: projects,
         isProjectOnly: isProjectOnly,
       ),
@@ -1560,7 +1633,8 @@ class _LeadListWidgetState extends State<LeadListWidget> {
     }
   }
 
-  Future<void> _callLead(String phone) async {
+  Future<void> _callLead(LeadModel lead) async {
+    final phone = lead.phone;
     final cleaned = phone.replaceAll(RegExp(r'\s+'), '');
     if (cleaned.isEmpty || cleaned == '-') return;
     final uri = Uri(scheme: 'tel', path: cleaned);
@@ -1571,6 +1645,9 @@ class _LeadListWidgetState extends State<LeadListWidget> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Unable to open the phone dialer.')),
       );
+    }
+    if (mounted) {
+      await _showLeadUpdateSheet([lead]);
     }
   }
 
@@ -1824,7 +1901,7 @@ class _LeadListWidgetState extends State<LeadListWidget> {
                           subtitle: 'Call this lead',
                           onTap: () {
                             Navigator.pop(sheetContext);
-                            _callLead(lead.phone);
+                            _callLead(lead);
                           },
                         ),
                         SizedBox(height: 10.h),
@@ -3178,31 +3255,16 @@ class _LeadUpdateDialogState extends State<_LeadUpdateDialog> {
             Padding(
               padding: EdgeInsets.fromLTRB(22.w, 18.h, 12.w, 14.h),
               child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.isProjectOnly ? 'Update Project' : 'Update reminder, status & remark',
-                          style: GoogleFonts.inter(
-                            fontSize: 19.sp,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.navy,
-                          ),
-                        ),
-                        if (!widget.isProjectOnly) ...[
-                          SizedBox(height: 5.h),
-                          Text(
-                            'Update only the fields you fill. ${widget.leads.length} selected lead${widget.leads.length == 1 ? '' : 's'} will receive the updates.',
-                            style: GoogleFonts.inter(
-                              fontSize: 12.sp,
-                              color: const Color(0xFF64748B),
-                            ),
-                          ),
-                        ],
-                      ],
+                    child: Text(
+                      widget.isProjectOnly ? 'Update Project' : 'Update reminder, status & remark',
+                      style: GoogleFonts.inter(
+                        fontSize: 16.sp,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.navy,
+                      ),
                     ),
                   ),
                   IconButton(
@@ -3437,29 +3499,87 @@ class _LeadUpdateDialogState extends State<_LeadUpdateDialog> {
     ),
   );
 
+  Widget _searchableDropdownField({
+    required String label,
+    required String? selectedId,
+    required List<_UpdateOptionItem> items,
+    required ValueChanged<String?> onChanged,
+  }) {
+    final selectedItem = items.firstWhere(
+      (item) => item.id == selectedId,
+      orElse: () => _UpdateOptionItem(id: '', label: ''),
+    );
+    final displayText = selectedId != null && selectedItem.id.isNotEmpty
+        ? selectedItem.label
+        : 'Select $label';
+
+    return _fieldLabel(
+      label,
+      InkWell(
+        onTap: items.isEmpty
+            ? null
+            : () {
+                showModalBottomSheet<void>(
+                  context: context,
+                  isScrollControlled: true,
+                  backgroundColor: Colors.transparent,
+                  builder: (sheetContext) {
+                    return _SearchableUpdateOptionPickerSheet(
+                      title: label,
+                      selectedId: selectedId,
+                      options: items,
+                      onChanged: onChanged,
+                    );
+                  },
+                );
+              },
+        borderRadius: BorderRadius.circular(10.r),
+        child: InputDecorator(
+          decoration: _decoration,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  displayText,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.inter(
+                    fontSize: 13.5.sp,
+                    fontWeight: selectedId != null && selectedItem.id.isNotEmpty
+                        ? FontWeight.w500
+                        : FontWeight.w400,
+                    color: selectedId != null && selectedItem.id.isNotEmpty
+                        ? const Color(0xFF0F172A)
+                        : const Color(0xFF94A3B8),
+                  ),
+                ),
+              ),
+              Icon(
+                Icons.keyboard_arrow_down_rounded,
+                size: 20.sp,
+                color: const Color(0xFF667085),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _optionField(
     String label,
     String? value,
     List<_LeadUpdateOption> options,
     ValueChanged<String?> onChanged,
   ) {
-    return _fieldLabel(
-      label,
-      DropdownButtonFormField<String>(
-        initialValue: value,
-        isExpanded: true,
-        hint: Text(options.isEmpty ? 'No options available' : 'Select $label'),
-        decoration: _decoration,
-        items: options
-            .map(
-              (option) => DropdownMenuItem(
-                value: option.id,
-                child: Text(option.label, overflow: TextOverflow.ellipsis),
-              ),
-            )
-            .toList(),
-        onChanged: options.isEmpty ? null : onChanged,
-      ),
+    final items = options
+        .map((opt) => _UpdateOptionItem(id: opt.id, label: opt.label))
+        .toList();
+    return _searchableDropdownField(
+      label: label,
+      selectedId: value,
+      items: items,
+      onChanged: onChanged,
     );
   }
 
@@ -3469,24 +3589,16 @@ class _LeadUpdateDialogState extends State<_LeadUpdateDialog> {
     List<String> options,
     ValueChanged<String?> onChanged,
   ) {
-    final values = <String>{...options, ?value}.toList();
-    return _fieldLabel(
-      label,
-      DropdownButtonFormField<String>(
-        initialValue: value,
-        isExpanded: true,
-        hint: Text('Select $label'),
-        decoration: _decoration,
-        items: values
-            .map(
-              (item) => DropdownMenuItem(
-                value: item,
-                child: Text(item, overflow: TextOverflow.ellipsis),
-              ),
-            )
-            .toList(),
-        onChanged: onChanged,
-      ),
+    final valuesSet = <String>{...options, ?value};
+    final items = valuesSet
+        .where((str) => str.trim().isNotEmpty)
+        .map((str) => _UpdateOptionItem(id: str, label: str))
+        .toList();
+    return _searchableDropdownField(
+      label: label,
+      selectedId: value,
+      items: items,
+      onChanged: onChanged,
     );
   }
 
@@ -3523,23 +3635,15 @@ class _LeadUpdateDialogState extends State<_LeadUpdateDialog> {
       ));
     }
 
-    return _fieldLabel(
-      label,
-      DropdownButtonFormField<String>(
-        initialValue: value,
-        isExpanded: true,
-        hint: Text('Select $label'),
-        decoration: _decoration,
-        items: itemsList
-            .map(
-              (project) => DropdownMenuItem(
-                value: project.id,
-                child: Text(project.name, overflow: TextOverflow.ellipsis),
-              ),
-            )
-            .toList(),
-        onChanged: onChanged,
-      ),
+    final items = itemsList
+        .map((proj) => _UpdateOptionItem(id: proj.id, label: proj.name))
+        .toList();
+
+    return _searchableDropdownField(
+      label: label,
+      selectedId: value,
+      items: items,
+      onChanged: onChanged,
     );
   }
 
@@ -3573,6 +3677,199 @@ class _LeadUpdateDialogState extends State<_LeadUpdateDialog> {
           decoration: _decoration.copyWith(prefixIcon: Icon(icon, size: 19.sp)),
           child: Text(value, maxLines: 1, overflow: TextOverflow.ellipsis),
         ),
+      ),
+    );
+  }
+}
+
+class _UpdateOptionItem {
+  const _UpdateOptionItem({required this.id, required this.label});
+  final String id;
+  final String label;
+}
+
+class _SearchableUpdateOptionPickerSheet extends StatefulWidget {
+  const _SearchableUpdateOptionPickerSheet({
+    required this.title,
+    required this.selectedId,
+    required this.options,
+    required this.onChanged,
+  });
+
+  final String title;
+  final String? selectedId;
+  final List<_UpdateOptionItem> options;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  State<_SearchableUpdateOptionPickerSheet> createState() =>
+      _SearchableUpdateOptionPickerSheetState();
+}
+
+class _SearchableUpdateOptionPickerSheetState
+    extends State<_SearchableUpdateOptionPickerSheet> {
+  final TextEditingController _queryController = TextEditingController();
+  List<_UpdateOptionItem> _filtered = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _filtered = widget.options;
+    _queryController.addListener(_onSearchChanged);
+  }
+
+  @override
+  void dispose() {
+    _queryController.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged() {
+    final query = _queryController.text.trim().toLowerCase();
+    setState(() {
+      if (query.isEmpty) {
+        _filtered = widget.options;
+      } else {
+        _filtered = widget.options
+            .where((opt) => opt.label.toLowerCase().contains(query))
+            .toList();
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(20.r),
+          topRight: Radius.circular(20.r),
+        ),
+      ),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.75,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 40.w,
+            height: 4.h,
+            margin: EdgeInsets.symmetric(vertical: 12.h),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE2E8F0),
+              borderRadius: BorderRadius.circular(2.r),
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 18.w),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Select ${widget.title}',
+                  style: GoogleFonts.inter(
+                    fontSize: 16.sp,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF0F172A),
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close_rounded),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+            child: TextField(
+              controller: _queryController,
+              autofocus: true,
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: 'Search ${widget.title}...',
+                hintStyle: GoogleFonts.inter(
+                  fontSize: 13.sp,
+                  color: const Color(0xFF94A3B8),
+                ),
+                prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF64748B)),
+                suffixIcon: _queryController.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear_rounded, color: Color(0xFF64748B)),
+                        onPressed: () => _queryController.clear(),
+                      )
+                    : null,
+                filled: true,
+                fillColor: const Color(0xFFF8FAFC),
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 14.w,
+                  vertical: 12.h,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10.r),
+                  borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10.r),
+                  borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10.r),
+                  borderSide: const BorderSide(color: Color(0xFFFF641A)),
+                ),
+              ),
+            ),
+          ),
+          Divider(height: 1.h, color: const Color(0xFFE2E8F0)),
+          Flexible(
+            child: _filtered.isEmpty
+                ? Padding(
+                    padding: EdgeInsets.all(24.r),
+                    child: Text(
+                      'No options found',
+                      style: GoogleFonts.inter(
+                        fontSize: 14.sp,
+                        color: const Color(0xFF64748B),
+                      ),
+                    ),
+                  )
+                : ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: _filtered.length,
+                    itemBuilder: (context, index) {
+                      final item = _filtered[index];
+                      final isSelected = widget.selectedId == item.id;
+
+                      return ListTile(
+                        title: Text(
+                          item.label,
+                          style: GoogleFonts.inter(
+                            fontSize: 14.sp,
+                            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                            color: isSelected ? const Color(0xFFFF641A) : const Color(0xFF334155),
+                          ),
+                        ),
+                        trailing: isSelected
+                            ? Icon(
+                                Icons.check_rounded,
+                                color: const Color(0xFFFF641A),
+                                size: 20.sp,
+                              )
+                            : null,
+                        onTap: () {
+                          widget.onChanged(item.id);
+                          Navigator.pop(context);
+                        },
+                      );
+                    },
+                  ),
+          ),
+        ],
       ),
     );
   }

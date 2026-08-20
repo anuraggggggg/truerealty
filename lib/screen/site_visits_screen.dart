@@ -1831,6 +1831,7 @@ class _CreateSiteVisitSheetState extends State<_CreateSiteVisitSheet> {
                               hint: 'Select lead',
                               value: _lead,
                               items: _leads,
+                              isSearchable: true,
                               onChanged: (value) =>
                                   setState(() => _lead = value),
                             ),
@@ -1840,6 +1841,7 @@ class _CreateSiteVisitSheetState extends State<_CreateSiteVisitSheet> {
                               hint: 'Select project',
                               value: _project,
                               items: _projects,
+                              isSearchable: true,
                               onChanged: _selectProject,
                             ),
                             SizedBox(height: 14.h),
@@ -1868,6 +1870,7 @@ class _CreateSiteVisitSheetState extends State<_CreateSiteVisitSheet> {
                               hint: 'Select field executive',
                               value: _executive,
                               items: _executives,
+                              isSearchable: true,
                               onChanged: (value) =>
                                   setState(() => _executive = value),
                             ),
@@ -2570,6 +2573,7 @@ class _VisitDropdown extends StatelessWidget {
     required this.items,
     required this.onChanged,
     this.required = true,
+    this.isSearchable = false,
   });
 
   final String label;
@@ -2578,9 +2582,82 @@ class _VisitDropdown extends StatelessWidget {
   final List<_VisitOption> items;
   final ValueChanged<_VisitOption?>? onChanged;
   final bool required;
+  final bool isSearchable;
 
   @override
   Widget build(BuildContext context) {
+    if (isSearchable && onChanged != null) {
+      return FormField<_VisitOption>(
+        initialValue: value,
+        validator: required
+            ? (selected) => selected == null ? 'Required' : null
+            : null,
+        builder: (state) {
+          final displayText = value == null
+              ? hint
+              : value!.subtitle.isEmpty
+                  ? value!.label
+                  : '${value!.label} • ${value!.subtitle}';
+          final hasError = state.hasError;
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              InkWell(
+                onTap: () {
+                  showModalBottomSheet<void>(
+                    context: context,
+                    isScrollControlled: true,
+                    backgroundColor: Colors.transparent,
+                    builder: (sheetContext) {
+                      return _SearchableVisitOptionPickerSheet(
+                        title: label.replaceAll('*', '').trim(),
+                        selected: value,
+                        options: items,
+                        onChanged: (selected) {
+                          onChanged!(selected);
+                          state.didChange(selected);
+                        },
+                      );
+                    },
+                  );
+                },
+                borderRadius: BorderRadius.circular(10.r),
+                child: InputDecorator(
+                  decoration: _visitInputDecoration(label).copyWith(
+                    errorText: hasError ? state.errorText : null,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          displayText,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.inter(
+                            fontSize: 13.sp,
+                            fontWeight: value == null ? FontWeight.w400 : FontWeight.w500,
+                            color: value == null
+                                ? const Color(0xFF94A3B8)
+                                : const Color(0xFF0F172A),
+                          ),
+                        ),
+                      ),
+                      Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        size: 20.sp,
+                        color: const Color(0xFF667085),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      );
+    }
+
     return DropdownButtonFormField<_VisitOption>(
       initialValue: value,
       isExpanded: true,
@@ -2603,6 +2680,186 @@ class _VisitDropdown extends StatelessWidget {
       validator: required && onChanged != null
           ? (selected) => selected == null ? 'Required' : null
           : null,
+    );
+  }
+}
+
+class _SearchableVisitOptionPickerSheet extends StatefulWidget {
+  const _SearchableVisitOptionPickerSheet({
+    required this.title,
+    required this.selected,
+    required this.options,
+    required this.onChanged,
+  });
+
+  final String title;
+  final _VisitOption? selected;
+  final List<_VisitOption> options;
+  final ValueChanged<_VisitOption?> onChanged;
+
+  @override
+  State<_SearchableVisitOptionPickerSheet> createState() =>
+      _SearchableVisitOptionPickerSheetState();
+}
+
+class _SearchableVisitOptionPickerSheetState
+    extends State<_SearchableVisitOptionPickerSheet> {
+  final TextEditingController _queryController = TextEditingController();
+  List<_VisitOption> _filtered = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _filtered = widget.options;
+    _queryController.addListener(_onSearchChanged);
+  }
+
+  @override
+  void dispose() {
+    _queryController.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged() {
+    final query = _queryController.text.trim().toLowerCase();
+    setState(() {
+      if (query.isEmpty) {
+        _filtered = widget.options;
+      } else {
+        _filtered = widget.options.where((opt) {
+          final labelMatches = opt.label.toLowerCase().contains(query);
+          final subtitleMatches = opt.subtitle.toLowerCase().contains(query);
+          return labelMatches || subtitleMatches;
+        }).toList();
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(20.r),
+          topRight: Radius.circular(20.r),
+        ),
+      ),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.75,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 40.w,
+            height: 4.h,
+            margin: EdgeInsets.symmetric(vertical: 12.h),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE2E8F0),
+              borderRadius: BorderRadius.circular(2.r),
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 18.w),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Select ${widget.title}',
+                  style: GoogleFonts.inter(
+                    fontSize: 16.sp,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF0F172A),
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close_rounded),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+            child: TextField(
+              controller: _queryController,
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: 'Search ${widget.title}...',
+                hintStyle: GoogleFonts.inter(
+                  fontSize: 13.sp,
+                  color: const Color(0xFF94A3B8),
+                ),
+                prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF64748B)),
+                suffixIcon: _queryController.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear_rounded, color: Color(0xFF64748B)),
+                        onPressed: () => _queryController.clear(),
+                      )
+                    : null,
+                filled: true,
+                fillColor: const Color(0xFFF8FAFC),
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 14.w,
+                  vertical: 12.h,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10.r),
+                  borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10.r),
+                  borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10.r),
+                  borderSide: const BorderSide(color: Color(0xFFFF641A)),
+                ),
+              ),
+            ),
+          ),
+          Divider(height: 1.h, color: const Color(0xFFE2E8F0)),
+          Flexible(
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: _filtered.length,
+              itemBuilder: (context, index) {
+                final item = _filtered[index];
+                final isSelected = widget.selected?.id == item.id;
+                final displayText = item.subtitle.isEmpty
+                    ? item.label
+                    : '${item.label} • ${item.subtitle}';
+
+                return ListTile(
+                  title: Text(
+                    displayText,
+                    style: GoogleFonts.inter(
+                      fontSize: 14.sp,
+                      fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                      color: isSelected ? const Color(0xFFFF641A) : const Color(0xFF334155),
+                    ),
+                  ),
+                  trailing: isSelected
+                      ? Icon(
+                          Icons.check_rounded,
+                          color: const Color(0xFFFF641A),
+                          size: 20.sp,
+                        )
+                      : null,
+                  onTap: () {
+                    widget.onChanged(item);
+                    Navigator.pop(context);
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

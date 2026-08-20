@@ -71,7 +71,8 @@ class LeadProvider extends ApiProviderBase {
     final needsLocalFilter =
         (leadType?.trim().isNotEmpty ?? false) ||
         (dateFrom?.trim().isNotEmpty ?? false) ||
-        (dateTo?.trim().isNotEmpty ?? false);
+        (dateTo?.trim().isNotEmpty ?? false) ||
+        (project?.trim().isNotEmpty ?? false);
     final requestLimit = needsLocalFilter ? 100 : limit;
 
     final response = await runApiRequest(
@@ -107,6 +108,7 @@ class LeadProvider extends ApiProviderBase {
       visibleLeads = _filterLeadsByDate(visibleLeads, dateFrom, dateTo);
       // configuration is filtered by the API, but keep a local safety net.
       visibleLeads = _filterLeadsByConfiguration(visibleLeads, configuration);
+      visibleLeads = _filterLeadsByProject(visibleLeads, project);
 
       if (needsLocalFilter) {
         final start = ((page - 1) * limit).clamp(0, visibleLeads.length);
@@ -179,6 +181,20 @@ class LeadProvider extends ApiProviderBase {
     if (selected.isEmpty) return apiLeads;
     return apiLeads
         .where((lead) => (lead.leadType ?? '').trim().toLowerCase() == selected)
+        .toList();
+  }
+
+  List<LeadModel> _filterLeadsByProject(
+    List<LeadModel> apiLeads,
+    String? project,
+  ) {
+    final selected = project?.trim().toLowerCase() ?? '';
+    if (selected.isEmpty) return apiLeads;
+    return apiLeads
+        .where(
+          (lead) =>
+              (lead.project ?? '').trim().toLowerCase() == selected,
+        )
         .toList();
   }
 

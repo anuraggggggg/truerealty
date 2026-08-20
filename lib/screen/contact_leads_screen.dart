@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:truerealtycrm/constant/colors_screen.dart';
@@ -8,6 +9,7 @@ import 'package:truerealtycrm/provider/auth_provider.dart';
 import 'package:truerealtycrm/provider/contact_lead_provider.dart';
 import 'package:truerealtycrm/provider/leads_provider.dart';
 import 'package:truerealtycrm/router/app_router.dart';
+import 'package:truerealtycrm/widget/app_loading.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class ContactLeadsScreen extends StatefulWidget {
@@ -18,7 +20,6 @@ class ContactLeadsScreen extends StatefulWidget {
 }
 
 class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
-  static const _bg = Color(0xFFF4F7FB);
   static const _border = Color(0xFFDCE5F0);
   final _search = TextEditingController();
   final Set<String> _selected = {};
@@ -33,6 +34,15 @@ class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
   bool _loggingOut = false;
   bool _requiresReauthentication = false;
   String? _error;
+  bool _selectionMode = false;
+  String _selectedTab = 'All';
+  static const List<String> _statusTabs = [
+    'All',
+    'Cold',
+    'Interested',
+    'Not Interested',
+    'Converted',
+  ];
 
   @override
   void initState() {
@@ -86,11 +96,22 @@ class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
       return;
     }
     final provider = context.read<ContactLeadProvider>();
+    String? apiStatus;
+    if (_selectedTab != 'All') {
+      apiStatus = switch (_selectedTab) {
+        'Cold' => 'COLD',
+        'Interested' => 'INTERESTED',
+        'Not Interested' => 'NOT_INTERESTED',
+        'Converted' => 'CONVERTED',
+        _ => _selectedTab.toUpperCase(),
+      };
+    }
     final response = await provider.fetchContactLeads(
       search: _search.text.trim(),
       page: nextPage,
       limit: _limit,
       assignedToId: assignedToId,
+      status: apiStatus,
     );
     if (!mounted) return;
     if (response == null) {
@@ -153,21 +174,23 @@ class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: AppColors.leadListBg,
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: _initialLoad,
           color: AppColors.orangeStrong,
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+            padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 28.h),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _header(),
-                const SizedBox(height: 16),
+                SizedBox(height: 16.h),
                 _toolbar(),
-                const SizedBox(height: 14),
+                SizedBox(height: 14.h),
+                _buildTabs(),
+                SizedBox(height: 14.h),
                 if (_error != null) _errorPanel(),
                 _table(),
               ],
@@ -183,22 +206,34 @@ class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
       children: [
         IconButton(
           onPressed: () => Navigator.maybePop(context),
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
+          icon: Icon(Icons.arrow_back_ios_new_rounded, size: 18.sp),
           style: IconButton.styleFrom(
             backgroundColor: Colors.white,
             foregroundColor: AppColors.navy,
             side: const BorderSide(color: _border),
+            padding: EdgeInsets.all(8.r),
           ),
         ),
-        const SizedBox(width: 10),
+        SizedBox(width: 10.w),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Contact Leads', style: _style(22, FontWeight.w800)),
+              Text(
+                'Contact Leads',
+                style: GoogleFonts.inter(
+                  fontSize: 22.sp,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.navy,
+                ),
+              ),
               Text(
                 'Manage incoming portal and campaign enquiries.',
-                style: _style(12, FontWeight.w500, const Color(0xFF64748B)),
+                style: GoogleFonts.inter(
+                  fontSize: 12.sp,
+                  fontWeight: FontWeight.w500,
+                  color: const Color(0xFF64748B),
+                ),
               ),
             ],
           ),
@@ -206,55 +241,118 @@ class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
         IconButton(
           tooltip: 'Refresh',
           onPressed: _loading ? null : _initialLoad,
-          icon: const Icon(Icons.refresh_rounded),
+          icon: Icon(Icons.refresh_rounded, size: 22.sp),
         ),
       ],
     );
   }
 
   Widget _toolbar() {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: _decoration(),
-      child: LayoutBuilder(
-        builder: (_, constraints) {
-          final narrow = constraints.maxWidth < 620;
-          final search = SizedBox(
-            width: narrow ? constraints.maxWidth : 360,
-            height: 43,
-            child: TextField(
-              controller: _search,
-              onChanged: _searchChanged,
-              decoration: InputDecoration(
-                hintText: 'Search name, number, project or source',
-                prefixIcon: const Icon(Icons.search_rounded),
-                suffixIcon: _search.text.isEmpty
-                    ? null
-                    : IconButton(
-                        onPressed: () {
-                          _search.clear();
-                          _load(page: 1);
-                        },
-                        icon: const Icon(Icons.close_rounded),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: SizedBox(
+                height: 48.h,
+                child: TextField(
+                  controller: _search,
+                  onChanged: _searchChanged,
+                  decoration: InputDecoration(
+                    hintText: 'Search name, number, project or source',
+                    prefixIcon: const Icon(Icons.search_rounded),
+                    suffixIcon: _search.text.isEmpty
+                        ? null
+                        : IconButton(
+                            onPressed: () {
+                              _search.clear();
+                              _load(page: 1);
+                            },
+                            icon: const Icon(Icons.close_rounded),
+                          ),
+                    filled: true,
+                    fillColor: Colors.white,
+                    contentPadding: EdgeInsets.symmetric(vertical: 13.h),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12.r),
+                      borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12.r),
+                      borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12.r),
+                      borderSide: BorderSide(
+                        color: AppColors.orangeStrong,
+                        width: 1.5,
                       ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(9),
-                  borderSide: const BorderSide(color: _border),
+                    ),
+                  ),
                 ),
               ),
             ),
-          );
-          final actions = Row(
-            mainAxisSize: MainAxisSize.min,
+            SizedBox(width: 10.w),
+            SizedBox(
+              width: 48.w,
+              height: 48.h,
+              child: OutlinedButton(
+                onPressed: () {
+                  setState(() {
+                    _selectionMode = !_selectionMode;
+                    if (!_selectionMode) _selected.clear();
+                  });
+                },
+                style: OutlinedButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  foregroundColor: _selectionMode
+                      ? AppColors.orangeStrong
+                      : AppColors.navy,
+                  backgroundColor: _selectionMode
+                      ? const Color(0xFFFFF4ED)
+                      : Colors.white,
+                  side: BorderSide(
+                    color: _selectionMode
+                        ? AppColors.orangeStrong
+                        : const Color(0xFFCBD5E1),
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12.r),
+                  ),
+                ),
+                child: Icon(
+                  _selectionMode
+                      ? Icons.close_rounded
+                      : Icons.checklist_rounded,
+                  size: 21.sp,
+                ),
+              ),
+            ),
+          ],
+        ),
+        if (_selectionMode) ...[
+          SizedBox(height: 10.h),
+          Row(
             children: [
               Text(
                 '${_selected.length} selected',
-                style: _style(12, FontWeight.w700),
+                style: GoogleFonts.inter(
+                  fontSize: 14.sp,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF1E293B),
+                ),
               ),
-              const SizedBox(width: 10),
+              SizedBox(width: 14.w),
               PopupMenuButton<_BulkAction>(
                 enabled: !_updating,
                 onSelected: _runBulkAction,
+                offset: const Offset(0, 42),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10.r),
+                  side: const BorderSide(color: Color(0xFFE2E8F0)),
+                ),
+                color: Colors.white,
                 itemBuilder: (_) => const [
                   PopupMenuItem(
                     value: _BulkAction.assign,
@@ -287,43 +385,39 @@ class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
                   ),
                 ],
                 child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 15,
-                    vertical: 10,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 16.w,
+                    vertical: 10.h,
                   ),
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    border: Border.all(color: _border),
-                    borderRadius: BorderRadius.circular(9),
+                    border: Border.all(color: const Color(0xFFCBD5E1)),
+                    borderRadius: BorderRadius.circular(12.r),
                   ),
                   child: Row(
                     children: [
                       Text(
                         _updating ? 'Updating...' : 'Update',
-                        style: _style(13, FontWeight.w700),
+                        style: GoogleFonts.inter(
+                          fontSize: 13.sp,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF334155),
+                        ),
                       ),
-                      const SizedBox(width: 7),
-                      const Icon(Icons.keyboard_arrow_down_rounded, size: 19),
+                      SizedBox(width: 7.w),
+                      Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        size: 19.sp,
+                        color: const Color(0xFF64748B),
+                      ),
                     ],
                   ),
                 ),
               ),
             ],
-          );
-          if (narrow) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [search, const SizedBox(height: 12), actions],
-            );
-          }
-          return Row(
-            children: [
-              Expanded(child: search),
-              actions,
-            ],
-          );
-        },
-      ),
+          ),
+        ],
+      ],
     );
   }
 
@@ -331,45 +425,86 @@ class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: _decoration(),
-          child: Row(
-            children: [
-              Checkbox(value: _allSelected, onChanged: _toggleAll),
-              Expanded(
-                child: Text(
-                  'Showing $_first to $_last of $_total contact leads',
-                  style: _style(11, FontWeight.w700),
+        if (_selectionMode) ...[
+          Container(
+            padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10.r),
+              border: Border.all(color: const Color(0xFFDCE5F0)),
+            ),
+            child: Row(
+              children: [
+                Checkbox(
+                  value: _allSelected,
+                  activeColor: AppColors.orangeStrong,
+                  onChanged: _toggleAll,
                 ),
-              ),
-              Text('Select all', style: _style(10, FontWeight.w600)),
-            ],
+                Expanded(
+                  child: Text(
+                    'Showing $_first to $_last of $_total contact leads',
+                    style: GoogleFonts.inter(
+                      fontSize: 11.5.sp,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.navy,
+                    ),
+                  ),
+                ),
+                Text(
+                  'Select all',
+                  style: GoogleFonts.inter(
+                    fontSize: 10.sp,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.navy,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-        if (_loading) ...[
-          const SizedBox(height: 8),
-          const LinearProgressIndicator(minHeight: 2),
+          SizedBox(height: 12.h),
         ],
-        const SizedBox(height: 12),
-        for (var i = 0; i < _items.length; i++) ...[
-          _contactCard(_items[i]),
-          if (i != _items.length - 1) const SizedBox(height: 12),
+        if (_loading && _items.isEmpty)
+          const AppListSkeleton(itemCount: 4, itemHeight: 180)
+        else ...[
+          if (_loading) ...[
+            SizedBox(height: 8.h),
+            const LinearProgressIndicator(minHeight: 2),
+          ],
+          SizedBox(height: 12.h),
+          for (var i = 0; i < _items.length; i++) ...[
+            _contactCard(_items[i]),
+            if (i != _items.length - 1) SizedBox(height: 12.h),
+          ],
         ],
         if (!_loading && _items.isEmpty)
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(28),
-            decoration: _decoration(),
+            padding: EdgeInsets.all(28.r),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10.r),
+              border: Border.all(color: const Color(0xFFDCE5F0)),
+            ),
             child: Center(
               child: Text(
                 'No contact leads found.',
-                style: _style(13, FontWeight.w600, const Color(0xFF64748B)),
+                style: GoogleFonts.inter(
+                  fontSize: 13.sp,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF64748B),
+                ),
               ),
             ),
           ),
-        const SizedBox(height: 10),
-        Container(decoration: _decoration(), child: _pagination()),
+        SizedBox(height: 10.h),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(10.r),
+            border: Border.all(color: const Color(0xFFDCE5F0)),
+          ),
+          child: _pagination(),
+        ),
       ],
     );
   }
@@ -382,16 +517,17 @@ class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
     final phone = _contactPhone(item);
     return Material(
       color: Colors.white,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(16.r),
       clipBehavior: Clip.antiAlias,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.fromLTRB(14, 13, 14, 12),
+        padding: EdgeInsets.fromLTRB(14.w, 13.h, 14.w, 12.h),
         decoration: BoxDecoration(
           color: selected ? const Color(0xFFFFF8F3) : Colors.white,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(16.r),
           border: Border.all(
-            color: selected ? AppColors.orangeStrong : const Color(0xFFD5DDE8),
+            color: selected ? AppColors.orangeStrong : const Color(0xFFDCE5F0),
+            width: selected ? 1.5 : 1,
           ),
           boxShadow: const [
             BoxShadow(
@@ -407,22 +543,28 @@ class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Checkbox(
-                  value: selected,
-                  activeColor: AppColors.orangeStrong,
-                  visualDensity: VisualDensity.compact,
-                  onChanged: (_) => _toggle(id),
-                ),
-                const SizedBox(width: 4),
+                if (_selectionMode) ...[
+                  Checkbox(
+                    value: selected,
+                    activeColor: AppColors.orangeStrong,
+                    visualDensity: VisualDensity.compact,
+                    onChanged: (_) => _toggle(id),
+                  ),
+                  SizedBox(width: 4.w),
+                ],
                 CircleAvatar(
-                  radius: 20,
+                  radius: 20.r,
                   backgroundColor: const Color(0xFF10213D),
                   child: Text(
                     _initials(name),
-                    style: _style(11.5, FontWeight.w800, Colors.white),
+                    style: GoogleFonts.inter(
+                      fontSize: 11.5.sp,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
-                const SizedBox(width: 10),
+                SizedBox(width: 10.w),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -431,28 +573,32 @@ class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
                         name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: _style(15, FontWeight.w700),
+                        style: GoogleFonts.inter(
+                          fontSize: 15.sp,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF0B1735),
+                        ),
                       ),
-                      const SizedBox(height: 3),
+                      SizedBox(height: 3.h),
                       Text(
                         'Added on ${_date(item['createdAt'])}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: _style(
-                          9.5,
-                          FontWeight.w500,
-                          const Color(0xFF667085),
+                        style: GoogleFonts.inter(
+                          fontSize: 9.5.sp,
+                          fontWeight: FontWeight.w500,
+                          color: const Color(0xFF667085),
                         ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(width: 6),
+                SizedBox(width: 6.w),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     _status(_value(item, 'status', fallback: 'COLD')),
-                    const SizedBox(height: 5),
+                    SizedBox(height: 5.h),
                     _badge(
                       _value(item, 'sourceName', fallback: 'Unknown'),
                       const Color(0xFF2563EB),
@@ -476,6 +622,10 @@ class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
                       child: Text('Mark interested'),
                     ),
                     PopupMenuItem(
+                      value: _RowAction.notInterested,
+                      child: Text('Mark not interested'),
+                    ),
+                    PopupMenuItem(
                       value: _RowAction.convert,
                       child: Text('Convert to lead'),
                     ),
@@ -487,7 +637,7 @@ class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 14),
+            SizedBox(height: 14.h),
             Row(
               children: [
                 Expanded(
@@ -500,26 +650,30 @@ class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
                     iconBackground: const Color(0xFFE8F8EE),
                   ),
                 ),
-                Container(width: 1, height: 48, color: const Color(0xFFE4E7EC)),
-                const SizedBox(width: 12),
+                Container(
+                  width: 1,
+                  height: 48.h,
+                  color: const Color(0xFFE4E7EC),
+                ),
+                SizedBox(width: 12.w),
                 Expanded(
                   child: _mobileDetail(
                     Icons.apartment_rounded,
+                    'Project Name',
                     _value(item, 'projectName', fallback: 'Not assigned'),
-                    _value(item, 'projectArea', fallback: '-'),
                     iconColor: const Color(0xFF1468D4),
                     iconBackground: const Color(0xFFEAF2FF),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 11),
+            SizedBox(height: 11.h),
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+              padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 10.h),
               decoration: BoxDecoration(
                 color: const Color(0xFFF3F4F6),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(10.r),
               ),
               child: Row(
                 children: [
@@ -534,10 +688,10 @@ class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
                   ),
                   Container(
                     width: 1,
-                    height: 48,
+                    height: 48.h,
                     color: const Color(0xFFE4E7EC),
                   ),
-                  const SizedBox(width: 12),
+                  SizedBox(width: 12.w),
                   Expanded(
                     child: _mobileDetail(
                       Icons.update_rounded,
@@ -550,27 +704,27 @@ class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: 11),
+            SizedBox(height: 11.h),
             InkWell(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(8.r),
               onTap: () => _showNoteDialog(item),
               child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
+                padding: EdgeInsets.symmetric(vertical: 4.h),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.notes_rounded,
-                      size: 17,
-                      color: Color(0xFF1454D8),
+                      size: 17.sp,
+                      color: const Color(0xFF1454D8),
                     ),
-                    const SizedBox(width: 7),
+                    SizedBox(width: 7.w),
                     Text(
                       'Note: ',
-                      style: _style(
-                        11,
-                        FontWeight.w700,
-                        const Color(0xFF475467),
+                      style: GoogleFonts.inter(
+                        fontSize: 11.sp,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF475467),
                       ),
                     ),
                     Expanded(
@@ -578,9 +732,10 @@ class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
                         note.isEmpty ? 'Add note' : note,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: _style(
-                          11,
-                          FontWeight.w600,
+                        style: GoogleFonts.inter(
+                          fontSize: 11.sp,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFF1E293B),
                         ).copyWith(decoration: TextDecoration.underline),
                       ),
                     ),
@@ -588,42 +743,49 @@ class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 10),
+            SizedBox(height: 10.h),
             Row(
               children: [
                 Expanded(
                   child: SizedBox(
-                    height: 40,
+                    height: 40.h,
                     child: OutlinedButton.icon(
                       onPressed: phone.isEmpty ? null : () => _call(phone),
-                      icon: const Icon(Icons.phone_rounded, size: 17),
-                      label: Text('Call', style: _style(11, FontWeight.w600)),
+                      icon: Icon(Icons.phone_rounded, size: 17.sp),
+                      label: Text(
+                        'Call',
+                        style: GoogleFonts.inter(
+                          fontSize: 11.sp,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: AppColors.orangeDeep,
                         side: const BorderSide(color: Color(0xFFE97842)),
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        padding: EdgeInsets.symmetric(horizontal: 8.w),
                         visualDensity: VisualDensity.compact,
                       ),
                     ),
                   ),
                 ),
-                const SizedBox(width: 10),
+                SizedBox(width: 10.w),
                 Expanded(
                   child: SizedBox(
-                    height: 40,
+                    height: 40.h,
                     child: OutlinedButton.icon(
-                      onPressed: phone.isEmpty
-                          ? null
-                          : () => _openWhatsApp(phone),
-                      icon: const Icon(Icons.chat_rounded, size: 17),
+                      onPressed: phone.isEmpty ? null : () => _openWhatsApp(phone),
+                      icon: Icon(Icons.chat_rounded, size: 17.sp),
                       label: Text(
                         'WhatsApp',
-                        style: _style(11, FontWeight.w600),
+                        style: GoogleFonts.inter(
+                          fontSize: 11.sp,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: const Color(0xFF168553),
                         side: const BorderSide(color: Color(0xFFB7E4C7)),
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        padding: EdgeInsets.symmetric(horizontal: 8.w),
                         visualDensity: VisualDensity.compact,
                       ),
                     ),
@@ -702,25 +864,42 @@ class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
-          width: 34,
-          height: 34,
-          decoration: BoxDecoration(
-            color: iconBackground,
-            borderRadius: BorderRadius.circular(8),
+          width: iconBackground == const Color(0xFFF1F5F9) ? 20.w : 34.w,
+          height: iconBackground == const Color(0xFFF1F5F9) ? 20.h : 34.h,
+          decoration: iconBackground == const Color(0xFFF1F5F9)
+              ? null
+              : BoxDecoration(
+                  color: iconBackground,
+                  borderRadius: BorderRadius.circular(8.r),
+                ),
+          child: Icon(
+            icon,
+            size: iconBackground == const Color(0xFFF1F5F9) ? 16.sp : 17.sp,
+            color: iconColor,
           ),
-          child: Icon(icon, size: 17, color: iconColor),
         ),
-        const SizedBox(width: 10),
+        SizedBox(width: 10.w),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 label,
-                style: _style(9, FontWeight.w800, const Color(0xFF64748B)),
+                style: GoogleFonts.inter(
+                  fontSize: 9.sp,
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF64748B),
+                ),
               ),
-              const SizedBox(height: 2),
-              Text(value, style: _style(11.5, FontWeight.w700)),
+              SizedBox(height: 2.h),
+              Text(
+                value,
+                style: GoogleFonts.inter(
+                  fontSize: 11.5.sp,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.navy,
+                ),
+              ),
             ],
           ),
         ),
@@ -729,37 +908,94 @@ class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
   }
 
   Widget _pagination() {
+    final pagination = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _pageArrow(
+          Icons.chevron_left,
+          onTap: _page <= 1 || _loading ? null : () => _load(page: _page - 1),
+        ),
+        SizedBox(width: 8.w),
+        _pageChip(_page.toString(), isSelected: true),
+        SizedBox(width: 8.w),
+        Text(
+          '...',
+          style: GoogleFonts.inter(
+            fontSize: 21.sp,
+            color: const Color(0xFF64748B),
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        SizedBox(width: 8.w),
+        _pageChip(_pages.toString()),
+        SizedBox(width: 8.w),
+        _pageArrow(
+          Icons.chevron_right,
+          onTap: _page >= _pages || _loading ? null : () => _load(page: _page + 1),
+        ),
+      ],
+    );
+
     return Padding(
-      padding: const EdgeInsets.all(12),
+      padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          Text('Rows $_limit', style: _style(11, FontWeight.w600)),
-          const SizedBox(width: 16),
-          IconButton(
-            onPressed: _page > 1 && !_loading
-                ? () => _load(page: _page - 1)
-                : null,
-            icon: const Icon(Icons.chevron_left_rounded),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: AppColors.navy,
-              borderRadius: BorderRadius.circular(7),
-            ),
+          Expanded(
             child: Text(
-              '$_page',
-              style: _style(12, FontWeight.w800, Colors.white),
+              'Showing $_first to $_last of $_total leads',
+              style: GoogleFonts.inter(
+                fontSize: 12.5.sp,
+                color: const Color(0xFF64748B),
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
-          IconButton(
-            onPressed: _page < _pages && !_loading
-                ? () => _load(page: _page + 1)
-                : null,
-            icon: const Icon(Icons.chevron_right_rounded),
-          ),
+          pagination,
         ],
+      ),
+    );
+  }
+
+  Widget _pageArrow(IconData icon, {VoidCallback? onTap}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(6.r),
+      child: Container(
+        width: 30.w,
+        height: 30.w,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(6.r),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+        ),
+        child: Icon(
+          icon,
+          size: 16.sp,
+          color: onTap == null ? const Color(0xFFDFE6EE) : const Color(0xFF94A3B8),
+        ),
+      ),
+    );
+  }
+
+  Widget _pageChip(String label, {bool isSelected = false}) {
+    return Container(
+      width: 30.w,
+      height: 30.w,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: isSelected ? const Color(0xFF18223B) : Colors.white,
+        borderRadius: BorderRadius.circular(6.r),
+        border: Border.all(
+          color: isSelected ? const Color(0xFF18223B) : const Color(0xFFE2E8F0),
+        ),
+      ),
+      child: Text(
+        label,
+        style: GoogleFonts.inter(
+          fontSize: 12.sp,
+          color: isSelected ? Colors.white : const Color(0xFF64748B),
+          fontWeight: FontWeight.w500,
+        ),
       ),
     );
   }
@@ -847,6 +1083,14 @@ class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
         await _single(
           () => context.read<ContactLeadProvider>().markInterested(id),
           'Contact marked interested.',
+        );
+      case _RowAction.notInterested:
+        await _single(
+          () => context.read<ContactLeadProvider>().updateContactLead(
+                contactLeadId: id,
+                body: const {'status': 'NOT_INTERESTED'},
+              ),
+          'Contact marked not interested.',
         );
       case _RowAction.convert:
         await _single(
@@ -1074,14 +1318,77 @@ class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
   }
 
   static Widget _badge(String text, Color color) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+    padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
     decoration: BoxDecoration(
-      color: color.withValues(alpha: .08),
-      borderRadius: BorderRadius.circular(999),
+      color: color.withValues(alpha: 0.12),
+      borderRadius: BorderRadius.circular(6.r),
+      border: Border.all(color: color.withValues(alpha: 0.24)),
     ),
-    child: Text(text, style: _style(10, FontWeight.w700, color)),
+    child: Text(
+      text,
+      style: GoogleFonts.inter(
+        fontSize: 10.sp,
+        fontWeight: FontWeight.w600,
+        color: color,
+      ),
+    ),
   );
   static Widget _status(String status) {
+    final label = _leadStatusLabel(status);
+    final colors = _leadStatusColors(label);
+    return _CompactLeadBadge(
+      text: label,
+      foreground: colors.$1,
+      background: colors.$2,
+      borderColor: colors.$3,
+    );
+  }
+
+  static (Color, Color, Color) _leadStatusColors(String status) {
+    final value = status.toLowerCase();
+    if (value.contains('hot') || value.contains('overdue')) {
+      return (
+        const Color(0xFFFF641A),
+        const Color(0xFFFFF1E8),
+        const Color(0xFFFFC8AA),
+      );
+    }
+    if (value.contains('not interest')) {
+      return (
+        const Color(0xFF7C3AED),
+        const Color(0xFFF3E8FF),
+        const Color(0xFFE9D5FF),
+      );
+    }
+    if (value.contains('book') || value.contains('convert')) {
+      return (
+        const Color(0xFF168553),
+        const Color(0xFFE8F8EF),
+        const Color(0xFFB7EAD4),
+      );
+    }
+    if (value.contains('warm')) {
+      return (
+        const Color(0xFFB45309),
+        const Color(0xFFFFF7E8),
+        const Color(0xFFFDE68A),
+      );
+    }
+    if (value.contains('cold')) {
+      return (
+        const Color(0xFF2563EB),
+        const Color(0xFFEAF2FF),
+        const Color(0xFFBFDBFE),
+      );
+    }
+    return (
+      const Color(0xFF475569),
+      const Color(0xFFF1F5F9),
+      const Color(0xFFCBD5E1),
+    );
+  }
+
+  static String _leadStatusLabel(String status) {
     final normalized = status.trim().toUpperCase().replaceAll(' ', '_');
     final label = switch (normalized) {
       'COLD' => 'Cold Lead',
@@ -1092,28 +1399,12 @@ class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
       'NEW' => 'New Lead',
       'CONVERTED' => 'Converted',
       'ARCHIVED' => 'Archived',
-      _ => _leadStatusLabel(status),
+      _ => _title(status.isEmpty ? 'COLD' : status),
     };
-    final color = switch (normalized) {
-      'INTERESTED' || 'HOT' || 'CONVERTED' => const Color(0xFF16A34A),
-      'NOT_INTERESTED' || 'ARCHIVED' => const Color(0xFFDC2626),
-      'WARM' => const Color(0xFFF59E0B),
-      'COLD' => const Color(0xFF2563EB),
-      _ => const Color(0xFF64748B),
-    };
-    return _badge(label, color);
+    return label;
   }
 
-  static String _leadStatusLabel(String status) {
-    final label = _title(status.isEmpty ? 'COLD' : status);
-    return label.toLowerCase().endsWith('lead') ? label : '$label Lead';
-  }
 
-  static BoxDecoration _decoration() => BoxDecoration(
-    color: Colors.white,
-    borderRadius: BorderRadius.circular(10),
-    border: Border.all(color: _border),
-  );
   static TextStyle _style(
     double size,
     FontWeight weight, [
@@ -1163,6 +1454,89 @@ class _ContactLeadsScreenState extends State<ContactLeadsScreen> {
         ? date.hour - 12
         : date.hour;
     return '${date.day.toString().padLeft(2, '0')} ${months[date.month - 1]} ${date.year}, ${hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')} ${date.hour >= 12 ? 'pm' : 'am'}';
+  }
+
+  Widget _buildTabs() {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (var i = 0; i < _statusTabs.length; i++) ...[
+            if (i > 0) SizedBox(width: 8.w),
+            _tabChip(
+              _statusTabs[i],
+              isSelected: _selectedTab == _statusTabs[i],
+              onTap: () {
+                setState(() {
+                  _selectedTab = _statusTabs[i];
+                });
+                _load(page: 1);
+              },
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Color _tabTextColor(String status) {
+    final lower = status.toLowerCase();
+    if (lower.contains('cold')) return const Color(0xFF2563EB);
+    if (lower.contains('not interest')) return const Color(0xFF7C3AED);
+    if (lower.contains('interest')) return const Color(0xFF9333EA);
+    if (lower.contains('convert')) return const Color(0xFF16A34A);
+    return const Color(0xFF475569);
+  }
+
+  Color _tabBackgroundColor(String status) {
+    final lower = status.toLowerCase();
+    if (lower.contains('cold')) return const Color(0xFFEAF2FF);
+    if (lower.contains('not interest')) return const Color(0xFFF3E8FF);
+    if (lower.contains('interest')) return const Color(0xFFF3E8FF);
+    if (lower.contains('convert')) return const Color(0xFFE8F8EC);
+    return Colors.white;
+  }
+
+  Widget _tabChip(
+    String label, {
+    bool isSelected = false,
+    VoidCallback? onTap,
+  }) {
+    final bg = isSelected ? const Color(0xFF18223B) : _tabBackgroundColor(label);
+    final fg = isSelected ? Colors.white : _tabTextColor(label);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10.r),
+        child: Container(
+          constraints: BoxConstraints(minHeight: 32.h),
+          padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(10.r),
+            border: Border.all(
+              color: isSelected ? const Color(0xFF18223B) : const Color(0xFFE2E8F0),
+              width: 1.w,
+            ),
+          ),
+          child: Center(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.inter(
+                fontSize: 12.5.sp,
+                height: 1.1,
+                color: fg,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -1481,4 +1855,40 @@ enum _BulkAction {
   archive,
 }
 
-enum _RowAction { edit, interested, convert, archive }
+enum _RowAction { edit, interested, notInterested, convert, archive }
+
+class _CompactLeadBadge extends StatelessWidget {
+  const _CompactLeadBadge({
+    required this.text,
+    required this.foreground,
+    required this.background,
+    required this.borderColor,
+  });
+
+  final String text;
+  final Color foreground;
+  final Color background;
+  final Color borderColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
+      decoration: BoxDecoration(
+        color: background,
+        border: Border.all(color: borderColor),
+        borderRadius: BorderRadius.circular(6.r),
+      ),
+      child: Text(
+        text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: GoogleFonts.inter(
+          fontSize: 10.sp,
+          fontWeight: FontWeight.w600,
+          color: foreground,
+        ),
+      ),
+    );
+  }
+}

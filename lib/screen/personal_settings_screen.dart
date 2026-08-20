@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:truerealtycrm/constant/colors_screen.dart';
 import 'package:truerealtycrm/provider/employee_provider.dart';
+import 'package:truerealtycrm/provider/auth_provider.dart';
 import 'package:truerealtycrm/widget/app_loading.dart';
 
 class PersonalSettingsScreen extends StatefulWidget {
@@ -160,48 +161,60 @@ class _PersonalSettingsScreenState extends State<PersonalSettingsScreen> {
                     child: Center(
                       child: ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: 1360),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Personal Settings',
-                              style: GoogleFonts.inter(
-                                fontSize: constraints.maxWidth < 500 ? 25 : 30,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.navy,
+                        child: Builder(builder: (context) {
+                          final authProvider = context.watch<AuthProvider>();
+                          final isRestrictedRole = authProvider.role == UserRole.telecaller ||
+                              authProvider.role == UserRole.fieldExecutive;
+
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Personal Settings',
+                                style: GoogleFonts.inter(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.navy,
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 5),
-                            Text(
-                              'Update your personal details and manage your account password.',
-                              style: GoogleFonts.inter(
-                                fontSize: 14,
-                                color: AppColors.mutedNavy,
+                              const SizedBox(height: 5),
+                              Text(
+                                isRestrictedRole
+                                    ? 'Update your personal details.'
+                                    : 'Update your personal details and manage your account password.',
+                                style: GoogleFonts.inter(
+                                  fontSize: 14,
+                                  color: AppColors.mutedNavy,
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 22),
-                            if (horizontal)
-                              IntrinsicHeight(
-                                child: Row(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
+                              const SizedBox(height: 22),
+                              if (horizontal)
+                                IntrinsicHeight(
+                                  child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      Expanded(child: _buildProfileCard()),
+                                      if (!isRestrictedRole) ...[
+                                        const SizedBox(width: 24),
+                                        Expanded(child: _buildSecurityCard()),
+                                      ],
+                                    ],
+                                  ),
+                                )
+                              else
+                                Column(
                                   children: [
-                                    Expanded(child: _buildProfileCard()),
-                                    const SizedBox(width: 24),
-                                    Expanded(child: _buildSecurityCard()),
+                                    _buildProfileCard(),
+                                    if (!isRestrictedRole) ...[
+                                      const SizedBox(height: 18),
+                                      _buildSecurityCard(),
+                                    ],
                                   ],
                                 ),
-                              )
-                            else
-                              Column(
-                                children: [
-                                  _buildProfileCard(),
-                                  const SizedBox(height: 18),
-                                  _buildSecurityCard(),
-                                ],
-                              ),
-                          ],
-                        ),
+                            ],
+                          );
+                        }),
                       ),
                     ),
                   );

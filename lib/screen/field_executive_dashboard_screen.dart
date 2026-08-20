@@ -598,7 +598,7 @@ class _FieldExecutiveDashboardViewState
             Stack(
               children: [
                 SizedBox(
-                  height: 300.h,
+                  height: 600.h,
                   width: double.infinity,
                   child: _FieldDashboardHeader(
                     employeeName: employeeName,

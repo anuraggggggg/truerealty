@@ -12,6 +12,7 @@ class ContactLeadRepository {
     int page = 1,
     int limit = 10,
     String? assignedToId,
+    String? status,
   }) {
     return _apiClient.get(
       '/contact-leads',
@@ -21,6 +22,8 @@ class ContactLeadRepository {
         'limit': limit,
         if (assignedToId != null && assignedToId.isNotEmpty)
           'assignedToId': assignedToId,
+        if (status != null && status.isNotEmpty)
+          'status': status,
       },
     );
   }
